@@ -1,7 +1,7 @@
 [project]
-name = "my-research-project"
+name = "surrogate-seismic-waves"
 version = "0.1.0"
-description = "A short description of the project."
+description = "Surrogate modeling of seismic wave propagation."
 authors = [
     { name = "Kurt Walter Soncco Sinchi", email = "kurtwal98@berkeley.edu" },
 ]
