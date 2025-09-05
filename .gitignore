@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environments
+.venv/
+venv/
+env/
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Data - NEVER commit large data files
+*.csv
+*.tsv
+*.json
+*.parquet
+*.pkl
+# Ignore all files inside the data folder...
+data/*
+
+# ...but DO NOT ignore the .gitkeep placeholder file.
+!data/.gitkeep
+
+# Secrets
+.env
+*.env
+
+# OS files
+.DS_Store
+Thumbs.db

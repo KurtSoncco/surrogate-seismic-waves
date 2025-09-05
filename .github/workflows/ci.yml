@@ -1,0 +1,61 @@
+name: CI
+
+# Controls when the action runs
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+# A workflow run is made up of one or more jobs
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"] # Test on multiple Python versions
+
+    steps:
+      # 1. Check out the repository code
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # 2. Set up the specified Python version
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # 3. Install uv
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      # 4. Create a virtual environment
+      - name: Create a virtual environment
+        run: |
+          source ~/.cargo/env
+          uv venv
+
+      # 5. Install dependencies, including the 'dev' extras
+      - name: Install dependencies
+        run: |
+          # Add uv to the path
+          source ~/.cargo/env
+          # Install the project in editable mode with dev dependencies
+          uv sync --extra dev
+
+      # 6. Lint the code with Ruff
+      - name: Lint with Ruff
+        run: |
+          source ~/.cargo/env
+          # Check for code errors and style issues
+          uv run ruff check .
+          # Check for formatting issues
+          uv run ruff format --check .
+
+      # 7. Run tests with Pytest
+      - name: Test with Pytest
+        run: |
+          source ~/.cargo/env
+          # Run the test suite
+          uv run pytest

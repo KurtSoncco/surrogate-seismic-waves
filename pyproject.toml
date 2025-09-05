@@ -1,0 +1,25 @@
+[project]
+name = "my-research-project"
+version = "0.1.0"
+description = "A short description of the project."
+authors = [
+    { name = "Kurt Walter Soncco Sinchi", email = "kurtwal98@berkeley.edu" },
+]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "seaborn",
+    "scikit-learn",
+    "jupyterlab",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "pytest",
+]
+
+[tool.setuptools]
+packages = ["src"]
