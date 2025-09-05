@@ -3,6 +3,10 @@ from typing import Optional, Tuple
 import numpy as np
 from scipy.fft import rfft, rfftfreq
 
+from wave_surrogate.logging_setup import setup_logging
+
+logger = setup_logging()
+
 
 def acceleration_to_fas(
     acc: np.ndarray, dt: float, n: Optional[int] = None
@@ -32,7 +36,7 @@ def acceleration_to_fas(
         n = numpts
 
     if numpts > n:
-        print(f"Warning: Signal truncated from {numpts} to {n} points.")
+        logger.warning(f"Signal truncated from {numpts} to {n} points.")
 
     freq = rfftfreq(n, d=dt)
     fas = np.abs(rfft(acc, n=n)) * (2.0 / numpts)  # type: ignore
