@@ -13,6 +13,7 @@ dependencies = [
     "seaborn",
     "scikit-learn",
     "jupyterlab",
+    "wandb",
 ]
 
 [project.optional-dependencies]
@@ -22,4 +23,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["src"]
+packages = ["wave_surrogate"]
+
+[tool.uv]
+package = true

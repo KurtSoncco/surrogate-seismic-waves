@@ -1,9 +1,11 @@
+from typing import Optional, Tuple
+
 import numpy as np
 from scipy.interpolate import interp1d
-from typing import Tuple, Optional
 
 from .acc2fas import acceleration_to_fas
 from .kohmachi import kohmachi
+
 
 def TTF(
     surface_acc: np.ndarray,
@@ -53,7 +55,10 @@ def TTF(
 
     # Calculate Transfer Function, avoid division by zero
     tf = np.divide(
-        fas_s_smooth, fas_b_smooth, out=np.zeros_like(fas_s_smooth), where=fas_b_smooth != 0
+        fas_s_smooth,
+        fas_b_smooth,
+        out=np.zeros_like(fas_s_smooth),
+        where=fas_b_smooth != 0,
     )
 
     return freq_out, tf

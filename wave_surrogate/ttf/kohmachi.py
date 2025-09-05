@@ -1,5 +1,7 @@
-import numpy as np
 from typing import Union
+
+import numpy as np
+
 
 def kohmachi(
     signal: Union[np.ndarray, list],
@@ -38,7 +40,7 @@ def kohmachi(
     # Vectorized computation
     f_shifted = f / (1 + 1e-4)
     log_z = np.log10(f_shifted[:, np.newaxis] / f[1:-1])
-    
+
     # sinc function: sin(x)/x
     sinc_arg = smooth_coeff * log_z
     # Use np.sinc for stability at x=0

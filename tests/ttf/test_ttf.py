@@ -1,11 +1,7 @@
-import sys
-from pathlib import Path
-
 import numpy as np
 import pytest
 
-sys.path.append(str(Path(__file__).resolve().parents[2] / "src"))
-from ttf import TTF, acceleration_to_fas, kohmachi
+from wave_surrogate.ttf import TTF, acceleration_to_fas, kohmachi
 
 
 # Test data setup
