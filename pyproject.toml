@@ -21,6 +21,7 @@ dependencies = [
     "torch",
     "torchvision",
     "tqdm",
+    "jax[cuda12]"
 ]
 
 [project.optional-dependencies]
