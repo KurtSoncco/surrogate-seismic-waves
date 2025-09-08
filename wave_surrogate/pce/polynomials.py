@@ -1,11 +1,9 @@
-from functools import partial
-
 import jax
 import jax.numpy as jnp
 from jax.typing import ArrayLike
 
 
-@partial(jax.jit, static_argnames=["n"])
+@jax.jit
 def hermite_polynomial(n: int, x: ArrayLike) -> jnp.ndarray:
     """Computes the nth physicist's Hermite polynomial at x using an efficient iterative method.
 
@@ -51,7 +49,7 @@ def hermite_polynomial(n: int, x: ArrayLike) -> jnp.ndarray:
     return h_curr
 
 
-@partial(jax.jit, static_argnames=["n"])
+@jax.jit
 def legendre_polynomial(n: int, x: ArrayLike) -> jnp.ndarray:
     """Computes the nth Legendre polynomial P_n(x) using a JIT-compiled recurrence relation.
 
@@ -94,10 +92,3 @@ def legendre_polynomial(n: int, x: ArrayLike) -> jnp.ndarray:
         p_prev, p_curr = p_curr, p_next
 
     return p_curr
-
-
-if __name__ == "__main__":
-    # Example usage and simple test cases
-    x_values = jnp.array([-1.0, -0.5, 0.0, 0.5, 1.0])
-    for n in range(6):
-        print(f"H_{n}({x_values}) = {hermite_polynomial(n, x_values)}")
