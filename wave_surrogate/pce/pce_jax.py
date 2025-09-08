@@ -137,14 +137,18 @@ class PCEOperatorJAX:
         Returns: None
         Raises: RuntimeError: If the fitting process fails.
         """
-        logger.info("Compiling and running the fit function...")
-        self.C = self._fit_jit(
-            S_true,
-            spatio_temporal_coords,
-            xi_samples,
-            self.beta_indices,
-            self.alpha_indices,
+
+        logger.info("Constructing basis matrices Phi and Psi...")
+        Phi = self._construct_basis_matrix(
+            spatio_temporal_coords, self.beta_indices, "legendre"
         )
+
+        Psi = self._construct_basis_matrix(
+            xi_samples, self.alpha_indices, "hermite"
+        ).T  # Note: shape is (P, N)
+
+        logger.info("Compiling and running the fit function...")
+        self.C = self._fit_jit(S_true, Phi, Psi)
         self.C.block_until_ready()  # Wait for computation to finish
         logger.info("Fit complete. Coefficient matrix C has been learned.")
 
@@ -152,32 +156,22 @@ class PCEOperatorJAX:
     @jax.jit
     def _fit_jit(
         S_true: jnp.ndarray,
-        spatio_temporal_coords: jnp.ndarray,
-        xi_samples: jnp.ndarray,
-        beta_indices: jnp.ndarray,
-        alpha_indices: jnp.ndarray,
+        Phi: jnp.ndarray,
+        Psi: jnp.ndarray,
     ) -> jnp.ndarray:
-        """JIT-compiled internal function to solve for C* from Eq. (14).
+        """
+        JIT-compiled internal function to solve for C* from Eq. (14).
         Phi and Psi are constructed using the provided multi-indices.
 
         Args:
             S_true (jnp.ndarray): True solution data of shape (n, N).
-            spatio_temporal_coords (jnp.ndarray): Spatio-temporal coordinates of shape (n, d+1).
-            xi_samples (jnp.ndarray): Stochastic input samples of shape (N, r).
-            beta_indices (jnp.ndarray): Multi-indices for spatio-temporal basis.
-            alpha_indices (jnp.ndarray): Multi-indices for stochastic basis.
+            Phi (jnp.ndarray): Basis matrix for spatio-temporal coordinates of shape (n, Q).
+            Psi (jnp.ndarray): Basis matrix for stochastic input samples of shape (P, N).
 
         Returns:
             jnp.ndarray: The learned coefficient matrix C of shape (Q, P).
         Raises: RuntimeError: If the fitting process fails.
         """
-
-        Phi = PCEOperatorJAX._construct_basis_matrix(
-            spatio_temporal_coords, beta_indices, "legendre"
-        )
-        Psi = PCEOperatorJAX._construct_basis_matrix(
-            xi_samples, alpha_indices, "hermite"
-        ).T  # Note: shape is (P, N)
 
         PhiT_Phi = Phi.T @ Phi
         Psi_PsiT = Psi @ Psi.T
@@ -192,7 +186,8 @@ class PCEOperatorJAX:
     def predict(
         self, spatio_temporal_coords: jnp.ndarray, xi_samples: jnp.ndarray
     ) -> jnp.ndarray:
-        """Predicts the solution for new inputs using the learned C matrix.
+        """
+        Predicts the solution for new inputs using the learned C matrix.
 
         Args:
             spatio_temporal_coords (jnp.ndarray): Spatio-temporal coordinates of shape (n, d+1).
@@ -205,71 +200,69 @@ class PCEOperatorJAX:
         if self.C is None:
             raise RuntimeError("Model has not been fitted yet. Call .fit() first.")
 
-        S_hat = self._predict_jit(
-            self.C,
-            spatio_temporal_coords,
-            xi_samples,
-            self.beta_indices,
-            self.alpha_indices,
+        Phi_test = self._construct_basis_matrix(
+            spatio_temporal_coords, self.beta_indices, "legendre"
         )
-        return S_hat
+        Psi_test = self._construct_basis_matrix(
+            xi_samples, self.alpha_indices, "hermite"
+        ).T  # Note: shape is (P, N)
+
+        return self._predict_jit(self.C, Phi_test, Psi_test)
 
     @staticmethod
     @jax.jit
     def _predict_jit(
         C: jnp.ndarray,
-        spatio_temporal_coords: jnp.ndarray,
-        xi_samples: jnp.ndarray,
-        beta_indices: jnp.ndarray,
-        alpha_indices: jnp.ndarray,
+        Phi_test: jnp.ndarray,
+        Psi_test: jnp.ndarray,
     ) -> jnp.ndarray:
-        """JIT-compiled internal function for prediction using Eq. (10).
+        """
+        JIT-compiled internal function for prediction using Eq. (10).
         Args:
             C (jnp.ndarray): Coefficient matrix of shape (Q, P).
-            spatio_temporal_coords (jnp.ndarray): Spatio-temporal coordinates of shape (n, d+1).
-            xi_samples (jnp.ndarray): Stochastic input samples of shape (N, r).
-            beta_indices (jnp.ndarray): Multi-indices for spatio-temporal basis.
-            alpha_indices (jnp.ndarray): Multi-indices for stochastic basis.
+            Phi_test (jnp.ndarray): Basis matrix for spatio-temporal coordinates of shape (n, Q).
+            Psi_test (jnp.ndarray): Basis matrix for stochastic input samples of shape (P, N).
 
         Returns:
             jnp.ndarray: Predicted solution of shape (n, N).
         """
-        Phi_test = PCEOperatorJAX._construct_basis_matrix(
-            spatio_temporal_coords, beta_indices, "legendre"
-        )
-        Psi_test = PCEOperatorJAX._construct_basis_matrix(
-            xi_samples, alpha_indices, "hermite"
-        ).T
 
         return Phi_test @ C @ Psi_test
 
     def quantify_uncertainty(self, spatio_temporal_coords: jnp.ndarray) -> tuple:
-        """Computes mean and covariance. JIT-compiled for speed."""
+        """
+        Computes mean and covariance. JIT-compiled for speed.
+
+        Args:
+            spatio_temporal_coords (jnp.ndarray): Spatio-temporal coordinates of shape (n, d+1).
+
+        Returns:
+            tuple: Mean (jnp.ndarray of shape (n, 1)) and covariance (jnp.ndarray of shape (n, n)).
+        """
         if self.C is None:
             raise RuntimeError("Model has not been fitted yet. Call .fit() first.")
 
-        return self._uq_jit(self.C, spatio_temporal_coords, self.beta_indices)
+        Phi = self._construct_basis_matrix(
+            spatio_temporal_coords, self.beta_indices, "legendre"
+        )
+
+        return self._uq_jit(self.C, Phi)
 
     @staticmethod
     @jax.jit
     def _uq_jit(
         C: jnp.ndarray,
-        spatio_temporal_coords: jnp.ndarray,
-        beta_indices: jnp.ndarray,
+        Phi: jnp.ndarray,
     ) -> tuple:
         """JIT-compiled internal function for UQ using Eq. (22) and (23).
 
         Args:
             C (jnp.ndarray): Coefficient matrix of shape (Q, P).
-            spatio_temporal_coords (jnp.ndarray): Spatio-temporal coordinates of shape (n, d+1).
-            beta_indices (jnp.ndarray): Multi-indices for spatio-temporal basis.
+            Phi (jnp.ndarray): Basis matrix for spatio-temporal coordinates of shape (n, Q).
 
         Returns:
             tuple: Mean (jnp.ndarray of shape (n, 1)) and covariance (jnp.ndarray of shape (n, n)).
         """
-        Phi = PCEOperatorJAX._construct_basis_matrix(
-            spatio_temporal_coords, beta_indices, "legendre"
-        )
 
         # Mean from the first column of C
         c0 = C[:, 0:1]
@@ -281,16 +274,3 @@ class PCEOperatorJAX:
         covariance = Phi @ inner_term @ Phi.T
 
         return mean, covariance
-
-
-if __name__ == "__main__":
-    # Example usage and simple test cases
-    x_values = jnp.array(
-        [[-1.0, 0, 1.0], [-0.5, 0, 0.5], [0.0, 0, 0.0], [0.5, 0, 0.5], [1.0, 0, 1.0]]
-    )
-
-    model = PCEOperatorJAX(p_order=2, q_order=2, r_dim=2, d_dim=1)
-
-    model._construct_basis_matrix(
-        x_values.reshape(-1, 1), jnp.array([[0], [1], [2]]), "legendre"
-    )
