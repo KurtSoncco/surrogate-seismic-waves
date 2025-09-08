@@ -281,3 +281,16 @@ class PCEOperatorJAX:
         covariance = Phi @ inner_term @ Phi.T
 
         return mean, covariance
+
+
+if __name__ == "__main__":
+    # Example usage and simple test cases
+    x_values = jnp.array(
+        [[-1.0, 0, 1.0], [-0.5, 0, 0.5], [0.0, 0, 0.0], [0.5, 0, 0.5], [1.0, 0, 1.0]]
+    )
+
+    model = PCEOperatorJAX(p_order=2, q_order=2, r_dim=2, d_dim=1)
+
+    model._construct_basis_matrix(
+        x_values.reshape(-1, 1), jnp.array([[0], [1], [2]]), "legendre"
+    )
