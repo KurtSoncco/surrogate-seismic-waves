@@ -76,14 +76,20 @@ def test_normalization_logic(sample_data):
 
     normalized_data, _, _ = _normalize_data(sample_data, labels, lower_is_better)
 
-    # Expected values:
-    # MSE (lower is better): min=0.1, max=0.3. Model A (0.1) -> (0.3-0.1)/(0.3-0.1) = 1.0. Model B (0.3) -> (0.3-0.3)/(0.3-0.1) = 0.0.
-    # MAE (lower is better): min=0.1, max=0.2. Model A (0.2) -> (0.2-0.2)/(0.2-0.1) = 0.0. Model B (0.1) -> (0.2-0.1)/(0.2-0.1) = 1.0.
-    # R2 (higher is better): min=0.8, max=0.9. Model A (0.9) -> (0.9-0.8)/(0.9-0.8) = 1.0. Model B (0.8) -> (0.8-0.8)/(0.9-0.8) = 0.0.
+    # Expected values after normalization to [0.1, 1.0] and inversion:
+    # MSE (lower is better): min=0.1, max=0.3.
+    #   Model A (0.1) -> normalized to 0.1, inverted to 1.0.
+    #   Model B (0.3) -> normalized to 1.0, inverted to 0.1.
+    # MAE (lower is better): min=0.1, max=0.2.
+    #   Model A (0.2) -> normalized to 1.0, inverted to 0.1.
+    #   Model B (0.1) -> normalized to 0.1, inverted to 1.0.
+    # R2 (higher is better): min=0.8, max=0.9.
+    #   Model A (0.9) -> normalized to 1.0 (not inverted).
+    #   Model B (0.8) -> normalized to 0.1 (not inverted).
     expected = np.array(
         [
-            [1.0, 0.0, 1.0],  # Model A
-            [0.0, 1.0, 0.0],  # Model B
+            [1.0, 0.1, 1.0],  # Model A
+            [0.1, 1.0, 0.1],  # Model B
         ]
     )
 

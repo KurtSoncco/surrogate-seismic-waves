@@ -12,36 +12,72 @@ def _normalize_data(
     data: Dict[str, Dict[str, float]],
     labels: List[str],
     lower_is_better_metrics: List[str],
+    scale_min: float = 0.1,
+    scale_max: float = 1.0,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Normalizes model performance data using NumPy for vectorization.
+    Normalizes model performance data to a specified range, preventing zero scores.
+
+    This function scales data to the range [scale_min, scale_max] to avoid
+    the minimum value becoming zero, which is ideal for radar chart visualizations.
+    It also handles the edge case where all models have the same score for a
+    metric by assigning them the midpoint of the scale.
+
+    Args:
+        data: The raw performance data.
+        labels: The list of metric names (columns).
+        lower_is_better_metrics: A list of metrics where a lower score is better.
+        scale_min: The minimum value of the normalization range.
+        scale_max: The maximum value of the normalization range.
 
     Returns:
         - A NumPy array of the normalized data.
-        - A NumPy array of the minimum values for each metric.
-        - A NumPy array of the maximum values for each metric.
+        - A NumPy array of the original minimum values for each metric.
+        - A NumPy array of the original maximum values for each metric.
     """
-    # Create a 2D NumPy array (models x metrics)
     model_names = list(data.keys())
+    # Edge case: If there are fewer than 2 models, normalization isn't meaningful.
+    if len(model_names) < 2:
+        num_metrics = len(labels)
+        mid_point = (scale_min + scale_max) / 2
+        # For one model, return the midpoint for all metrics.
+        if len(model_names) == 1:
+            raw_vals = np.array([[data[model_names[0]].get(m, 0) for m in labels]])
+            return np.full((1, num_metrics), mid_point), raw_vals, raw_vals
+        # For zero models, return empty arrays.
+        return np.array([[]]), np.array([]), np.array([])
+
+    # Create a 2D NumPy array (models x metrics)
     raw_values = np.array(
         [[data[model][metric] for metric in labels] for model in model_names]
     )
 
-    # Find min and max for each metric (column-wise)
+    # Find original min and max for each metric (column-wise)
     min_vals = np.min(raw_values, axis=0)
     max_vals = np.max(raw_values, axis=0)
-
-    # Calculate the range, handling the case where min == max
     data_range = max_vals - min_vals
-    data_range[data_range == 0] = 1.0  # Avoid division by zero
 
-    # Vectorized normalization
-    normalized_values = (raw_values - min_vals) / data_range
+    # Identify metrics where all models have the same score (min == max)
+    zero_range_mask = data_range == 0
+    # Avoid division by zero by setting the range to 1 for these metrics
+    data_range[zero_range_mask] = 1.0
 
-    # Invert scores for 'lower is better' metrics
+    # 1. Perform standard normalization to the range [0, 1]
+    normalized_0_1 = (raw_values - min_vals) / data_range
+
+    # 2. Scale the result to the desired range [scale_min, scale_max]
+    scale_range = scale_max - scale_min
+    normalized_values = scale_min + (normalized_0_1 * scale_range)
+
+    # For metrics where all scores were identical, set to the midpoint of the new scale
+    mid_point = (scale_min + scale_max) / 2
+    normalized_values[:, zero_range_mask] = mid_point
+
+    # 3. Invert scores for 'lower is better' metrics within the new scale
+    inversion_point = scale_max + scale_min
     for i, metric in enumerate(labels):
         if metric in lower_is_better_metrics:
-            normalized_values[:, i] = 1 - normalized_values[:, i]
+            normalized_values[:, i] = inversion_point - normalized_values[:, i]
 
     return normalized_values, min_vals, max_vals
 
