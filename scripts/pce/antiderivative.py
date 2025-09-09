@@ -1,8 +1,14 @@
+from pathlib import Path
+
 import jax
 import jax.numpy as jnp
+import numpy as np
+from metrax import MAE, MSE, RMSE, RSQUARED
 
 from wave_surrogate.logging_setup import setup_logging
 from wave_surrogate.pce.pce_jax import PCEOperatorJAX
+from wave_surrogate.pce.polynomials import _legendre_polynomial
+from wave_surrogate.plot_utils.radar_graph import radar_graph
 
 logger = setup_logging()
 # --- 1. Settings from the Paper (e.g., Anti-derivative example) ---
@@ -19,36 +25,179 @@ N_test = 1000  # Testing samples
 # Use a JAX key for reproducible random numbers
 key = jax.random.PRNGKey(0)
 key, S_key, xi_train_key, xi_test_key = jax.random.split(key, 4)
-
-S_train_true = jax.random.normal(S_key, (n, N_train))
 xi_train = jax.random.normal(xi_train_key, (N_train, r_dim))
-coords = jnp.linspace(-1, 1, n).reshape(
-    -1, 1
-)  # Legendre polynomials defined on [-1, 1]
-
-print(f"Shape of coords: {coords.shape}")
-print(f"Shape of S_train_true: {S_train_true.shape}")
-
-
 xi_test = jax.random.normal(xi_test_key, (N_test, r_dim))
+x = jnp.linspace(0, 1, n).reshape(-1, 1)  # Spatio-temporal coordinates
 
-# --- 3. Initialize and Train the JAX Model ---
-pce_model = PCEOperatorJAX(p_order, q_order, r_dim, d_dim)
-pce_model.fit(S_train_true, coords, xi_train)
-# The first run will be slower due to JIT compilation.
-# Subsequent calls to .fit (if any) would be instantaneous.
+# --- 3. Generate Stochastic Field and Ground Truth Solutions ---
+# Stochastic field u(x, xi) = sum_{i=1}^r sqrt(lam_i) * phi_i(x) * xi_i
+# where phi_i(x) = sin(i * pi * x) and lam_i = 1 / i^2
+basis_functions = (
+    jnp.array([jnp.sin((i + 1) * jnp.pi * x) for i in range(r_dim)]).squeeze(-1).T
+)
+u_train = xi_train @ basis_functions.T  # Shape (N_train, n)
+u_test = xi_test @ basis_functions.T  # Shape (N_test, n)
 
-# --- 4. Make Predictions ---
-logger.info("\nRunning prediction...")
-S_predicted = pce_model.predict(coords, xi_test)
-S_predicted.block_until_ready()  # Wait for prediction to finish
-logger.info(f"Predicted solutions shape: {S_predicted.shape}")
+# Generate Ground Truth Solutions
+dx = x[1] - x[0]
+S_train_true = jnp.cumsum(u_train, axis=1) * dx  # Anti-derivative, shape (N_train, n)
+S_test_true = jnp.cumsum(u_test, axis=1) * dx  # Anti-derivative, shape (N_test, n)
 
-# --- 5. Perform Uncertainty Quantification ---
-logger.info("\nRunning UQ...")
-mean_pred, cov_pred = pce_model.quantify_uncertainty(coords)
-std_dev_pred = jnp.sqrt(jnp.diag(cov_pred))
-mean_pred.block_until_ready()  # Wait for UQ to finish
+S_train_true_model = S_train_true.T  # Shape (n, N_train)
 
-logger.info(f"Mean prediction shape: {mean_pred.shape}")
-logger.info(f"Standard deviation prediction shape: {std_dev_pred.shape}")
+# --- 4.  Data-Driven PCE ---
+pce_data_driven = PCEOperatorJAX(p_order, q_order, r_dim, d_dim)
+pce_data_driven.fit(S_train_true_model, x, xi_train)
+S_pred_data_driven = pce_data_driven.predict(x, xi_test).T  # Shape (N_test, n)
+
+
+# --- 5. Physics-Informed PCE ---
+def antiderivative_pde_fn(points, beta_indices, xi_samples):
+    # PDE: ds/dx - u = 0
+    def evaluate_single_phi(point, index_tuple):
+        evals_1d = jax.vmap(_legendre_polynomial)(jnp.array(index_tuple), point)
+        return jnp.prod(evals_1d)
+
+    # 3. Compute the Jacobian of a single basis function w.r.t. spatial variable x.
+    #    This gives us dPhi/dx for one basis function at one point.
+    jac_phi = jax.jacfwd(evaluate_single_phi)
+
+    # Jacobian
+    vmap_jac_over_indices = jax.vmap(jac_phi, in_axes=(None, 0))
+
+    # 4. Vectorize the entire process over all collocation points.
+    #    This computes the Jacobian for every basis function at every point.
+    #    The result is the operator matrix L_Phi.
+    #    The final .squeeze() removes unnecessary dimensions of size 1.
+    L_Phi_pde = jax.vmap(vmap_jac_over_indices, in_axes=(0, None))(
+        points, beta_indices
+    ).squeeze()
+
+    # The forcing term F_pde is the stochastic field u(x, xi)
+    u_forcing = xi_train @ basis_functions.T  # Use global xi_train
+    F_pde = u_forcing.T  # Shape (n, N_train)
+
+    return L_Phi_pde, F_pde
+
+
+def antiderivative_bc_fn(points, beta_indices, xi_samples):
+    # BC: s(0) = 0
+    def evaluate_single_phi(point, index_tuple):
+        evals_1d = jax.vmap(_legendre_polynomial)(jnp.array(index_tuple), point)
+        return jnp.prod(evals_1d)
+
+    vmap_phi_over_indices = jax.vmap(evaluate_single_phi, in_axes=(None, 0))
+    Phi_bc = jax.vmap(vmap_phi_over_indices, in_axes=(0, None))(
+        points, beta_indices
+    ).squeeze()
+
+    # Ensure Phi_bc is a 2D array, even with a single point
+    if Phi_bc.ndim == 1:
+        Phi_bc = Phi_bc.reshape(1, -1)
+
+    # The forcing term is zero, with shape (num_bc_points, N_train)
+    F_bc = jnp.zeros((points.shape[0], xi_samples.shape[0]))
+    return Phi_bc, F_bc
+
+
+# Collocation points
+pce_physics = PCEOperatorJAX(p_order, q_order, r_dim, d_dim)
+pde_points = x
+bc_points = jnp.array([[0.0]])  # s(0) = 0
+ic_points = jnp.empty((0, 1))  # No initial condition needed
+
+
+def ic_fn(points, beta_indices, xi_samples):
+    """
+    Defines the initial condition residual.
+    Since there is no IC, this function returns empty matrices with consistent shapes.
+    """
+    # --- FIX ---
+    # The operator L_Phi_ic must have the same number of columns as L_Phi_pde.
+    # This number is the size of the spatial basis, P, which is the
+    # number of rows in the beta_indices array.
+    num_spatial_basis_funcs = beta_indices.shape[0]  # This will be 11
+
+    # Operator matrix with 0 rows (no IC points) and P columns.
+    L_ic = jnp.empty((0, num_spatial_basis_funcs))
+
+    # Forcing term with 0 rows and N_train columns.
+    F_ic = jnp.empty((0, xi_samples.shape[0]))
+
+    return L_ic, F_ic
+
+
+pce_physics.fit_physics_informed(
+    pde_fn=antiderivative_pde_fn,
+    pde_collocation_points=pde_points,
+    bc_fn=antiderivative_bc_fn,
+    bc_collocation_points=bc_points,
+    ic_fn=ic_fn,
+    ic_collocation_points=ic_points,
+    xi_samples=xi_train,
+)
+S_pred_physics = pce_physics.predict(x, xi_test).T  # Shape (N_test, n)
+
+
+# --- 6. Evaluate and Plot Results ---
+mse_data_driven = MSE.from_model_output(
+    predictions=S_pred_data_driven, labels=S_test_true
+)
+mse_physics = MSE.from_model_output(predictions=S_pred_physics, labels=S_test_true)
+mae_data_driven = MAE.from_model_output(
+    predictions=S_pred_data_driven, labels=S_test_true
+)
+mae_physics = MAE.from_model_output(predictions=S_pred_physics, labels=S_test_true)
+rmse_data_driven = RMSE.from_model_output(
+    predictions=S_pred_data_driven, labels=S_test_true
+)
+rmse_physics = RMSE.from_model_output(predictions=S_pred_physics, labels=S_test_true)
+r2_data_driven = RSQUARED.from_model_output(
+    predictions=S_pred_data_driven, labels=S_test_true
+)
+r2_physics = RSQUARED.from_model_output(predictions=S_pred_physics, labels=S_test_true)
+
+## Save into dictionary for radar plot
+results = {
+    "Data-Driven": {
+        "MSE": float(mse_data_driven.compute()),
+        "MAE": float(mae_data_driven.compute()),
+        "RMSE": float(rmse_data_driven.compute()),
+        "R2": float(r2_data_driven.compute()),
+    },
+    "Physics-Informed": {
+        "MSE": float(mse_physics.compute()),
+        "MAE": float(mae_physics.compute()),
+        "RMSE": float(rmse_physics.compute()),
+        "R2": float(r2_physics.compute()),
+    },
+}
+logger.info(f"✅ Evaluation Results: {results}")
+
+fig_path = Path(__file__).parent / "radar_plot_antiderivative.png"
+radar_graph(
+    results,
+    title="Anti-Derivative Problem: Data-Driven vs Physics-Informed PCE",
+    save_path=str(fig_path),
+)
+
+## Save a few examples for plotting (this part remains the same)
+num_examples_to_save = 3
+example_indices = jnp.linspace(0, N_test - 1, num_examples_to_save, dtype=jnp.int32)
+
+x_coords = np.array(x)
+true_examples = np.array(S_test_true[example_indices, :])
+dd_pred_examples = np.array(S_pred_data_driven[example_indices, :])
+pi_pred_examples = np.array(S_pred_physics[example_indices, :])
+
+output_filename = Path(__file__).parent / "pce_antiderivative_results.npz"
+np.savez(
+    output_filename,
+    x=x_coords,
+    s_true=true_examples,
+    s_pred_data_driven=dd_pred_examples,
+    s_pred_physics=pi_pred_examples,
+)
+logger.info(
+    f"✅ Saved {num_examples_to_save} examples for plotting to '{output_filename}'"
+)

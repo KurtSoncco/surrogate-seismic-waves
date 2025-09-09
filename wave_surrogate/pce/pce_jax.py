@@ -183,6 +183,69 @@ class PCEOperatorJAX:
 
         return C_final_T.T
 
+    def fit_physics_informed(
+        self,
+        pde_collocation_points: jnp.ndarray,
+        bc_collocation_points: jnp.ndarray,
+        ic_collocation_points: jnp.ndarray,
+        pde_fn,
+        bc_fn,
+        ic_fn,
+        xi_samples: jnp.ndarray,
+    ):
+        Psi = self._construct_basis_matrix(xi_samples, self.alpha_indices, "hermite").T
+
+        # PDE Residuals
+        L_Phi_pde, F_pde = pde_fn(pde_collocation_points, self.beta_indices, xi_samples)
+        # BC Residuals
+        L_Phi_bc, F_bc = bc_fn(bc_collocation_points, self.beta_indices, xi_samples)
+        # IC Residuals
+        L_Phi_ic, F_ic = ic_fn(ic_collocation_points, self.beta_indices, xi_samples)
+
+        # Do calculation
+        self.C = self._fit_physics_informed_jit(
+            Psi, L_Phi_pde, F_pde, L_Phi_bc, F_bc, L_Phi_ic, F_ic
+        )
+
+        self.C.block_until_ready()  # Wait for computation to finish
+        logger.info(
+            "Physics-informed fit complete. Coefficient matrix C has been learned."
+        )
+
+    @staticmethod
+    @jax.jit
+    def _fit_physics_informed_jit(
+        Psi: jnp.ndarray,
+        L_Phi_pde: jnp.ndarray,
+        F_pde: jnp.ndarray,
+        L_Phi_bc: jnp.ndarray,
+        F_bc: jnp.ndarray,
+        L_Phi_ic: jnp.ndarray,
+        F_ic: jnp.ndarray,
+    ) -> jnp.ndarray:
+        Psi_Psi_T = Psi @ Psi.T
+
+        # PDE Residuals
+        A_pde = L_Phi_pde.T @ L_Phi_pde
+        F_term_pde = L_Phi_pde.T @ F_pde @ Psi.T
+
+        # BC Residuals
+        A_bc = L_Phi_bc.T @ L_Phi_bc
+        F_term_bc = L_Phi_bc.T @ F_bc @ Psi.T
+
+        # IC Residuals
+        A_ic = L_Phi_ic.T @ L_Phi_ic
+        F_term_ic = L_Phi_ic.T @ F_ic @ Psi.T
+
+        # Combine terms
+        A = A_pde + A_bc + A_ic
+        F_term = F_term_pde + F_term_bc + F_term_ic
+
+        # Solve for C
+        C_intermediate = jnp.linalg.solve(A, F_term)
+        C_final_T = jnp.linalg.solve(Psi_Psi_T, C_intermediate.T)
+        return C_final_T.T
+
     def predict(
         self, spatio_temporal_coords: jnp.ndarray, xi_samples: jnp.ndarray
     ) -> jnp.ndarray:

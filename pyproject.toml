@@ -21,7 +21,10 @@ dependencies = [
     "torch",
     "torchvision",
     "tqdm",
-    "jax[cuda12]"
+    "jax[cuda12]",
+    "jax-ai-stack",
+    "clu",
+    "google-metrax",
 ]
 
 [project.optional-dependencies]
