@@ -1,10 +1,8 @@
-import os
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
 import seaborn as sns
 from scipy.stats import qmc
 
@@ -16,306 +14,174 @@ sns.set_palette("colorblind")
 
 def generate_velocity_profiles(
     num_models: int = 1000,
-    Vs_soil_range: tuple = (np.log10(100), np.log10(360)),
-    Vs_bedrock_range: tuple = (np.log10(760), np.log10(1500)),
-    n_Vs: int = 1000,
-    h_range: tuple = (1, 29),
-):
+    vs_soil_range_log10: tuple[float, float] = (np.log10(100), np.log10(360)),
+    vs_bedrock_range_log10: tuple[float, float] = (np.log10(760), np.log10(1500)),
+    h_layer_range: tuple[int, int] = (1, 29),
+    dz: float = 5.0,
+) -> pd.DataFrame:
     """
-    Generates synthetic velocity profiles.
-    Assumes a two-layer model: soil and bedrock.
-    Soil layer has uniform Vs, bedrock layer has uniform Vs.
-    Sampling is done using Latin Hypercube Sampling (LHS) and the
-    shear wave velocities are sampled in log10 space for better coverage.
+    Generates synthetic two-layer velocity profiles using correct 3D LHS.
+
+    This function samples all three parameters (soil Vs, bedrock Vs, and thickness)
+    from a single 3D Latin Hypercube to ensure proper stratification across the
+    entire parameter space.
 
     Args:
         num_models (int): Number of models to generate.
-        Vs_soil_range (tuple): Log10 range for soil Vs.
-        Vs_bedrock_range (tuple): Log10 range for bedrock Vs.
-        n_Vs (int): Number of samples to generate.
-        h_range (tuple): Range for soil layer thickness in multiples of 5m.
-    Returns:
-        List of np.ndarray: Each array represents a velocity profile.
-    """
-    models = []
-    sampler = qmc.LatinHypercube(d=2)
-    lower_bound = [Vs_soil_range[0], Vs_bedrock_range[0]]
-    upper_bound = [Vs_soil_range[1], Vs_bedrock_range[1]]
-    scaled_samples = qmc.scale(sampler.random(n_Vs), lower_bound, upper_bound)
+        vs_soil_range_log10 (tuple): Log10 range for soil shear wave velocity (Vs).
+        vs_bedrock_range_log10 (tuple): Log10 range for bedrock Vs.
+        h_layer_range (tuple): Range for the number of soil layers.
+        dz (float): Thickness of each layer in meters.
 
-    sampler = qmc.LatinHypercube(d=1)
-    h_soil_array = sampler.integers(
-        l_bounds=h_range[0], u_bounds=h_range[1] + 1, n=n_Vs, endpoint=True
+    Returns:
+        pd.DataFrame: A DataFrame containing the generating parameters and the
+                      resulting velocity profile array for each model.
+    """
+    # 1. Correctly sample the 3D parameter space with a single sampler.
+    rng = np.random.default_rng(42)
+    sampler = qmc.LatinHypercube(d=3, rng=rng)
+    samples = sampler.random(n=num_models)
+
+    # 2. Define the bounds and scale the samples.
+    lower_bounds = [vs_soil_range_log10[0], vs_bedrock_range_log10[0], h_layer_range[0]]
+    upper_bounds = [
+        vs_soil_range_log10[1],
+        vs_bedrock_range_log10[1],
+        h_layer_range[1] + 1,
+    ]
+    scaled_samples = qmc.scale(samples, lower_bounds, upper_bounds)
+
+    # 3. Extract and transform parameters with clear names.
+    vs_soil = 10 ** scaled_samples[:, 0]
+    vs_bedrock = 10 ** scaled_samples[:, 1]
+    h_layers = scaled_samples[:, 2].astype(int)
+    h_meters = h_layers * dz
+
+    # 4. Generate the model arrays.
+    model_arrays = []
+    for vs_s, vs_b, h_l in zip(vs_soil, vs_bedrock, h_layers):
+        soil = np.full(h_l, vs_s)
+        bedrock = np.array([vs_b])
+        model_arrays.append(np.concatenate([soil, bedrock]))
+
+    # 5. Return a single, structured DataFrame. This is much more useful.
+    return pd.DataFrame(
+        {
+            "vs_soil": vs_soil,
+            "vs_bedrock": vs_bedrock,
+            "h": h_meters,
+            "model_array": model_arrays,
+        }
     )
 
-    for i in range(num_models):
-        Vs_s, Vs_b = scaled_samples[i]
-        h_soil = h_soil_array[i]
-        Vs_s = 10**Vs_s
-        Vs_b = 10**Vs_b
-        soil_array = np.full(h_soil, Vs_s)
-        bedrock_array = np.array([Vs_b])
-        array = np.concatenate([soil_array, bedrock_array])
-        models.append(array)
-    return models
 
-
-def extract_properties(models: list, dz: float = 5.0):
+def plot_property_distributions(df: pd.DataFrame, output_dir: Path):
     """
-    Extracts properties from the generated models.
-    Assumes each model is a 1D numpy array where:
-        - All but the last element represent soil layer Vs.
-        - The last element represents bedrock Vs.
-        - The number of soil layers times 5m gives the soil thickness h.
+    Creates a pairplot to visualize parameter distributions and correlations.
+
+    A pairplot is superior to separate histograms and index-based scatter plots
+    A pairplot is superior to separate histograms and index-based scatter plots
+    because it shows histograms on the diagonal and pairwise scatter plots for
+    all parameter combinations, revealing relationships between them.
 
     Args:
-        models (list): List of np.ndarray, each representing a velocity profile.
-        dz (float): Thickness of each soil layer in meters. Default is 5.0.
-    Returns:
-        Vs_soil (list): List of soil shear wave velocities.
-        Vs_bedrock (list): List of bedrock shear wave velocities.
-        h (list): List of soil layer thicknesses.
+        df (pd.DataFrame): DataFrame with model parameters.
+        output_dir (Path): Directory to save the plot.
     """
-    Vs_soil = [np.mean(a[:-1]) for a in models]
-    Vs_bedrock = [a[-1] for a in models]
-    h = [(len(a) - 1) * dz for a in models]
-    return Vs_soil, Vs_bedrock, h
+    logger.info("Generating property distribution pairplot...")
+    plot_vars = ["vs_soil", "vs_bedrock", "h"]
+
+    g = sns.pairplot(df[plot_vars], corner=True, diag_kind="kde")
+    g.fig.suptitle(
+        "Distributions and Correlations of Model Parameters", y=1.02, fontsize=16
+    )
+
+    # Add units to axis labels for clarity
+    g.axes[2, 0].set_xlabel("$V_{s, soil}$ [m/s]")
+    g.axes[2, 1].set_xlabel("$V_{s, bedrock}$ [m/s]")
+    g.axes[0, 0].set_ylabel("$V_{s, soil}$ [m/s]")
+    g.axes[1, 0].set_ylabel("$V_{s, bedrock}$ [m/s]")
+    g.axes[2, 0].set_ylabel("Thickness h [m]")
+
+    output_path = output_dir / "property_pairplot.png"
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    logger.info(f"Saved pairplot to {output_path}")
 
 
-def plot_histograms(Vs_soil, Vs_bedrock, h, output_dir):
+def plot_frequency_analysis(df: pd.DataFrame, output_dir: Path):
     """
-    Plots and saves histograms of the properties.
-
-    The function creates histograms for Vs_soil, Vs_bedrock, and h,
-    each with specified bin widths and axis limits. The histograms are
-    saved as a single image file in the specified output directory.
+    Performs and plots frequency analysis based on model properties.
 
     Args:
-        Vs_soil (list): List of soil shear wave velocities.
-        Vs_bedrock (list): List of bedrock shear wave velocities.
-        h (list): List of soil layer thicknesses.
-        output_dir (str): Directory to save the plots.
-
-    Returns:
-        None
+        df (pd.DataFrame): DataFrame containing model properties.
+        output_dir (Path): Directory to save the plots.
     """
-    fig, ax = plt.subplots(1, 3, figsize=(15, 5), sharey=True)
+    logger.info("Generating frequency analysis plots...")
+    # Perform calculations directly on DataFrame columns (vectorized and efficient)
+    f0 = df["vs_soil"] / (4 * df["h"])
+    f0 = f0.replace([np.inf, -np.inf], np.nan).dropna()  # Clean invalid values
 
-    binwidth = 50
-    ax[0].hist(
-        Vs_soil,
-        bins=np.arange(min(Vs_soil), max(Vs_soil) + binwidth, binwidth),
-        edgecolor="black",
-        linewidth=1.2,
-        color="blue",
+    f_max_dict = {
+        "5m grid": df["vs_soil"] / (15 * 5.0),
+        "2.5m grid": df["vs_soil"] / (15 * 2.5),
+        "1m grid": df["vs_soil"] / (15 * 1.0),
+    }
+
+    # Create a single figure with two subplots for consolidated output
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6), constrained_layout=True)
+    fig.suptitle("Frequency Analysis", fontsize=16)
+
+    # Plot 1: Fundamental Frequency (f0) Distribution
+    sns.histplot(x=f0, ax=axes[0], bins=100, kde=True, color="red", alpha=0.7)
+    axes[0].set_title("Fundamental Frequency ($f_0$) Distribution")
+    axes[0].set_xlabel("Frequency [Hz]")
+    axes[0].set_ylabel("Density")
+
+    # Plot 2: Comparison of f0 and f_max
+    sns.histplot(
+        x=f0, ax=axes[1], bins=100, kde=True, label="$f_0$", color="red", alpha=0.6
     )
-    ax[0].set_xticks(np.arange(min(Vs_soil), max(Vs_soil) + binwidth, binwidth))
-    ax[0].set_xlim(100, 400)
-    ax[0].set_xlabel("$Vs_1$ [m/s]", fontsize=20)
+    for label, f_max_data in f_max_dict.items():
+        sns.histplot(
+            x=f_max_data, ax=axes[1], bins=50, kde=True, label=f"$f_{{max}}$ ({label})"
+        )
 
-    binwidth = 150
-    ax[1].hist(
-        Vs_bedrock,
-        bins=np.arange(760, max(Vs_bedrock) + binwidth, binwidth),
-        edgecolor="black",
-        linewidth=1.2,
-        color="orange",
-    )
-    ax[1].set_xticks(np.arange(760, max(Vs_bedrock) + binwidth, binwidth))
-    ax[1].set_xlim(760, 1500)
-    ax[1].set_xlabel("$Vs_2$ [m/s]", fontsize=20)
+    axes[1].set_title("$f_0$ vs. Estimated $f_{max}$")
+    axes[1].set_xlabel("Frequency [Hz] (log scale)")
+    axes[1].set_ylabel("Density")
+    axes[1].set_xscale("log")
+    axes[1].legend()
 
-    binwidth = 5 * 5
-    ax[2].hist(
-        h,
-        bins=np.arange(min(h), max(h) + binwidth, binwidth),
-        edgecolor="black",
-        linewidth=1.2,
-        color="green",
-    )
-    ax[2].set_xticks(np.arange(min(h), max(h) + binwidth, binwidth))
-    ax[2].set_xlim(1 * 5, 29 * 5)
-    ax[2].set_xlabel("h [m]", fontsize=20)
-
-    ax[0].set_ylabel("Frequency", fontsize=20)
-    for a in ax:
-        a.tick_params(axis="both", labelsize=15)
-
-    plt.subplots_adjust(wspace=0.1)
-    plt.savefig(os.path.join(output_dir, "property_histograms.png"))
+    output_path = output_dir / "frequency_analysis.png"
+    plt.savefig(output_path, dpi=300)
     plt.close()
-
-    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
-    sns.histplot(Vs_soil, ax=ax[0], color="blue", binwidth=13)
-    ax[0].set_title("$Vs_1$ [m/s]")
-    sns.histplot(Vs_bedrock, ax=ax[1], binwidth=50, color="orange")
-    ax[1].set_title("$Vs_2$ [m/s]")
-    sns.histplot(h, ax=ax[2], bins=25, color="green")
-    ax[2].set_title("Height of the layer [m]")
-    plt.savefig(os.path.join(output_dir, "property_seaborn_histograms.png"))
-    plt.close()
-
-
-def plot_scatter(Vs_soil: list, Vs_bedrock: list, h: list, output_dir: str):
-    """
-    Plots and saves scatter plots of the properties.
-
-    The function creates scatter plots for Vs_soil, Vs_bedrock, and h,
-    each against their index in the dataset. The plots are saved as a single
-    image file in the specified output directory.
-
-    Args:
-        Vs_soil (list): List of soil shear wave velocities.
-        Vs_bedrock (list): List of bedrock shear wave velocities.
-        h (list): List of soil layer thicknesses.
-        output_dir (str): Directory to save the plots.
-
-    Returns:
-        None
-    """
-    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
-    ax[0].scatter(range(len(Vs_soil)), Vs_soil, color="blue")
-    ax[0].set_title("Vs_soil")
-    ax[1].scatter(range(len(Vs_bedrock)), Vs_bedrock, color="orange")
-    ax[1].set_title("Vs_bedrock")
-    ax[2].scatter(range(len(h)), h, color="green")
-    ax[2].set_title("h")
-    plt.savefig(os.path.join(output_dir, "property_scatter_plots.png"))
-    plt.close()
-
-
-def plot_frequency_analysis(Vs_soil: list, h: list, output_dir: str):
-    """
-    Performs frequency analysis and plots the results.
-
-    The fundamental frequency f0 is calculated as Vs_soil / (4 * h).
-    The maximum frequency fmax is estimated for different grid sizes (5m, 2.5m, 1m)
-    using the formula fmax = Vs_soil / (15 * dz), where dz is the grid size.
-
-    Args:
-        Vs_soil (list): List of soil shear wave velocities.
-        h (list): List of soil layer thicknesses.
-        output_dir (str): Directory to save the plots.
-
-    Returns:
-        None
-    """
-    f0_cases = np.array(Vs_soil) / (4 * np.array(h))
-    f_max_5 = np.array(Vs_soil) / (15 * 5)
-    f_max_2_5 = np.array(Vs_soil) / (15 * 2.5)
-    f_max_1 = np.array(Vs_soil) / (15 * 1)
-
-    plt.figure()
-    plt.hist(
-        f0_cases,
-        bins=200,
-        edgecolor="black",
-        linewidth=1.2,
-        color="red",
-        alpha=0.5,
-        label="f0",
-        density=True,
-    )
-    plt.legend()
-    plt.xlabel("Frequency [Hz]")
-    plt.ylabel("Density")
-    plt.savefig(os.path.join(output_dir, "f0_histogram.png"))
-    plt.close()
-
-    plt.figure()
-    plt.hist(
-        f0_cases,
-        bins=200,
-        edgecolor="black",
-        linewidth=1.2,
-        color="red",
-        alpha=0.5,
-        label="f0",
-        density=True,
-    )
-    plt.hist(
-        f_max_5,
-        bins=50,
-        edgecolor="black",
-        linewidth=1.2,
-        color="blue",
-        alpha=0.5,
-        label="f_max - 5x5",
-        density=True,
-    )
-    plt.hist(
-        f_max_2_5,
-        bins=50,
-        edgecolor="black",
-        linewidth=1.2,
-        color="orange",
-        alpha=0.5,
-        label="f_max - 2.5x2.5",
-        density=True,
-    )
-    plt.hist(
-        f_max_1,
-        bins=50,
-        edgecolor="black",
-        linewidth=1.2,
-        color="green",
-        alpha=0.5,
-        label="f_max - 1x1",
-        density=True,
-    )
-    plt.legend()
-    plt.xscale("log")
-    plt.xlabel("Frequency [Hz]")
-    plt.ylabel("Density")
-    plt.savefig(os.path.join(output_dir, "f_max_comparison_histogram.png"))
-    plt.close()
-
-
-def save_data_parquet(models: list, output_path: str):
-    """
-    Saves a list of Numpy arrays to a Parquet file.
-
-    This method preserves the variable length of each array by storing them in a single column with a list data type. It's efficient for storage and retrieval.
-
-    Args:
-        models (list): List of Numpy arrays to save.
-        output_path (str): Path to save the Parquet file.
-
-    Returns:
-        None
-    """
-    try:
-        # 1. Create a DataFrame with one column containing the arrays
-        df = pd.DataFrame({"model_data": models})
-
-        # 2. Convert the DataFrame to a PyArrow Table for optimal writing
-        table = pa.Table.from_pandas(df)
-
-        # 3. Write the Arrow Table to a Parquet file
-        pq.write_table(table, output_path)
-        logger.info(f"Data saved successfully to {output_path}")
-
-    except Exception as e:
-        logger.error(f"Failed to save data to Parquet: {e}")
+    logger.info(f"Saved frequency analysis plot to {output_path}")
 
 
 def main():
-    """
-    Main function to run the data generation and analysis.
-    """
-    output_dir = "outputs/figures/Soil_Bedrock"
-    data_dir = "data/Soil_Bedrock"
-    os.makedirs(output_dir, exist_ok=True)
-    os.makedirs(data_dir, exist_ok=True)
+    """Main execution script."""
+    # --- Configuration ---
+    NUM_MODELS = 5000
+    DATA_DIR = Path("data/Soil_Bedrock")
+    FIGURE_DIR = Path("outputs/figures/Soil_Bedrock")
 
-    models = generate_velocity_profiles(1000)
-    Vs_soil, Vs_bedrock, h = extract_properties(models)
+    # --- Directory Setup ---
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    FIGURE_DIR.mkdir(parents=True, exist_ok=True)
 
-    plot_histograms(Vs_soil, Vs_bedrock, h, output_dir)
-    plot_scatter(Vs_soil, Vs_bedrock, h, output_dir)
-    plot_frequency_analysis(Vs_soil, h, output_dir)
+    # --- Data Generation ---
+    profiles_df = generate_velocity_profiles(num_models=NUM_MODELS)
+    logger.info(f"Generated {len(profiles_df)} velocity profiles.")
 
-    save_data_parquet(models, os.path.join(data_dir, "model_arrays_HLC.parquet"))
+    # --- Data Saving (Simplified) ---
+    output_file = DATA_DIR / "model_profiles.parquet"
+    profiles_df.to_parquet(output_file, engine="pyarrow")
+    logger.info(f"Saved profiles DataFrame to {output_file}")
+
+    # --- Plotting and Analysis ---
+    plot_property_distributions(profiles_df, FIGURE_DIR)
+    plot_frequency_analysis(profiles_df, FIGURE_DIR)
 
 
 if __name__ == "__main__":

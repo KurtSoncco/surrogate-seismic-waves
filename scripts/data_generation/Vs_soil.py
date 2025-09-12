@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,153 +16,120 @@ sns.set_palette("colorblind")
 
 def generate_velocity_profiles(
     num_models: int = 1000,
-    Vs_soil_range: tuple = (np.log10(100), np.log10(360)),
-    n_Vs: int = 1000,
-    h_range: tuple = (1, 29),
-):
+    vs_soil_range_log10: tuple[float, float] = (np.log10(100), np.log10(360)),
+    h_layer_range: tuple[int, int] = (1, 29),
+    dz: float = 5.0,
+    seed=42,
+) -> pd.DataFrame:
     """
-    Generates synthetic velocity profiles.
-    Assumes a one-layer soil model.
-    Soil layer has uniform Vs.
-    Sampling is done using Latin Hypercube Sampling (LHS) and the
-    shear wave velocities are sampled in log10 space for better coverage.
+    Generates synthetic velocity profiles using Latin Hypercube Sampling.
+
+    This version correctly applies LHS to the 2D parameter space (Vs and h)
+    to ensure optimal stratification across both dimensions simultaneously.
 
     Args:
         num_models (int): Number of models to generate.
-        Vs_soil_range (tuple): Log10 range for soil Vs.
-        n_Vs (int): Number of samples to generate.
-        h_range (tuple): Range for soil layer thickness in multiples of 5m.
-    Returns:
-        List of np.ndarray: Each array represents a velocity profile.
-    """
-    models = []
-    sampler = qmc.LatinHypercube(d=1)
-    lower_bound = [Vs_soil_range[0]]
-    upper_bound = [Vs_soil_range[1]]
-    scaled_samples = qmc.scale(sampler.random(n_Vs), lower_bound, upper_bound)
-
-    sampler = qmc.LatinHypercube(d=1)
-    h_soil_array = sampler.integers(
-        l_bounds=h_range[0], u_bounds=h_range[1] + 1, n=n_Vs, endpoint=True
-    )
-
-    for i in range(num_models):
-        (Vs_s,) = scaled_samples[i]
-        h_soil = h_soil_array[i]
-        Vs_s = 10**Vs_s
-        soil_array = np.full(h_soil, Vs_s)
-        models.append(soil_array)
-    return models
-
-
-def extract_properties(models: list, dz: float = 5.0):
-    """
-    Extracts properties from the generated models.
-    Assumes each model is a 1D numpy array representing a soil layer.
-
-    Args:
-        models (list): List of np.ndarray, each representing a velocity profile.
-        dz (float): Thickness of each soil layer in meters. Default is 5.0.
-    Returns:
-        Vs_soil (list): List of soil shear wave velocities.
-        h (list): List of soil layer thicknesses.
-    """
-    Vs_soil = [np.mean(a) for a in models]
-    h = [len(a) * dz for a in models]
-    return Vs_soil, h
-
-
-def plot_histograms(Vs_soil, h, output_dir):
-    """
-    Plots and saves histograms of the properties.
-
-    The function creates histograms for Vs_soil and h,
-    each with specified bin widths and axis limits. The histograms are
-    saved as a single image file in the specified output directory.
-
-    Args:
-        Vs_soil (list): List of soil shear wave velocities.
-        h (list): List of soil layer thicknesses.
-        output_dir (str): Directory to save the plots.
+        vs_soil_range_log10 (tuple): Log10 range for soil shear wave velocity (Vs).
+        h_layer_range (tuple): Range for the number of soil layers.
+        dz (float): Thickness of each layer in meters.
 
     Returns:
-        None
+        pd.DataFrame: A DataFrame with columns for Vs, thickness (h), and the
+                      generated velocity profile array.
     """
-    fig, ax = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
+    # 1. Correctly sample the 2D parameter space (log10(Vs), h) with one sampler.
+    rng = np.random.default_rng(seed)
+    sampler = qmc.LatinHypercube(d=2, rng=rng)
+    samples = sampler.random(n=num_models)
 
-    binwidth = 50
-    ax[0].hist(
-        Vs_soil,
-        bins=np.arange(min(Vs_soil), max(Vs_soil) + binwidth, binwidth),
-        edgecolor="black",
-        linewidth=1.2,
-        color="blue",
+    # 2. Scale the samples to the desired parameter ranges.
+    lower_bounds = [vs_soil_range_log10[0], h_layer_range[0]]
+    upper_bounds = [
+        vs_soil_range_log10[1],
+        h_layer_range[1] + 1,
+    ]  # +1 for integer range
+    scaled_samples = qmc.scale(samples, lower_bounds, upper_bounds)
+
+    # 3. Extract, transform, and prepare parameters.
+    log_vs_samples = scaled_samples[:, 0]
+    vs_samples = 10**log_vs_samples
+    # Convert thickness samples to integers representing number of layers
+    h_layers = scaled_samples[:, 1].astype(int)
+    h_meters = h_layers * dz
+
+    # 4. Generate models efficiently in a list comprehension.
+    model_arrays = [np.full(h, vs) for h, vs in zip(h_layers, vs_samples)]
+
+    # 5. Return a structured DataFrame, which is often more useful.
+    return pd.DataFrame(
+        {
+            "vs_soil": vs_samples,
+            "h": h_meters,
+            "model_array": model_arrays,
+        }
     )
-    ax[0].set_xticks(np.arange(min(Vs_soil), max(Vs_soil) + binwidth, binwidth))
-    ax[0].set_xlim(100, 400)
-    ax[0].set_xlabel("$V_s$ [m/s]", fontsize=20)
-
-    binwidth = 5 * 5
-    ax[1].hist(
-        h,
-        bins=np.arange(min(h), max(h) + binwidth, binwidth),
-        edgecolor="black",
-        linewidth=1.2,
-        color="green",
-    )
-    ax[1].set_xticks(np.arange(min(h), max(h) + binwidth, binwidth))
-    ax[1].set_xlim(1 * 5, 29 * 5)
-    ax[1].set_xlabel("h [m]", fontsize=20)
-
-    ax[0].set_ylabel("Frequency", fontsize=20)
-    for a in ax:
-        a.tick_params(axis="both", labelsize=15)
-
-    plt.subplots_adjust(wspace=0.1)
-    plt.savefig(os.path.join(output_dir, "property_histograms.png"))
-    plt.close()
-
-    fig, ax = plt.subplots(1, 2, figsize=(10, 5))
-    sns.histplot(Vs_soil, ax=ax[0], color="blue", binwidth=13)
-    ax[0].set_title("$V_s$ [m/s]")
-    sns.histplot(h, ax=ax[1], color="green", binwidth=25)
-    ax[1].set_title("h [m]")
-    plt.savefig(os.path.join(output_dir, "property_seaborn_histograms.png"))
-    plt.close()
 
 
-def plot_scatter(Vs_soil, h, output_dir):
+def plot_distributions(df: pd.DataFrame, output_dir: Path):
     """
-    Plots and saves scatter plots of the properties.
+    Plots and saves histograms and a scatter plot of the model properties.
 
     Args:
-        Vs_soil (list): List of soil shear wave velocities.
-        h (list): List of soil layer thicknesses.
-        output_dir (str): Directory to save the plots.
+        df (pd.DataFrame): DataFrame containing model properties ('vs_soil', 'h').
+        output_dir (Path): Directory to save the plot.
     """
-    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    ax.scatter(Vs_soil, h, alpha=0.5)
-    ax.set_xlabel("$V_s$ [m/s]")
-    ax.set_ylabel("h [m]")
-    plt.savefig(os.path.join(output_dir, "property_scatter_plots.png"))
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5), constrained_layout=True)
+    fig.suptitle("Distribution of Generated Soil Properties", fontsize=16)
+
+    # Vs histogram
+    sns.histplot(data=df, x="vs_soil", ax=axes[0], kde=True)
+    axes[0].set_xlabel("$V_s$ [m/s]")
+    axes[0].set_title("Shear Wave Velocity Distribution")
+
+    # Thickness (h) histogram
+    sns.histplot(data=df, x="h", ax=axes[1], kde=True, color="green")
+    axes[1].set_xlabel("Thickness h [m]")
+    axes[1].set_title("Soil Layer Thickness Distribution")
+
+    # Vs vs. h scatter plot
+    sns.scatterplot(data=df, x="vs_soil", y="h", ax=axes[2], alpha=0.6)
+    axes[2].set_xlabel("$V_s$ [m/s]")
+    axes[2].set_ylabel("Thickness h [m]")
+    axes[2].set_title("$V_s$ vs. Thickness")
+
+    # Save the consolidated figure
+    output_path = output_dir / "property_distributions.png"
+    plt.savefig(output_path, dpi=300)
     plt.close()
+    logger.info(f"Saved distribution plots to {output_path}")
+
+
+def main():
+    """Main execution script."""
+    # --- Configuration ---
+    NUM_MODELS = 5000
+    DATA_DIR = Path("data/Soil")
+    FIGURE_DIR = Path("outputs/figures/Soil")
+
+    # --- Directory Setup ---
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    FIGURE_DIR.mkdir(parents=True, exist_ok=True)
+
+    # --- Data Generation ---
+    profiles_df = generate_velocity_profiles(num_models=NUM_MODELS)
+    logger.info(f"Generated {len(profiles_df)} velocity profiles.")
+
+    # --- Save Models ---
+    # Parquet can handle object columns (like our arrays), but it's less efficient.
+    # For this use case, it's perfectly fine.
+    table = pa.Table.from_pandas(profiles_df)
+    output_file = DATA_DIR / "1D_1Soil_model_profiles.parquet"
+    pq.write_table(table, output_file)
+    logger.info(f"Saved profiles to {output_file}")
+
+    # --- Plotting ---
+    plot_distributions(profiles_df, FIGURE_DIR)
 
 
 if __name__ == "__main__":
-    num_models = 1000
-    models = generate_velocity_profiles(num_models=num_models)
-
-    # Save models to a parquet file
-    output_dir = "data/Soil"
-    os.makedirs(output_dir, exist_ok=True)
-    table = pa.Table.from_pandas(pd.DataFrame({"model_arrays": models}))
-    pq.write_table(table, os.path.join(output_dir, "model_arrays_HLC.parquet"))
-    logger.info(f"Generated and saved {num_models} models in {output_dir}")
-
-    # Extract properties and plot
-    Vs_soil, h = extract_properties(models)
-    output_dir_plots = "outputs/figures/Soil"
-    os.makedirs(output_dir_plots, exist_ok=True)
-    plot_histograms(Vs_soil, h, output_dir_plots)
-    plot_scatter(Vs_soil, h, output_dir_plots)
-    logger.info(f"Saved plots in {output_dir_plots}")
+    main()
