@@ -12,6 +12,9 @@ env/
 # Package distribution
 *.egg-info/
 
+# Wandb folder
+wandb/
+
 # IDE / Editor files
 .vscode/
 .idea/

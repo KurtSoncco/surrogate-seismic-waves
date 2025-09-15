@@ -28,15 +28,33 @@ key, S_key, xi_train_key, xi_test_key = jax.random.split(key, 4)
 xi_train = jax.random.normal(xi_train_key, (N_train, r_dim))
 xi_test = jax.random.normal(xi_test_key, (N_test, r_dim))
 x = jnp.linspace(0, 1, n).reshape(-1, 1)  # Spatio-temporal coordinates
+x_scaled = 2 * x - 1  # Scale to [-1, 1]
+
 
 # --- 3. Generate Stochastic Field and Ground Truth Solutions ---
-# Stochastic field u(x, xi) = sum_{i=1}^r sqrt(lam_i) * phi_i(x) * xi_i
-# where phi_i(x) = sin(i * pi * x) and lam_i = 1 / i^2
-basis_functions = (
-    jnp.array([jnp.sin((i + 1) * jnp.pi * x) for i in range(r_dim)]).squeeze(-1).T
-)
-u_train = xi_train @ basis_functions.T  # Shape (N_train, n)
-u_test = xi_test @ basis_functions.T  # Shape (N_test, n)
+# Gaussian Process
+def rbf_kernel(x1, x2, sigma=1.0, length_scale=0.2):
+    """Radial Basis Function (RBF) kernel."""
+    return sigma**2 * jnp.exp(-jnp.sum((x1 - x2) ** 2) / (2 * length_scale**2))
+
+
+# Vectorize the kernel function to compute the full covariance matrix
+K = jax.vmap(lambda x1: jax.vmap(lambda x2: rbf_kernel(x1, x2))(x))(x)
+# Add a small nugget for numerical stability
+K += 1e-6 * jnp.eye(n)
+L = jnp.linalg.cholesky(K)
+
+# Generate u(x) by sampling from the GP
+key, u_train_key, u_test_key = jax.random.split(key, 3)
+# Note: The paper uses a KL expansion with 6 terms. We approximate this by sampling
+# from the GP and then projecting onto the first 6 principal components.
+# For simplicity and a direct test, we will use a simpler sampling approach here.
+# A full KL expansion would require computing the eigenvalues/vectors of K.
+# Let's generate correlated samples directly:
+u_train_uncorrelated = jax.random.normal(u_train_key, (N_train, n))
+u_test_uncorrelated = jax.random.normal(u_test_key, (N_test, n))
+u_train = u_train_uncorrelated @ L.T  # Shape (N_train, n)
+u_test = u_test_uncorrelated @ L.T  # Shape (N_test, n)
 
 # Generate Ground Truth Solutions
 dx = x[1] - x[0]
@@ -47,37 +65,21 @@ S_train_true_model = S_train_true.T  # Shape (n, N_train)
 
 # --- 4.  Data-Driven PCE ---
 pce_data_driven = PCEOperatorJAX(p_order, q_order, r_dim, d_dim)
-pce_data_driven.fit(S_train_true_model, x, xi_train)
-S_pred_data_driven = pce_data_driven.predict(x, xi_test).T  # Shape (N_test, n)
+pce_data_driven.fit(S_train_true_model, x_scaled, xi_train)
+S_pred_data_driven = pce_data_driven.predict(x_scaled, xi_test).T  # Shape (N_test, n)
 
 
 # --- 5. Physics-Informed PCE ---
-def antiderivative_pde_fn(points, beta_indices, xi_samples):
-    # PDE: ds/dx - u = 0
+def pde_operator_fn(points, beta_indices, xi_samples):
+    """Computes the L_Phi matrix for the ds/dx operator."""
+
     def evaluate_single_phi(point, index_tuple):
-        evals_1d = jax.vmap(_legendre_polynomial)(jnp.array(index_tuple), point)
-        return jnp.prod(evals_1d)
+        return jnp.prod(jax.vmap(_legendre_polynomial)(jnp.array(index_tuple), point))
 
-    # 3. Compute the Jacobian of a single basis function w.r.t. spatial variable x.
-    #    This gives us dPhi/dx for one basis function at one point.
     jac_phi = jax.jacfwd(evaluate_single_phi)
-
-    # Jacobian
-    vmap_jac_over_indices = jax.vmap(jac_phi, in_axes=(None, 0))
-
-    # 4. Vectorize the entire process over all collocation points.
-    #    This computes the Jacobian for every basis function at every point.
-    #    The result is the operator matrix L_Phi.
-    #    The final .squeeze() removes unnecessary dimensions of size 1.
-    L_Phi_pde = jax.vmap(vmap_jac_over_indices, in_axes=(0, None))(
-        points, beta_indices
-    ).squeeze()
-
-    # The forcing term F_pde is the stochastic field u(x, xi)
-    u_forcing = xi_train @ basis_functions.T  # Use global xi_train
-    F_pde = u_forcing.T  # Shape (n, N_train)
-
-    return L_Phi_pde, F_pde
+    vmap_jac = jax.vmap(jax.vmap(jac_phi, in_axes=(None, 0)), in_axes=(0, None))
+    L_Phi_unscaled = vmap_jac(points, beta_indices).squeeze()
+    return 2.0 * L_Phi_unscaled  # Apply chain rule
 
 
 def antiderivative_bc_fn(points, beta_indices, xi_samples):
@@ -102,8 +104,24 @@ def antiderivative_bc_fn(points, beta_indices, xi_samples):
 
 # Collocation points
 pce_physics = PCEOperatorJAX(p_order, q_order, r_dim, d_dim)
-pde_points = x
-bc_points = jnp.array([[0.0]])  # s(0) = 0
+
+
+def antiderivative_pde_fn(points, beta_indices, xi_samples):
+    """
+    Defines the PDE residual for dS/dx = u(x).
+    Returns the operator matrix L_Phi and the forcing term F_pde.
+    """
+    # The operator L_Phi is the derivative of the basis functions
+    L_Phi = pde_operator_fn(points, beta_indices, xi_samples)
+
+    # The forcing term F_pde is u(x) for each training sample.
+    # u_train has shape (N_train, n), we need (n, N_train)
+    F_pde = u_train.T
+    return L_Phi, F_pde
+
+
+pde_points = x_scaled
+bc_points = jnp.array([[-1.0]])  # s(0) = 0
 ic_points = jnp.empty((0, 1))  # No initial condition needed
 
 
