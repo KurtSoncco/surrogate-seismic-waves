@@ -1,7 +1,10 @@
 import jax.numpy as jnp
 import pytest
 
-from wave_surrogate.pce.polynomials import hermite_polynomial, legendre_polynomial
+from wave_surrogate.models.pce.polynomials import (
+    hermite_polynomial,
+    legendre_polynomial,
+)
 
 
 @pytest.mark.parametrize(
