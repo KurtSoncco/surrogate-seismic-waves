@@ -42,9 +42,6 @@ def get_data_loaders(vs_profiles, ttf_data, batch_size):
     """Creates and returns train, validation, and test DataLoaders."""
     dataset = TTFDataset(vs_profiles, ttf_data)
 
-    logger.info(f"Sample of padded Vs profile: {dataset[0][0]}")
-    logger.info(f"Sample of TTF profile: {dataset[0][1]}")
-
     # Define split sizes
     train_size = int(TRAIN_SPLIT * len(dataset))
     val_size = int(VAL_SPLIT * len(dataset))

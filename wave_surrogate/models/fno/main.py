@@ -46,9 +46,6 @@ def run_pipeline():
     vs_list = [arr for arr in vs_profiles_filtered]
     ttf_list = [arr for arr in ttf_data_filtered]
 
-    logger.info(f"Sample Vs profile: {vs_list[0][:]}")
-    logger.info(f"Sample TTF profile: {ttf_list[0][:]}")
-
     train_loader, val_loader, test_loader = get_data_loaders(
         vs_list, ttf_list, config.BATCH_SIZE
     )
