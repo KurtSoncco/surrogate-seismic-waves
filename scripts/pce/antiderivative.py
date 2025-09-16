@@ -6,8 +6,8 @@ import numpy as np
 from metrax import MAE, MSE, RMSE, RSQUARED
 
 from wave_surrogate.logging_setup import setup_logging
-from wave_surrogate.pce.pce_jax import PCEOperatorJAX
-from wave_surrogate.pce.polynomials import _legendre_polynomial
+from wave_surrogate.models.pce.pce_jax import PCEOperatorJAX
+from wave_surrogate.models.pce.polynomials import _legendre_polynomial
 from wave_surrogate.plot_utils.radar_graph import radar_graph
 
 logger = setup_logging()
@@ -42,19 +42,25 @@ def rbf_kernel(x1, x2, sigma=1.0, length_scale=0.2):
 K = jax.vmap(lambda x1: jax.vmap(lambda x2: rbf_kernel(x1, x2))(x))(x)
 # Add a small nugget for numerical stability
 K += 1e-6 * jnp.eye(n)
-L = jnp.linalg.cholesky(K)
 
-# Generate u(x) by sampling from the GP
-key, u_train_key, u_test_key = jax.random.split(key, 3)
-# Note: The paper uses a KL expansion with 6 terms. We approximate this by sampling
-# from the GP and then projecting onto the first 6 principal components.
-# For simplicity and a direct test, we will use a simpler sampling approach here.
-# A full KL expansion would require computing the eigenvalues/vectors of K.
-# Let's generate correlated samples directly:
-u_train_uncorrelated = jax.random.normal(u_train_key, (N_train, n))
-u_test_uncorrelated = jax.random.normal(u_test_key, (N_test, n))
-u_train = u_train_uncorrelated @ L.T  # Shape (N_train, n)
-u_test = u_test_uncorrelated @ L.T  # Shape (N_test, n)
+# --- Karhunen-Loève Expansion ---
+# 1. Decompose the kernel to get eigenvalues and eigenfunctions
+eigenvalues, eigenvectors = jnp.linalg.eigh(K)
+
+# eigh returns them in ascending order, so we reverse them for descending order
+eigenvalues = eigenvalues[::-1]
+eigenvectors = eigenvectors[:, ::-1]
+
+# 2. Select the top `r_dim` components
+lambda_k = eigenvalues[:r_dim]
+phi_k = eigenvectors[:, :r_dim]
+
+# 3. Construct u(x) from xi using the KL expansion formula
+# u(x) = sum_{k=1 to r} sqrt(lambda_k) * phi_k(x) * xi_k
+# Matrix form: u = xi @ (phi_k * sqrt(lambda_k))^T
+kl_basis = phi_k * jnp.sqrt(lambda_k)  # Shape (n, r_dim)
+u_train = xi_train @ kl_basis.T  # (N_train, r_dim) @ (r_dim, n) -> (N_train, n)
+u_test = xi_test @ kl_basis.T  # (N_test, r_dim) @ (r_dim, n) -> (N_test, n)
 
 # Generate Ground Truth Solutions
 dx = x[1] - x[0]
@@ -70,6 +76,15 @@ S_pred_data_driven = pce_data_driven.predict(x_scaled, xi_test).T  # Shape (N_te
 
 
 # --- 5. Physics-Informed PCE ---
+
+# --- FIX: First, fit a PCE model to the forcing term u(x) ---
+# This gives us the coefficients of u(x) in the stochastic basis.
+pce_u = PCEOperatorJAX(p_order, q_order, r_dim, d_dim)
+# u_train has shape (N_train, n), we need (n, N_train) for the fit method.
+pce_u.fit(u_train.T, x_scaled, xi_train)
+C_u = pce_u.C  # These are the coefficients we need to match.
+
+
 def pde_operator_fn(points, beta_indices, xi_samples):
     """Computes the L_Phi matrix for the ds/dx operator."""
 
@@ -114,9 +129,15 @@ def antiderivative_pde_fn(points, beta_indices, xi_samples):
     # The operator L_Phi is the derivative of the basis functions
     L_Phi = pde_operator_fn(points, beta_indices, xi_samples)
 
-    # The forcing term F_pde is u(x) for each training sample.
-    # u_train has shape (N_train, n), we need (n, N_train)
-    F_pde = u_train.T
+    # The forcing term F_pde is now the coefficients of u(x), C_u.
+    # The fit function expects a spatio-temporal field, so we reconstruct
+    # u(x) from its coefficients.
+    Phi_pde = pce_u._construct_basis_matrix(points, beta_indices, "legendre")
+    Psi_pde = pce_u._construct_basis_matrix(
+        xi_samples, pce_u.alpha_indices, "hermite"
+    ).T
+    F_pde = Phi_pde @ C_u @ Psi_pde
+
     return L_Phi, F_pde
 
 
@@ -154,7 +175,7 @@ pce_physics.fit_physics_informed(
     ic_collocation_points=ic_points,
     xi_samples=xi_train,
 )
-S_pred_physics = pce_physics.predict(x, xi_test).T  # Shape (N_test, n)
+S_pred_physics = pce_physics.predict(x_scaled, xi_test).T  # Shape (N_test, n)
 
 
 # --- 6. Evaluate and Plot Results ---

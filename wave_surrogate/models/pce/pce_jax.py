@@ -5,7 +5,10 @@ import jax
 import jax.numpy as jnp
 
 from wave_surrogate.logging_setup import setup_logging
-from wave_surrogate.pce.polynomials import _hermite_polynomial, _legendre_polynomial
+from wave_surrogate.models.pce.polynomials import (
+    _hermite_polynomial,
+    _legendre_polynomial,
+)
 
 logger = setup_logging()
 
@@ -14,6 +17,37 @@ class PCEOperatorJAX:
     """
     Implements the Polynomial Chaos Expansion for Operator Learning using JAX.
     Reference: arXiv:2508.20886v1
+
+    This class provides methods to fit the PCE model using both labeled data
+    and physics-informed constraints, as well as methods for prediction and
+    uncertainty quantification.
+
+    Attributes:
+        p (int): Total polynomial degree for stochastic variables (p).
+        q (int): Total polynomial degree for spatio-temporal variables (q).
+        r (int): Dimensionality of stochastic input (r).
+        d (int): Dimensionality of spatio-temporal domain (d+1).
+        C (jnp.ndarray): Coefficient matrix for the PCE.
+
+    Methods:
+        fit(S_true, spatio_temporal_coords, xi_samples):
+            Fits the PCE model using labeled data.
+        fit_physics_informed(pde_collocation_points, bc_collocation_points,
+                             ic_collocation_points, pde_fn, bc_fn, ic_fn, xi_samples):
+            Fits the PCE model using physics-informed constraints.
+        fit_physics_informed_nonlinear(residual_fn, xi_samples, n_pde, n_bc,
+                                       n_ic, n_iter=10, tol=1e-6):
+            Fits the PCE model for nonlinear PDEs using physics-informed constraints.
+        predict(spatio_temporal_coords, xi_samples):
+            Predicts the solution for new inputs using the learned C matrix.
+        quantify_uncertainty(spatio_temporal_coords):
+            Computes mean and covariance for uncertainty quantification.
+
+    Note:
+        This implementation leverages JAX for automatic differentiation and
+        just-in-time compilation to enhance performance, especially for large-scale
+        problems. The basis functions are evaluated using JIT-compiled helper functions
+        to ensure efficiency.
     """
 
     def __init__(self, p_order: int, q_order: int, r_dim: int, d_dim: int):
