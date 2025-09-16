@@ -36,7 +36,9 @@ data/*
 # ...but DO NOT ignore the .gitkeep placeholder file.
 !data/.gitkeep
 
-
+# Secrets
+.env
+*.env
 
 # OS files
 .DS_Store
