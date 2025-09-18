@@ -14,7 +14,7 @@ sns.set_palette("colorblind")
 
 def generate_velocity_profiles(
     num_models: int = 1000,
-    vs_soil_range_log10: tuple[float, float] = (np.log10(100), np.log10(360)),
+    vs_soil_range_log10: tuple[float, float] = (np.log10(100), np.log10(760)),
     vs_bedrock_range_log10: tuple[float, float] = (np.log10(760), np.log10(1500)),
     h_layer_range: tuple[int, int] = (1, 29),
     dz: float = 5.0,
@@ -108,6 +108,30 @@ def plot_property_distributions(df: pd.DataFrame, output_dir: Path):
     plt.close()
     logger.info(f"Saved pairplot to {output_path}")
 
+    # Create histogram in a 3 subplots
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
+    fig.suptitle("Distributions of Model Parameters", fontsize=16)
+    sns.histplot(
+        x=df["vs_soil"], bins=30, kde=False, ax=axes[0], color="blue", alpha=0.7
+    )
+    axes[0].set_title("$V_{s, soil}$ Distribution")
+    axes[0].set_xlabel("$V_{s, soil}$ [m/s]")
+    axes[0].set_ylabel("Frequency")
+    sns.histplot(
+        x=df["vs_bedrock"], bins=30, kde=False, ax=axes[1], color="green", alpha=0.7
+    )
+    axes[1].set_title("$V_{s, bedrock}$ Distribution")
+    axes[1].set_xlabel("$V_{s, bedrock}$ [m/s]")
+    axes[1].set_ylabel("Frequency")
+    sns.histplot(x=df["h"], bins=40, kde=False, ax=axes[2], color="orange", alpha=0.7)
+    axes[2].set_title("Thickness h Distribution")
+    axes[2].set_xlabel("Thickness h [m]")
+    axes[2].set_ylabel("Frequency")
+    output_path = output_dir / "property_histograms.png"
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    logger.info(f"Saved histograms to {output_path}")
+
 
 def plot_frequency_analysis(df: pd.DataFrame, output_dir: Path):
     """
@@ -162,7 +186,7 @@ def plot_frequency_analysis(df: pd.DataFrame, output_dir: Path):
 def main():
     """Main execution script."""
     # --- Configuration ---
-    NUM_MODELS = 5000
+    NUM_MODELS = 500
     DATA_DIR = Path("data/Soil_Bedrock")
     FIGURE_DIR = Path("outputs/figures/Soil_Bedrock")
 
