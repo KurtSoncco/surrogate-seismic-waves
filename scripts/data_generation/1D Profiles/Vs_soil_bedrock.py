@@ -187,8 +187,8 @@ def main():
     """Main execution script."""
     # --- Configuration ---
     NUM_MODELS = 500
-    DATA_DIR = Path("data/Soil_Bedrock")
-    FIGURE_DIR = Path("outputs/figures/Soil_Bedrock")
+    DATA_DIR = Path("data/1D Profiles/Soil_Bedrock")
+    FIGURE_DIR = Path("outputs/figures/1D Profiles/Soil_Bedrock")
 
     # --- Directory Setup ---
     DATA_DIR.mkdir(parents=True, exist_ok=True)
