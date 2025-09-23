@@ -91,7 +91,7 @@ class Encoder(nn.Module):
         pool_size (int): The kernel size for the MaxPool1D layers.
 
     Input Shape:
-        (batch_size, sequence_length)
+        (batch_size, input_channels, sequence_length)
 
     Output Shape:
         (batch_size, latent_dim)
@@ -106,8 +106,10 @@ class Encoder(nn.Module):
     ):
         super().__init__()
 
-        if not channels or channels[0] != 1:
-            raise ValueError("The 'channels' list must start with 1 input channel.")
+        if not channels or channels[0] < 1:
+            raise ValueError(
+                "The 'channels' list must start with at least 1 input channel."
+            )
 
         layers = []
         # Dynamically create the convolutional blocks
@@ -131,8 +133,7 @@ class Encoder(nn.Module):
         self.fc = nn.LazyLinear(latent_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Add a channel dimension: (B, L) -> (B, 1, L)
-        x = x.unsqueeze(1)
+        # Input should be (B, C, L) where C is the number of input channels
 
         # Pass through convolutional blocks
         x = self.conv_layers(x)

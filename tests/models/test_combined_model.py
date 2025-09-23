@@ -54,7 +54,9 @@ class TestEncoderOperatorModel:
         model = EncoderOperatorModel(encoder=encoder, decoder=decoder)
 
         # 4. Create sample input data
-        x = torch.randn(config["batch_size"], config["input_seq_len"])
+        x = torch.randn(
+            config["batch_size"], config["encoder_channels"][0], config["input_seq_len"]
+        )
 
         return model, x, config
 
