@@ -48,7 +48,6 @@ class Encoder(nn.Module):
 
         # final projection to latent space
         layers.append(nn.Linear(in_features, latent_dim))
-        layers.append(nn.ReLU())  # Ensure non-negative latent features
 
         self.net = nn.Sequential(*layers)
 
@@ -82,8 +81,7 @@ class Decoder(nn.Module):
             in_features = h
 
         layers.append(nn.Linear(in_features, output_dim))
-        # layers.append(nn.Tanh())  # To match the [-1, 1] range of the normalized data
-        layers.append(nn.ReLU())  # Vs should be non-negative
+        layers.append(nn.Tanh())  # To match the [-1, 1] range of the normalized data
         self.net = nn.Sequential(*layers)
 
     def forward(self, z):
@@ -115,8 +113,7 @@ class WeakerDecoder(nn.Module):
             in_features = h
 
         layers.append(nn.Linear(in_features, output_dim))
-        # layers.append(nn.Tanh())
-        layers.append(nn.ReLU())  # Vs should be non-negative
+        layers.append(nn.Tanh())  # To match the [-1, 1] range of the normalized data
 
         self.net = nn.Sequential(*layers)
 
