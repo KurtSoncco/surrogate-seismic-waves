@@ -42,7 +42,12 @@ def f0_calc(vs_profile):
 
 
 def plot_predictions(
-    freq_data, test_targets, test_predictions, test_inputs, num_plots=6
+    freq_data,
+    test_targets,
+    test_predictions,
+    test_inputs,
+    num_plots=6,
+    title_prefix="",
 ):
     """Plots a random selection of test predictions against ground truth."""
     random_indices = np.random.choice(len(test_predictions), num_plots, replace=False)
@@ -66,11 +71,11 @@ def plot_predictions(
         plt.ylabel("Transfer Function")
 
     plt.tight_layout(rect=(0, 0.03, 1, 0.95))
-    plt.suptitle("Model Predictions vs. Ground Truth", fontsize=16)
+    plt.suptitle(title_prefix + "Model Predictions vs. Ground Truth", fontsize=16)
     plt.show()
 
 
-def plot_correlation(test_targets, test_predictions):
+def plot_correlation(test_targets, test_predictions, title_prefix=""):
     """Plots a scatter plot of predictions vs. ground truth."""
     plt.figure(figsize=(8, 8))
     plt.scatter(test_targets.flatten(), test_predictions.flatten(), alpha=0.1, s=2)
@@ -79,14 +84,14 @@ def plot_correlation(test_targets, test_predictions):
     plt.plot([min_val, max_val], [min_val, max_val], "r--")
     plt.xlabel("Ground Truth")
     plt.ylabel("Prediction")
-    plt.title("Prediction vs. Ground Truth Correlation")
+    plt.title(title_prefix + "Prediction vs. Ground Truth Correlation")
     plt.xscale("log")
     plt.yscale("log")
     plt.grid(True)
     plt.show()
 
 
-def plot_pearson_histogram(test_targets, test_predictions):
+def plot_pearson_histogram(test_targets, test_predictions, title_prefix=""):
     """Calculates and plots a histogram of Pearson correlation coefficients."""
     correlations = [pearsonr(t, p)[0] for t, p in zip(test_targets, test_predictions)]
     correlations = np.array(correlations)
@@ -96,6 +101,6 @@ def plot_pearson_histogram(test_targets, test_predictions):
     plt.hist(correlations, bins=30, alpha=0.75, color="blue")
     plt.xlabel("Pearson Correlation Coefficient")
     plt.ylabel("Frequency")
-    plt.title("Distribution of Pearson Correlation Coefficients")
+    plt.title(title_prefix + "Distribution of Pearson Correlation Coefficients")
     plt.grid(True, axis="y")
     plt.show()

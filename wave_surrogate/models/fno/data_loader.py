@@ -26,7 +26,7 @@ class TTFDataset(Dataset):
             torch.tensor(
                 pad_array(np.nan_to_num(p, nan=0.0, posinf=0.0, neginf=0.0), max_len),
                 dtype=torch.float32,
-            )
+            ).unsqueeze(0)  # Add channel dimension
             for p in vs_profiles
         ]
         self.ttf_values = [torch.tensor(t, dtype=torch.float32) for t in ttf_values]

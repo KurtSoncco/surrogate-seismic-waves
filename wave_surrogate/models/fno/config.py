@@ -5,9 +5,9 @@ import torch
 
 # --- Data Configuration ---
 # Paths to the original pickle and CSV files
-VS_PICKLE_PATH = "data/TF_HLC/Vs_values_1000.pt"
-TTF_PICKLE_PATH = "data/TF_HLC/TTF_data_1000.pt"
-FREQ_PATH = "data/TF_HLC/TTF_freq_1000.csv"
+VS_PICKLE_PATH = "data/1D Profiles/TF_HLC/Vs_values_1000.pt"
+TTF_PICKLE_PATH = "data/1D Profiles/TF_HLC/TTF_data_1000.pt"
+FREQ_PATH = "data/1D Profiles/TF_HLC/TTF_freq_1000.csv"
 MODEL_SAVE_PATH = "outputs/models/Soil_Bedrock/best_fno_ttf_model.pt"
 
 # --- Data Preprocessing ---

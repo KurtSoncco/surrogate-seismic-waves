@@ -32,7 +32,7 @@ def train_model(train_loader, val_loader):
 
     model = EncoderOperatorModel(encoder=encoder, decoder=decoder).to(config.DEVICE)
 
-    dummy_input = torch.randn(1, config.INPUT_SIZE).to(config.DEVICE)
+    dummy_input = torch.randn(1, 1, config.INPUT_SIZE).to(config.DEVICE)
     dummy_output = model(dummy_input)  # Perform a forward pass to initialize parameters
     assert dummy_output.shape == (1, config.OUTPUT_SIZE)
 
