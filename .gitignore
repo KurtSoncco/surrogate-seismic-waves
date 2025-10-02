@@ -40,6 +40,12 @@ data/*
 .env
 *.env
 
+# Any model checkpoints or outputs
+checkpoints/
+outputs/
+logs/
+models/
+
 # OS files
 .DS_Store
 Thumbs.db
