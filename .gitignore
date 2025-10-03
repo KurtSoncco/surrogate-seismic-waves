@@ -45,6 +45,10 @@ checkpoints/
 outputs/
 logs/
 models/
+*.pth 
+*.pt
+*.h5
+*.ckpt
 
 # OS files
 .DS_Store
