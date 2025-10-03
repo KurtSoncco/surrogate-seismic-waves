@@ -104,7 +104,7 @@ def initialize_model(config: TrainingConfig) -> DecoupledAutoencoder:
     # It has the same architecture but includes dropout for regularization.
     aux_decoder = WeakerDecoder(
         latent_dim=config.latent_dim,
-        hidden_dim=config.hidden_dim_decoder,
+        hidden_dim=config.hidden_dim_aux_decoder,
         output_dim=config.input_dim,
         dropout_rate=config.dropout_rate,  # Dropout makes it "weaker"
     )
@@ -169,6 +169,37 @@ def run_pipeline():
     logger.info("--- Testing Complete ---")
     # Finish W&B run
     run.finish() if run else None
+
+
+def check_test():
+    """Function to check if the test runs without executing the full pipeline."""
+    config = TrainingConfig()
+    logger.info(f"Using device: {config.device}")
+    set_seed(config.seed)
+    Path(config.model_dir).mkdir(parents=True, exist_ok=True)
+
+    # --- Data and Model ---
+    _, _, test_loader, scaler = load_data(config)
+    # model = initialize_model(config)
+
+    # --- Testing ---
+    # For a robust test, always load the saved model from disk
+    logger.info("\n--- Loading persisted model for final testing ---")
+
+    # Initialize a new model instance for loading
+    test_model_instance = initialize_model(config)
+    encoder_path = Path(config.model_dir) / "encoder.pth"
+    decoder_path = Path(config.model_dir) / "decoder.pth"
+
+    test_model_instance.encoder.load_state_dict(torch.load(encoder_path))
+    test_model_instance.decoder.load_state_dict(torch.load(decoder_path))
+    # Note: We don't load aux_decoder as it's typically not used for final inference
+
+    # Testing the model
+    Path(config.results_path).mkdir(parents=True, exist_ok=True)
+
+    test_model_dae(test_model_instance, test_loader, config, scaler, run=None)
+    logger.info("--- Testing Complete ---")
 
 
 if __name__ == "__main__":

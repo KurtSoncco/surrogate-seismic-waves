@@ -13,9 +13,17 @@ class TrainingConfig:
 
     # Model parameters
     ## Encoder/Decoder architecture
-    latent_dim: int = 16  # Dimensionality of the latent space
-    hidden_dim_encoder: Union[int, List[int]] = field(default_factory=lambda: [64, 32])
-    hidden_dim_decoder: Union[int, List[int]] = field(default_factory=lambda: [32, 64])
+    latent_dim: int = 64  # Dimensionality of the latent space
+    hidden_dim_encoder: Union[int, List[int]] = field(
+        default_factory=lambda: [64, 128, 256, 512]
+    )
+    hidden_dim_decoder: Union[int, List[int]] = field(
+        default_factory=lambda: [512, 256, 128, 64]
+    )
+
+    hidden_dim_aux_decoder: Union[int, List[int]] = field(
+        default_factory=lambda: [256, 128]
+    )
 
     dropout_rate: float = 0.75  # Dropout rate for the auxiliary decoder
 
@@ -24,7 +32,7 @@ class TrainingConfig:
     epochs_stage1: int = 500
     epochs_stage2: int = 500
     warm_epochs: int = 150
-    lr: float = 1e-3
+    lr: float = 5e-3
     min_lr: float = 1e-6
     weight_decay: float = 1e-5
     beta_S: tuple = (0.6, 0.80)

@@ -27,7 +27,7 @@ def train_stage1(
         weight_decay=config.weight_decay,
         betas=config.beta_S,
     )
-    criterion = nn.MSELoss()
+    criterion = nn.L1Loss()
     scheduler = CosineWarmupScheduler(
         optimizer,
         warmup_epochs=config.warm_epochs,
