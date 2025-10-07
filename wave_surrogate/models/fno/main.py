@@ -2,9 +2,11 @@
 """Main script to run the FNO training and evaluation pipeline."""
 
 import pickle
+import random
 
 import config
 import numpy as np
+import torch
 from data_loader import get_data_loaders
 from evaluate import evaluate_model
 from train import train_model
@@ -15,8 +17,22 @@ from wave_surrogate.logging_setup import setup_logging
 logger = setup_logging()
 
 
+def set_seed(seed):
+    """Sets the random seed for reproducibility."""
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
 def run_pipeline():
     """Executes the full pipeline using original pickle files."""
+    # --- Set Seed for Reproducibility ---
+    logger.info(f"Setting random seed to {config.SEED} for reproducibility.")
+    set_seed(config.SEED)
+
     # --- Load Data from Pickle and CSV ---
     logger.info("Loading data from original pickle files...")
     with open(config.TTF_PICKLE_PATH, "rb") as f:

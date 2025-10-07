@@ -13,7 +13,7 @@ class TrainingConfig:
 
     # Model parameters
     ## Encoder/Decoder architecture
-    latent_dim: int = 200  # Dimensionality of the latent space
+    latent_dim: int = 400  # Dimensionality of the latent space
     hidden_dim_encoder: Union[int, List[int]] = field(
         default_factory=lambda: [1024, 512, 256, 128]
     )
@@ -22,7 +22,7 @@ class TrainingConfig:
     )
 
     hidden_dim_aux_decoder: Union[int, List[int]] = field(
-        default_factory=lambda: [256, 512]
+        default_factory=lambda: [128, 256, 512, 1024]
     )
 
     dropout_rate: float = 0.75  # Dropout rate for the auxiliary decoder

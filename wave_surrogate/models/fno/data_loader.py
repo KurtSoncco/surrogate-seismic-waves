@@ -3,7 +3,7 @@
 
 import numpy as np
 import torch
-from config import INPUT_SIZE, TRAIN_SPLIT, VAL_SPLIT
+from config import INPUT_SIZE, SEED, TRAIN_SPLIT, VAL_SPLIT
 from torch.utils.data import DataLoader, Dataset, random_split
 
 from wave_surrogate.logging_setup import setup_logging
@@ -48,8 +48,9 @@ def get_data_loaders(vs_profiles, ttf_data, batch_size):
     test_size = len(dataset) - train_size - val_size
 
     # Split the dataset
+    generator = torch.Generator().manual_seed(SEED)  # For reproducibility
     train_dataset, val_dataset, test_dataset = random_split(
-        dataset, [train_size, val_size, test_size]
+        dataset, [train_size, val_size, test_size], generator=generator
     )
 
     # Create DataLoaders

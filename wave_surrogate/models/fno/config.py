@@ -38,6 +38,7 @@ BATCH_SIZE = 100
 TRAIN_SPLIT = 0.5
 VAL_SPLIT = 0.25
 # TEST_SPLIT is inferred as 1.0 - TRAIN_SPLIT - VAL_SPLIT
+SEED = 42  # For reproducibility
 
 # --- Early Stopping ---
 EARLY_STOP_PATIENCE = 1500

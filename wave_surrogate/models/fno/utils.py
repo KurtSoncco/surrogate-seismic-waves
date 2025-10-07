@@ -59,8 +59,15 @@ def plot_predictions(
     plt.figure(figsize=(15, 10))
     for i, idx in enumerate(random_indices):
         plt.subplot(3, 3, i + 1)
-        plt.plot(freq_data, test_targets[idx], "b-", label="Ground Truth", alpha=0.7)
-        plt.plot(freq_data, test_predictions[idx], "r-", label="Prediction", alpha=0.7)
+        plt.plot(
+            freq_data,
+            test_targets[idx],
+            "-",
+            label="Ground Truth",
+            alpha=0.7,
+            color="gray",
+        )
+        plt.plot(freq_data, test_predictions[idx], "r--", label="Prediction", alpha=0.7)
 
         # --- Robust handling of test_inputs[idx] (was np.trim_zeros(...)) ---
         # Ensure we work with a numpy array
@@ -131,32 +138,184 @@ def plot_correlation(test_targets, test_predictions, title_prefix="", save_path=
 
 
 def plot_pearson_histogram(
-    test_targets, test_predictions, title_prefix="", save_path=None
+    test_targets: np.ndarray,
+    test_predictions: np.ndarray,
+    title_prefix: str = "",
+    save_path=None,
 ):
     """Calculates and plots a histogram of Pearson correlation coefficients."""
+
+    # Calculate correlations
     correlations = [pearsonr(t, p)[0] for t, p in zip(test_targets, test_predictions)]
     correlations = np.array(correlations)
     correlations = correlations[np.isfinite(correlations)]
 
     plt.figure(figsize=(10, 6))
-    plt.hist(correlations, bins=30, alpha=0.75, color="blue")
+
+    # --- Plot the Histogram ---
+    plt.hist(correlations, bins=30, alpha=0.75)
     plt.xlabel("Pearson Correlation Coefficient")
     plt.ylabel("Frequency")
     plt.title(title_prefix + "Distribution of Pearson Correlation Coefficients")
     plt.grid(True, axis="y")
-    plt.axvline(
-        float(np.mean(correlations)), color="red", linestyle="dashed", linewidth=1
+
+    # --- Plot the Mean Line ---
+    mean_corr = float(np.mean(correlations))
+    median_corr = float(np.median(correlations))
+    std_corr = float(np.std(correlations))
+
+    plt.axvline(mean_corr, color="red", linestyle="dashed", linewidth=1)
+
+    # --- Calculate and Format Statistics ---
+    stats_text = (
+        f"Mean: {mean_corr:.4f}\nMedian: {median_corr:.4f}\nStd: {std_corr:.4f}"
     )
-    plt.text(
-        float(np.mean(correlations)) + 0.01,
-        plt.ylim()[1] * 0.9,
-        f"Mean: {float(np.mean(correlations)):.4f}\nMedian: {float(np.median(correlations)):.4f}\nStd: {float(np.std(correlations)):.4f}",
+
+    # --- Use Axes Coordinates for Boxed Text (Recommended) ---
+    # Placing the text in the top-right corner of the plot area
+    # x=0.98, y=0.98 are relative to the axes.
+    # The 'ha' and 'va' set the alignment of the text box
+    plt.gca().text(
+        0.85,  # x-position: 85% from the left of the axes
+        0.98,  # y-position: 98% from the bottom of the axes
+        stats_text,
+        transform=plt.gca().transAxes,  # Use axes coordinates
         color="red",
+        fontsize=10,
+        fontweight="bold",
+        verticalalignment="top",  # Top of the text box is aligned with y=0.98
+        horizontalalignment="right",  # Right side of the text box is aligned with x=0.98
+        bbox=dict(
+            boxstyle="round,pad=0.5",  # Box style (e.g., round corners)
+            facecolor="wheat",  # Box background color
+            alpha=0.6,  # Box transparency
+        ),
     )
+
     if save_path:
+        # Assuming 'logger' and 'os' are properly imported and configured
         plt.savefig(
             os.path.join(save_path, title_prefix + "pearson_histogram.png"), dpi=300
         )
-        logger.info(f"Saved Pearson histogram to {save_path}")
+        # logger.info(f"Saved Pearson histogram to {save_path}")
+    else:
+        plt.show()
+
+
+def plot_correlation_vs_parameters(
+    vs_soil_x,
+    vs_bedrock_x,
+    h_soil_x,
+    correlation_factor,
+    title_prefix="FNO Model",
+    save_path=None,
+):
+    """
+    Generates a three-panel figure showing correlation vs. soil parameters,
+    matching the provided image style.
+    """
+
+    # Calculate the overall mean correlation for the legend
+    mean_corr = np.mean(correlation_factor)
+
+    plt.figure(figsize=(15, 5))  # Adjusted to match the aspect ratio of the image
+
+    plot_data = [
+        (
+            vs_soil_x,
+            r"$V_{s\_soil}$ [m/s]",
+            r"Correlation - Soil Velocity $V_{s\_soil}$ [m/s]",
+        ),
+        (
+            vs_bedrock_x,
+            r"$V_{s\_bedrock}$ [m/s]",
+            r"Correlation - Bedrock Velocity $V_{s\_bedrock}$ [m/s]",
+        ),
+        (
+            h_soil_x,
+            r"Height of soil column [m]",
+            r"Correlation - Soil Height $H_{soil}$ [m]",
+        ),
+    ]
+
+    for i, (x_data, x_label, plot_title) in enumerate(plot_data):
+        ax = plt.subplot(1, 3, i + 1)
+
+        # Scatter Plot
+        ax.scatter(x_data, correlation_factor, s=15, color="darkorange", alpha=0.7)
+
+        # Set Plot Limits and Labels
+        ax.set_ylim(0.1, 1.05)
+        ax.set_xlim(x_data.min() * 0.95, x_data.max() * 1.05)  # Dynamic x-limits
+
+        ax.set_xlabel(x_label)
+        ax.set_title(plot_title, fontsize=12)
+
+        # Only set ylabel on the first subplot
+        if i == 0:
+            ax.set_ylabel("Correlation coefficients")
+
+        # Grid and Ticks
+        ax.grid(True, linestyle=":", alpha=0.5, which="both")
+        ax.set_yticks(np.arange(0.2, 1.2, 0.2))
+        ax.set_xticks(ax.get_xticks())  # Keep auto-generated major ticks
+
+        # Mean Line and Label using Axes Coordinates (matching the image style)
+
+        # 1. Dashed line at the mean correlation value
+        ax.axhline(
+            mean_corr,
+            color="darkorange",
+            linestyle="--",
+            linewidth=1.5,
+            label=f"Mean: {mean_corr:.3f}",
+        )
+
+        # 2. Text in a box (using axes coordinates for consistent placement)
+        # Position: 0.98 (right edge) and ~0.15 (bottom edge)
+        ax.text(
+            0.98,
+            0.15,
+            f"Mean: {mean_corr:.3f}",
+            transform=ax.transAxes,  # Use axes coordinates
+            color="darkorange",
+            fontsize=10,
+            verticalalignment="center",
+            horizontalalignment="right",
+            bbox=dict(
+                boxstyle="square,pad=0.3",
+                facecolor="white",
+                alpha=0.8,
+                edgecolor="darkorange",  # Use the line color for the border
+                linestyle="--",  # Use a dashed border
+            ),
+        )
+
+        # Subplot letter centered below the x-label, e.g., "(a)", "(b)", "(c)"
+        letter = chr(ord("a") + i)
+        # y coordinate is negative in axes fraction so it's placed below the x-axis label.
+        ax.text(
+            0.5,
+            -0.22,
+            f"({letter})",
+            transform=ax.transAxes,
+            fontsize=12,
+            ha="center",
+            va="top",
+            color="black",
+        )
+
+    plt.suptitle(
+        f"{title_prefix} - Correlation vs. Soil Parameters", fontsize=14, y=1.0
+    )
+    plt.tight_layout()
+
+    # --- Save or Show Plot ---
+    if save_path:
+        plt.savefig(
+            os.path.join(save_path, title_prefix + "correlation_vs_parameters.png"),
+            dpi=300,
+        )
+        logger.info(f"Saved correlation vs parameters plot to {save_path}")
     else:
         plt.show()
