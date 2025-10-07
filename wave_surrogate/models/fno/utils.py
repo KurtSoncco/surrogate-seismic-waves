@@ -48,6 +48,7 @@ def plot_predictions(
     test_targets,
     test_predictions,
     test_inputs,
+    correlation_array,
     num_plots=9,
     title_prefix="",
     save_path=None,
@@ -87,7 +88,9 @@ def plot_predictions(
             vs1, vs2 = (0.0, 0.0)
 
         h_soil = max((len(vs_test) - 1) * 5, 0)
-        plt.title(f"Vs1={vs1:.1f}, Vs2={vs2:.1f}, h={h_soil:.0f}m")
+        plt.title(
+            f"Vs1={vs1:.1f}, Vs2={vs2:.1f}, h={h_soil:.0f}m\n$\\rho$={correlation_array[idx]:.2f}"
+        )
         plt.xscale("log")
         plt.grid(True, which="both", linestyle="--")
         if i == 0:

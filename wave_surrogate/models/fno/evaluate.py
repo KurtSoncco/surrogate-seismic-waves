@@ -14,7 +14,7 @@ from wave_surrogate.logging_setup import setup_logging
 logger = setup_logging()
 
 
-def evaluate_model(test_loader, freq_data):
+def evaluate_model(test_loader, freq_data, run=None):
     """Evaluates the model and generates plots."""
     encoder = Encoder(
         channels=config.ENCODER_CHANNELS,
@@ -51,14 +51,83 @@ def evaluate_model(test_loader, freq_data):
             all_inputs.append(inputs.cpu().numpy())
 
     test_loss /= len(test_loader.dataset)
-    logger.info(f"Test MSE Loss: {test_loss:.6f}")
 
     # Concatenate results from all batches
     all_predictions = np.vstack(all_predictions)
     all_targets = np.vstack(all_targets)
     all_inputs = np.vstack(all_inputs)
 
+    ## Compute Pearson correlation coefficient
+    pearson_corrs = [
+        np.corrcoef(all_targets[i], all_predictions[i])[0, 1]
+        for i in range(len(all_targets))
+    ]
+    mean_pearson = np.nanmean(pearson_corrs)
+
+    if run is not None:
+        run.log(
+            {
+                "test_mse_loss": test_loss,
+                "test_MAE_loss": np.mean(np.abs(all_targets - all_predictions)),
+                "test_R2_score": 1
+                - (
+                    np.sum((all_targets - all_predictions) ** 2)
+                    / np.sum((all_targets - np.mean(all_targets)) ** 2)
+                ),
+            }
+        )
+        run.log(
+            {
+                "mean_pearson_correlation": mean_pearson,
+                "median_pearson_correlation": np.nanmedian(pearson_corrs),
+                "std_pearson_correlation": np.nanstd(pearson_corrs),
+                "min_pearson_correlation": np.nanmin(pearson_corrs),
+                "max_pearson_correlation": np.nanmax(pearson_corrs),
+            }
+        )
+    logger.info(f"Test MSE Loss: {test_loss:.6f}")
+    logger.info(f"Mean Pearson Correlation: {mean_pearson:.4f}")
+
     # Generate plots
-    plot_predictions(freq_data, all_targets, all_predictions, all_inputs)
-    plot_correlation(all_targets, all_predictions)
-    plot_pearson_histogram(all_targets, all_predictions)
+    plot_predictions(
+        freq_data,
+        all_targets,
+        all_predictions,
+        all_inputs,
+        correlation_array=pearson_corrs,
+        save_path=config.RESULTS_SAVE_PATH,
+    )
+    plot_correlation(
+        all_targets,
+        all_predictions,
+        save_path=config.RESULTS_SAVE_PATH,
+    )
+    plot_pearson_histogram(
+        all_targets,
+        all_predictions,
+        save_path=config.RESULTS_SAVE_PATH,
+    )
+
+
+if __name__ == "__main__":
+    # Example usage (requires data loaders and frequency data)
+    import pickle
+
+    from data_loader import get_data_loaders
+
+    with open(config.TTF_PICKLE_PATH, "rb") as f:
+        ttf_data = np.array(pickle.load(f))
+
+    with open(config.VS_PICKLE_PATH, "rb") as f:
+        vs_profiles = np.array(pickle.load(f))
+
+    freq_data = np.genfromtxt(config.FREQ_PATH, delimiter=",")
+
+    # Convert numpy arrays to lists for the data loader
+    vs_list = [arr for arr in vs_profiles]
+    ttf_list = [arr for arr in ttf_data]
+
+    _, _, test_loader = get_data_loaders(vs_list, ttf_list, config.BATCH_SIZE)
+
+    evaluate_model(test_loader, freq_data)
+    pass

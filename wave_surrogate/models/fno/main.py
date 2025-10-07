@@ -52,11 +52,11 @@ def run_pipeline():
 
     # --- Train Model ---
     logger.info("Starting model training...")
-    train_model(train_loader, val_loader)
+    run = train_model(train_loader, val_loader)
 
     # --- Evaluate Model ---
     logger.info("Starting model evaluation...")
-    evaluate_model(test_loader, freq_data)
+    evaluate_model(test_loader, freq_data, run=run)
 
 
 if __name__ == "__main__":

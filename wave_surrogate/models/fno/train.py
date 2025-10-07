@@ -44,7 +44,7 @@ def train_model(train_loader, val_loader):
         optimizer, "min", patience=80, factor=0.9
     )
 
-    wandb.init(
+    run = wandb.init(
         project=config.WANDB_PROJECT,
         name=config.WANDB_RUN_NAME,
         config={k: v for k, v in vars(config).items() if k.isupper()},
@@ -111,5 +111,7 @@ def train_model(train_loader, val_loader):
             logger.info(f"Early stopping triggered at epoch {epoch + 1}")
             break
 
-    wandb.finish()
+    # wandb.finish()
     logger.info(f"Finished training. Best validation loss: {best_val_loss:.6f}")
+
+    return run

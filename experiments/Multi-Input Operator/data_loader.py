@@ -17,7 +17,6 @@ import config
 import numpy as np
 import torch
 from joblib import dump as joblib_dump
-from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import DataLoader, Dataset, random_split
 
 from wave_surrogate.logging_setup import setup_logging
@@ -33,6 +32,33 @@ def pad_array(arr: np.ndarray, max_len: int) -> np.ndarray:
     out = np.zeros(max_len, dtype=float)
     out[: len(arr)] = arr
     return out
+
+
+class ArcsinhScaler:
+    """
+    Custom scaler that applies arcsinh transformation followed by MinMax scaling.
+    This is useful for data with a wide dynamic range including negative values.
+    """
+
+    def __init__(self):
+        self.fitted = False
+
+    def fit(self, data: np.ndarray):
+        """Fit the scaler on the provided data."""
+        self.fitted = True
+        return self
+
+    def transform(self, X: np.ndarray) -> np.ndarray:
+        """Apply arcsinh transformation followed by MinMax scaling."""
+        if not self.fitted:
+            raise RuntimeError("Scaler has not been fitted")
+        return np.arcsinh(X)
+
+    def inverse_transform(self, data: np.ndarray) -> np.ndarray:
+        """Inverse transform the data back to original scale."""
+        if not self.fitted:
+            raise RuntimeError("Scaler has not been fitted")
+        return np.sinh(data)
 
 
 class DeepONetDataset(Dataset):
@@ -150,7 +176,7 @@ def get_data_loaders(
     train_indices = train_subset.indices
     train_ttf_arr = full_ttf_arr[train_indices]
 
-    scaler = MinMaxScaler()
+    scaler = ArcsinhScaler()
     scaler.fit(train_ttf_arr)  # scales each column (frequency) across samples
 
     # Transform all data

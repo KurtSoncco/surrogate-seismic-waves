@@ -1,6 +1,8 @@
 # config.py
 """Centralized configuration for the FNO model."""
 
+from pathlib import Path
+
 import torch
 
 # --- Data Configuration ---
@@ -9,6 +11,8 @@ VS_PICKLE_PATH = "data/1D Profiles/TF_HLC/Vs_values_1000.pt"
 TTF_PICKLE_PATH = "data/1D Profiles/TF_HLC/TTF_data_1000.pt"
 FREQ_PATH = "data/1D Profiles/TF_HLC/TTF_freq_1000.csv"
 MODEL_SAVE_PATH = "outputs/models/Soil_Bedrock/best_fno_ttf_model.pt"
+RESULTS_SAVE_PATH = "outputs/figures/model"
+Path(RESULTS_SAVE_PATH).mkdir(parents=True, exist_ok=True)
 
 # --- Data Preprocessing ---
 F0_FILTER_THRESHOLD = 2.0  # Filter out profiles with f0 >= this value
