@@ -5,7 +5,7 @@
 # =====================================================================
 
 #SBATCH --job-name=FNO_TTF_Train         # Job name is descriptive
-#SBATCH --account=fc_tfsurrogate         # Your project's Fine-Grained Allocation (FCA) account name
+#SBATCH --account=kurtwal98         # Your project's Fine-Grained Allocation (FCA) account name
 #SBATCH --partition=savio3_gpu           # The GPU partition
 #SBATCH --nodes=1                        # Request 1 node
 #
