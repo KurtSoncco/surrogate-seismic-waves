@@ -42,50 +42,11 @@ set -euo pipefail
 trap 'echo "Error on line $LINENO" 1>&2' ERR
 
 # --- 1. Define Project Root and Set CWD ---
-# NOTE: Replace the placeholder below with the ABSOLUTE path to your 'surrogate-seismic-waves' directory
-# Example: PROJECT_ROOT="/global/scratch/<username>/surrogate-seismic-waves"
-PROJECT_ROOT="<PROJECT_ROOT_PATH_ON_SAVIO>" 
+PROJECT_ROOT="/global/home/users/kurtwal98/surrogate-seismic-waves" 
 echo "Setting PROJECT_ROOT=$PROJECT_ROOT"
 
 # Move to the project root so relative paths (like 'data/...' and '.venv/...' ) work
 cd "$PROJECT_ROOT" || { echo "Cannot cd to $PROJECT_ROOT" 1>&2; exit 1; }
 
-# Ensure python can find modules throughout the repo (e.g., 'wave_surrogate')
-export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
-
-# --- 2. Activate Virtual Environment (pyenv/uv) ---
-ENV_PATH=".venv" 
-VENV_ACTIVATE_SCRIPT="$PROJECT_ROOT/$ENV_PATH/bin/activate"
-
-module purge
-
-if [ -f "$VENV_ACTIVATE_SCRIPT" ]; then
-    echo "Activating virtual environment: $VENV_ACTIVATE_SCRIPT"
-    # shellcheck source=/dev/null
-    source "$VENV_ACTIVATE_SCRIPT"
-else
-    echo "ERROR: Virtual environment activation script not found at $VENV_ACTIVATE_SCRIPT" 1>&2
-    echo "Ensure you ran 'uv venv' and 'uv sync' in the $PROJECT_ROOT directory." 1>&2
-    exit 1
-fi
-
-echo "Python interpreter: $(which python || echo 'python not found')"
-nvidia-smi || echo "nvidia-smi failed - check GPU allocation" 1>&2
-
-# --- 3. Execute the main script ---
-# The main execution script is now targeted using its full path
-MAIN_PY="$PROJECT_ROOT/wave_surrogate/models/fno/main.py"
-if [ ! -f "$MAIN_PY" ]; then
-    echo "ERROR: Main script not found at the expected path: $MAIN_PY" 1>&2
-    exit 1
-fi
-
-echo "Executing main script: $MAIN_PY"
-# -u is for unbuffered output
-srun python -u "$MAIN_PY" "$@"
-
-# --- 4. Cleanup ---
-# Deactivate the virtual environment
-deactivate || true
 
 echo "Job finished at $(date)"
