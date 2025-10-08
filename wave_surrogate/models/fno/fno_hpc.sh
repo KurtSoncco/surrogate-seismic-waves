@@ -29,10 +29,6 @@
 #SBATCH --output=%x.o%j             
 #SBATCH --error=%x.e%j
 
-# --- Email Notifications ---
-#SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=kurtwal98@berkeley.edu 
-
 # =====================================================================
 # Job Commands: Environment Setup and Execution
 # =====================================================================
