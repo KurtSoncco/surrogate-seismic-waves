@@ -24,15 +24,10 @@ LATENT_DIM: int = 1000  # Latent dimension for the encoder
 OUTPUT_SIZE: int = 1000  # Size of the output transfer function
 FNO_MODES: int = 16
 FNO_WIDTH: int = 50
+NUM_FNO_LAYERS: int = 3
 DROPOUT_RATE: float = 0.1
-
-ENCODER_CHANNELS: List[int] = [
-    1,
-    32,
-    64,
-    128,
-    256,
-]  # Channels for each conv layer in the encoder
+ENCODER_CHANNELS: List[int] = [1, 32, 64, 128, 256, 512,]
+## END OF LIST ##
 ENCODER_KERNEL_SIZE: int = 3
 ENCODER_POOL_SIZE: int = 2
 
@@ -55,4 +50,4 @@ GRAD_CLIP_NORM: float = 1.0  # Max norm for gradient clipping
 
 # --- W&B Logging ---
 WANDB_PROJECT: str = "ttf-prediction"
-WANDB_RUN_NAME: str = "fno-refactored-run"
+WANDB_RUN_NAME: str = "B1-Encoder-Deeper"
