@@ -34,6 +34,7 @@ def evaluate_model(test_loader, freq_data, run=None):
         output_size=config.OUTPUT_SIZE,
         fno_modes=config.FNO_MODES,
         fno_width=config.FNO_WIDTH,
+        num_fno_layers=config.NUM_FNO_LAYERS,
     ).to(config.DEVICE)
 
     model = EncoderOperatorModel(encoder=encoder, decoder=decoder).to(config.DEVICE)

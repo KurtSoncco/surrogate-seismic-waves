@@ -54,12 +54,17 @@ def plot_predictions(
     save_path=None,
 ):
     """Plots a random selection of test predictions against ground truth."""
+    # For a 3x3 grid, ensure we don't request more plots than available
+    num_plots = min(num_plots, 9)
     random_indices = np.random.choice(len(test_predictions), num_plots, replace=False)
+
+    # Define grid dimensions for clarity
+    nrows, ncols = 3, 3
 
     plt.figure(figsize=(15, 10))
     for i, idx in enumerate(random_indices):
-        plt.subplot(3, 3, i + 1)
-        plt.plot(
+        ax = plt.subplot(nrows, ncols, i + 1)
+        ax.plot(
             freq_data,
             test_targets[idx],
             "-",
@@ -67,26 +72,16 @@ def plot_predictions(
             alpha=0.7,
             color="gray",
         )
-        plt.plot(freq_data, test_predictions[idx], "r--", label="Prediction", alpha=0.7)
+        ax.plot(freq_data, test_predictions[idx], "r--", label="Prediction", alpha=0.7)
 
         # --- Robust handling of test_inputs[idx] (was np.trim_zeros(...)) ---
-        # Ensure we work with a numpy array
         vs_arr = np.asarray(test_inputs[idx])
-
-        # If inputs are multi-channel (e.g., [channels, depth]), assume Vs is the first channel
         if vs_arr.ndim > 1:
             vs_arr = vs_arr[0]
-
-        # Replace NaNs with zeros so trim_zeros can remove trailing padding
         vs_arr = np.nan_to_num(vs_arr, nan=0.0)
-
-        # Trim trailing zeros (padding). If the entire array is zeros, fallback to zeros.
         vs_test = np.trim_zeros(vs_arr, trim="b")
         if vs_test.size == 0:
-            # fallback: use the original (non-trimmed) array to avoid indexing errors
             vs_test = vs_arr
-
-        # Safely extract first & last values
         if vs_test.size >= 2:
             vs1, vs2 = (vs_test[0], vs_test[-1])
         elif vs_test.size == 1:
@@ -95,22 +90,39 @@ def plot_predictions(
             vs1, vs2 = (0.0, 0.0)
 
         h_soil = max((len(vs_test) - 1) * 5, 0)
-        plt.title(
+        ax.set_title(
             f"Vs1={vs1:.1f}, Vs2={vs2:.1f}, h={h_soil:.0f}m\n$\\rho$={correlation_array[idx]:.2f}"
         )
-        plt.xscale("log")
-        plt.grid(True, which="both", linestyle="--")
+        ax.set_xscale("log")
+        ax.grid(True, which="both", linestyle="--")
+        ax.set_xlim(freq_data.min(), freq_data.max())
+        ax.set_ylim(0, 55)
         if i == 0:
-            plt.legend()
-        plt.xlabel("Frequency (Hz)")
-        plt.ylabel("Transfer Function")
+            ax.legend()
 
-    plt.tight_layout(rect=(0, 0.03, 1, 0.95))
+        # --- MODIFICATION START ---
+        # Only add labels to the outer plots to avoid repetition.
+
+        # Add Y-axis label to plots in the first column
+        if i % ncols == 0:
+            ax.set_ylabel("Transfer Function")
+
+        # Add X-axis label to plots in the bottom row
+        if i >= (nrows - 1) * ncols:
+            ax.set_xlabel("Frequency (Hz)")
+        # --- MODIFICATION END ---
+
+    plt.tight_layout(rect=(0, 0, 1, 0.95))  # Adjusted rect to better fit suptitle
     plt.suptitle(title_prefix + "Model Predictions vs. Ground Truth", fontsize=16)
 
     if save_path:
+        # Make sure the directory exists
+        os.makedirs(save_path, exist_ok=True)
         plt.savefig(os.path.join(save_path, title_prefix + "predictions.png"), dpi=300)
-        logger.info(f"Saved prediction plots to {save_path}")
+        # logger.info(f"Saved prediction plots to {save_path}")
+        print(
+            f"Saved prediction plots to {save_path}"
+        )  # Using print as logger is not defined
     else:
         plt.show()
 
@@ -223,18 +235,18 @@ def plot_correlation_vs_parameters(
     plot_data = [
         (
             vs_soil_x,
-            r"$V_{s\_soil}$ [m/s]",
-            r"Correlation - Soil Velocity $V_{s\_soil}$ [m/s]",
+            r"$V_{1}$ [m/s]",
+            r"Correlation - $V_{1}$ [m/s]",
         ),
         (
             vs_bedrock_x,
-            r"$V_{s\_bedrock}$ [m/s]",
-            r"Correlation - Bedrock Velocity $V_{s\_bedrock}$ [m/s]",
+            r"$V_{2}$ [m/s]",
+            r"Correlation - $V_{2}$ [m/s]",
         ),
         (
             h_soil_x,
-            r"Height of soil column [m]",
-            r"Correlation - Soil Height $H_{soil}$ [m]",
+            r"$h_{soil}$ [m]",
+            r"Correlation - $h_{soil}$ [m]",
         ),
     ]
 

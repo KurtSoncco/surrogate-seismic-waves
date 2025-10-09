@@ -155,13 +155,8 @@ run_ablation() {
     # Use a clearly quoted command to avoid quoting pitfalls.
     local inner_cmd="source \"$VENV_ACTIVATE_SCRIPT\" && python -u \"$PYTHON_SCRIPT_PATH\""
 
-    if command -v srun >/dev/null 2>&1; then
-        echo "Using srun to launch the job."
-        srun bash -lc "$inner_cmd"
-    else
-        echo "srun not found - running directly."
-        bash -lc "$inner_cmd"
-    fi
+    echo "srun not found - running directly."
+    bash -lc "$inner_cmd"
 
     # 3. Revert config changes (best effort)
     echo "Reverting config changes..."
@@ -190,10 +185,10 @@ run_ablation() {
 
 
 # 2. ENCODER ABLATION
-run_ablation "ENCODER_CHANNELS" "[1, 32, 64, 128, 256, 512,]" "B1-Encoder-Deeper" "$ORIG_ENCODER_CHANNELS_LIST" "$CONFIG_FILE"
-run_ablation "ENCODER_CHANNELS" "[1, 64, 256]" "B2-Encoder-Shallower" "$ORIG_ENCODER_CHANNELS_LIST" "$CONFIG_FILE"
-run_ablation "LATENT_DIM" "2000" "B3-Latent-Dim-Large-2000" "$ORIG_LATENT_DIM" "$CONFIG_FILE"
+#run_ablation "ENCODER_CHANNELS" "[1, 32, 64, 128, 256, 512,]" "B1-Encoder-Deeper" "$ORIG_ENCODER_CHANNELS_LIST" "$CONFIG_FILE"
+#run_ablation "ENCODER_CHANNELS" "[1, 64, 256]" "B2-Encoder-Shallower" "$ORIG_ENCODER_CHANNELS_LIST" "$CONFIG_FILE"
+#run_ablation "LATENT_DIM" "2000" "B3-Latent-Dim-Large-2000" "$ORIG_LATENT_DIM" "$CONFIG_FILE"
 run_ablation "LATENT_DIM" "500" "B4-Latent-Dim-Small-500" "$ORIG_LATENT_DIM" "$CONFIG_FILE"
-run_ablation "ENCODER_KERNEL_SIZE" "5" "B5-Encoder-Kernel-5" "$ORIG_ENCODER_KERNEL_SIZE" "$CONFIG_FILE"
+#run_ablation "ENCODER_KERNEL_SIZE" "5" "B5-Encoder-Kernel-5" "$ORIG_ENCODER_KERNEL_SIZE" "$CONFIG_FILE"
 
 echo "--- All Ablation Runs Complete ---"
