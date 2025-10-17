@@ -6,8 +6,7 @@ Comprehensive metrics and evaluation utilities for the latent FNO experiments.
 import torch
 import numpy as np
 import scipy.stats as stats
-from typing import Dict, Any, Tuple, Optional, List
-from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
+from typing import Dict, Any, Optional
 
 
 class MetricsCalculator:
@@ -438,9 +437,6 @@ class ModelEvaluator:
             val_subset = torch.utils.data.Subset(dataset, val_indices)
             
             # Create data loaders
-            train_loader = torch.utils.data.DataLoader(
-                train_subset, batch_size=train_config.get('batch_size', 32), shuffle=True
-            )
             val_loader = torch.utils.data.DataLoader(
                 val_subset, batch_size=train_config.get('batch_size', 32), shuffle=False
             )

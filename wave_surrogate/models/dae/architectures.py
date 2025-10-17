@@ -2,6 +2,7 @@ from typing import List, Sequence, Union
 
 import torch
 import torch.nn as nn
+from geomloss import SamplesLoss
 
 
 def _ensure_list(hidden: Union[int, Sequence[int], None]) -> List[int]:
@@ -124,8 +125,6 @@ class WeakerDecoder(nn.Module):
 # --- OT Encoder and Decoder ---
 
 # Conceptual Code for an OT Encoder Module
-import torch.nn as nn
-from geomloss import SamplesLoss
 
 
 class OTEncoder(nn.Module):
@@ -154,8 +153,6 @@ class OTEncoder(nn.Module):
         batch_size = input_features.shape[0]
 
         # Ensure the latent grid is ready for the batch
-        latent_grid_batch = self.latent_grid.repeat(batch_size, 1)
-
         # 1. Compute the OT mapping between the input grid and the latent grid.
         # This is the core of the OT process. geomloss handles the complexity.
         # We get a transport plan 'T'.

@@ -324,8 +324,6 @@ class FNOOperatorDecoder(BaseDecoder):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        batch_size = x.size(0)
-
         # Project latent to FNO width
         x = self.latent_projection(x)  # (batch, fno_width)
 

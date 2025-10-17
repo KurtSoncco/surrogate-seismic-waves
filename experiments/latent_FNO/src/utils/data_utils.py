@@ -343,8 +343,6 @@ class DataAugmentation:
         batch_size, seq_len = data.shape
 
         # Generate warping parameters
-        warp_points = torch.rand(batch_size, 3) * seq_len
-
         warped_data = []
         for i in range(batch_size):
             # Create warping function

@@ -5,7 +5,7 @@ from typing import Tuple
 import numpy as np
 import pandas as pd
 import torch
-from dataloader import get_vs_dataloaders
+from dataloader import get_material_dataloaders
 from dotenv import load_dotenv
 from sklearn.preprocessing import MinMaxScaler
 from test import test_model_dae  # type: ignore

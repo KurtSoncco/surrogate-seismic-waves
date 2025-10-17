@@ -43,10 +43,11 @@ class TrainingConfig:
     # Paths
     ## Data
     dataset_path: str = "./data/1D Profiles/Soil_Bedrock"
-    vs_data_path: str = os.path.join(dataset_path, "model_arrays_HLC.parquet")
-    original_dz: float = 5.0  # Original depth interval in meters
-    new_dz: float = 5.0  # New depth interval in meters
-    input_dim: int = int(155 // new_dz)  # Length of input Vs profiles
+    # vs_data_path: str = os.path.join(dataset_path, "model_arrays_HLC.parquet")
+    materials_data_path: str = os.path.join(
+        dataset_path, "materials_dataset_v2.parquet"
+    )
+    input_dim: int = int(155 // 5)  # Length of input Vs profiles
 
     ## Image path
     results_path: str = "./experiments/dae/Vs_profiles/images"

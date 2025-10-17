@@ -10,29 +10,25 @@ import sys
 import numpy as np
 import torch
 
-
-def _ensure_local_src_on_path():
-    test_dir = os.path.abspath(os.path.dirname(__file__))
-    cur = test_dir
-    for _ in range(6):  # search up to 6 levels
-        candidate_src = os.path.join(cur, "src")
-        if os.path.isdir(candidate_src):
-            # add `cur` so `import src...` resolves to cur/src
-            if cur not in sys.path:
-                sys.path.insert(0, cur)
-            return
-        parent = os.path.dirname(cur)
-        if parent == cur:
-            break
-        cur = parent
+# Set up path before importing local modules
+test_dir = os.path.abspath(os.path.dirname(__file__))
+cur = test_dir
+for _ in range(6):  # search up to 6 levels
+    candidate_src = os.path.join(cur, "src")
+    if os.path.isdir(candidate_src):
+        # add `cur` so `import src...` resolves to cur/src
+        if cur not in sys.path:
+            sys.path.insert(0, cur)
+        break
+    parent = os.path.dirname(cur)
+    if parent == cur:
+        break
+    cur = parent
+else:
     # fallback: also try adding experiments/latent_FNO top folder as fallback
     fallback = os.path.abspath(os.path.join(test_dir, ".."))
     if fallback not in sys.path:
         sys.path.insert(0, fallback)
-
-
-_ensure_local_src_on_path()
-
 
 from src.configs.config import get_config
 from src.models.pipeline import (

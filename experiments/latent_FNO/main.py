@@ -264,7 +264,7 @@ def main():
         print("Ablation study completed!")
 
     elif args.command == "compare":
-        results = compare_configurations()
+        compare_configurations()
         print("Configuration comparison completed!")
 
     else:

@@ -20,7 +20,6 @@ import sys
 import time
 import os
 import platform
-from pathlib import Path
 
 def run_experiment(config_name: str) -> bool:
     """Run a single experiment and return success status."""
@@ -130,7 +129,7 @@ def main():
         
         # Brief pause between experiments
         if i < len(configs):
-            print(f"\n⏳ Waiting 10 seconds before next experiment...")
+            print("\n⏳ Waiting 10 seconds before next experiment...")
             time.sleep(10)
     
     # Print final summary
@@ -145,7 +144,7 @@ def main():
         status = "✅" if success else "❌"
         print(f'  {status} {config}')
     
-    print(f'\n🌐 View results at: https://wandb.ai/kurtwal98-university-of-california-berkeley/latent_fno')
+    print('\n🌐 View results at: https://wandb.ai/kurtwal98-university-of-california-berkeley/latent_fno')
     
     return successful == len(configs)
 
