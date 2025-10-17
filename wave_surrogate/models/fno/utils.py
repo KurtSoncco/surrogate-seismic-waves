@@ -49,17 +49,18 @@ def plot_predictions(
     test_predictions,
     test_inputs,
     correlation_array,
-    num_plots=9,
+    num_plots=6,
     title_prefix="",
     save_path=None,
 ):
     """Plots a random selection of test predictions against ground truth."""
-    # For a 3x3 grid, ensure we don't request more plots than available
-    num_plots = min(num_plots, 9)
-    random_indices = np.random.choice(len(test_predictions), num_plots, replace=False)
+    # For a 2x3 grid, ensure we don't request more plots than available
+    num_plots = min(num_plots, 6)
+    rng = np.random.default_rng(42)
+    random_indices = rng.choice(len(test_predictions), num_plots, replace=False)
 
     # Define grid dimensions for clarity
-    nrows, ncols = 3, 3
+    nrows, ncols = 2, 3
 
     plt.figure(figsize=(15, 10))
     for i, idx in enumerate(random_indices):
@@ -91,7 +92,8 @@ def plot_predictions(
 
         h_soil = max((len(vs_test) - 1) * 5, 0)
         ax.set_title(
-            f"Vs1={vs1:.1f}, Vs2={vs2:.1f}, h={h_soil:.0f}m\n$\\rho$={correlation_array[idx]:.2f}"
+            f"Vs1={vs1:.1f}, Vs2={vs2:.1f}, h={h_soil:.0f}m\n$\\rho$={correlation_array[idx]:.2f}",
+            fontsize=14,
         )
         ax.set_xscale("log")
         ax.grid(True, which="both", linestyle="--")
@@ -105,15 +107,15 @@ def plot_predictions(
 
         # Add Y-axis label to plots in the first column
         if i % ncols == 0:
-            ax.set_ylabel("Transfer Function")
+            ax.set_ylabel("Transfer Function", fontsize=14)
 
         # Add X-axis label to plots in the bottom row
         if i >= (nrows - 1) * ncols:
-            ax.set_xlabel("Frequency (Hz)")
+            ax.set_xlabel("Frequency (Hz)", fontsize=14)
         # --- MODIFICATION END ---
 
     plt.tight_layout(rect=(0, 0, 1, 0.95))  # Adjusted rect to better fit suptitle
-    plt.suptitle(title_prefix + "Model Predictions vs. Ground Truth", fontsize=16)
+    plt.suptitle(title_prefix + "Model Predictions vs. Ground Truth", fontsize=20)
 
     if save_path:
         # Make sure the directory exists
@@ -235,13 +237,13 @@ def plot_correlation_vs_parameters(
     plot_data = [
         (
             vs_soil_x,
-            r"$V_{1}$ [m/s]",
-            r"Correlation - $V_{1}$ [m/s]",
+            r"$Vs_{1}$ [m/s]",
+            r"Correlation - $Vs_{1}$ [m/s]",
         ),
         (
             vs_bedrock_x,
-            r"$V_{2}$ [m/s]",
-            r"Correlation - $V_{2}$ [m/s]",
+            r"$Vs_{2}$ [m/s]",
+            r"Correlation - $Vs_{2}$ [m/s]",
         ),
         (
             h_soil_x,
@@ -260,12 +262,12 @@ def plot_correlation_vs_parameters(
         ax.set_ylim(0.1, 1.05)
         ax.set_xlim(x_data.min() * 0.95, x_data.max() * 1.05)  # Dynamic x-limits
 
-        ax.set_xlabel(x_label)
-        ax.set_title(plot_title, fontsize=12)
+        ax.set_xlabel(x_label, fontsize=14)
+        ax.set_title(plot_title, fontsize=20)
 
         # Only set ylabel on the first subplot
         if i == 0:
-            ax.set_ylabel("Correlation coefficients")
+            ax.set_ylabel("Correlation coefficients", fontsize=14)
 
         # Grid and Ticks
         ax.grid(True, linestyle=":", alpha=0.5, which="both")
@@ -291,7 +293,7 @@ def plot_correlation_vs_parameters(
             f"Mean: {mean_corr:.3f}",
             transform=ax.transAxes,  # Use axes coordinates
             color="darkorange",
-            fontsize=10,
+            fontsize=14,
             verticalalignment="center",
             horizontalalignment="right",
             bbox=dict(
@@ -311,14 +313,14 @@ def plot_correlation_vs_parameters(
             -0.22,
             f"({letter})",
             transform=ax.transAxes,
-            fontsize=12,
+            fontsize=14,
             ha="center",
             va="top",
             color="black",
         )
 
     plt.suptitle(
-        f"{title_prefix} - Correlation vs. Soil Parameters", fontsize=14, y=1.0
+        f"{title_prefix} - Correlation vs. Soil Parameters", fontsize=20, y=1.0
     )
     plt.tight_layout()
 

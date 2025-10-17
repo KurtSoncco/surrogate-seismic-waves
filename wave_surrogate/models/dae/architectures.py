@@ -121,163 +121,64 @@ class WeakerDecoder(nn.Module):
         return self.net(z)
 
 
-# --- NEW CONVOLUTIONAL ARCHITECTURES ---
+# --- OT Encoder and Decoder ---
+
+# Conceptual Code for an OT Encoder Module
+import torch.nn as nn
+from geomloss import SamplesLoss
 
 
-class ConvEncoder(nn.Module):
-    """1D Convolutional Encoder.
-
-    Args:
-        input_dim: Length of the input sequence.
-        hidden_dim: Sequence of channel sizes for successive convolutional layers.
-        latent_dim: Size of the latent embedding.
-    """
-
-    def __init__(
-        self,
-        input_dim: int,
-        hidden_dim: Union[int, Sequence[int], None],
-        latent_dim: int,
-    ):
+class OTEncoder(nn.Module):
+    def __init__(self, latent_dim=128, device="cuda"):
         super().__init__()
-        hidden_channels = _ensure_list(hidden_dim)
+        self.latent_dim = latent_dim
+        self.device = device
 
-        layers = []
-        in_channels = 1  # Start with 1 channel for the raw signal
-        for h_chan in hidden_channels:
-            layers.append(
-                nn.Conv1d(in_channels, h_chan, kernel_size=3, stride=2, padding=1)
-            )
-            layers.append(nn.ReLU())
-            in_channels = h_chan
-        self.conv_stack = nn.Sequential(*layers)
+        # Create the canonical (uniform) latent grid. This is fixed.
+        self.latent_grid = torch.linspace(
+            0, 1, latent_dim, device=self.device
+        ).unsqueeze(0)
 
-        # Calculate the flattened size after convolutions
-        with torch.no_grad():
-            dummy_input = torch.zeros(1, 1, input_dim)
-            conv_output = self.conv_stack(dummy_input)
-            self.flattened_size = conv_output.view(1, -1).shape[1]
+        # The OT "cost" function. We use Sinkhorn divergence which is fast and stable.
+        # This is not a traditional "loss" but a way to compute the OT plan.
+        self.ot_solver = SamplesLoss(loss="sinkhorn", p=2, blur=0.05)
 
-        self.flatten = nn.Flatten()
-        self.fc = nn.Linear(self.flattened_size, latent_dim)
+    def forward(self, input_features, input_grid):
+        """
+        Args:
+            input_features (Tensor): Batch of material properties.
+                                     Shape: (batch_size, num_channels, num_points)
+            input_grid (Tensor): Batch of coordinates for the input features.
+                                 Shape: (batch_size, num_points)
+        """
+        batch_size = input_features.shape[0]
 
-    def forward(self, x):
-        # Add a channel dimension: (batch, seq_len) -> (batch, 1, seq_len)
-        x = x.unsqueeze(1)
-        x = self.conv_stack(x)
-        x = self.flatten(x)
-        z = self.fc(x)
-        return z
+        # Ensure the latent grid is ready for the batch
+        latent_grid_batch = self.latent_grid.repeat(batch_size, 1)
 
+        # 1. Compute the OT mapping between the input grid and the latent grid.
+        # This is the core of the OT process. geomloss handles the complexity.
+        # We get a transport plan 'T'.
+        # Note: The actual implementation involves a bit more nuance with gradients,
+        # but this is the high-level idea. The library handles the backward pass.
 
-class ConvDecoder(nn.Module):
-    """1D Convolutional Decoder.
+        # 2. Push-forward the features using the transport plan 'T'.
+        # This step effectively interpolates/moves the `input_features` onto the `latent_grid`.
+        # The result is your latent representation.
+        # A library function or a custom interpolation kernel would do this.
 
-    Args:
-        latent_dim: Size of the latent vector.
-        hidden_dim: Sequence of channel sizes for deconvolutional layers (in reverse).
-        output_dim: Final output sequence length.
-    """
+        # Let's assume a function `apply_transport` exists for clarity:
+        # latent_representation = self.apply_transport(input_features, input_grid, latent_grid_batch, T)
 
-    def __init__(
-        self,
-        latent_dim: int,
-        hidden_dim: Union[int, Sequence[int], None],
-        output_dim: int,
-    ):
-        super().__init__()
-        hidden_channels = _ensure_list(hidden_dim)
-        # We need the flattened size and final channel count from a dummy encoder
-        # This makes the decoder robust to changes in the encoder architecture
-        dummy_encoder = ConvEncoder(output_dim, hidden_channels, latent_dim)
-        self.flattened_size = dummy_encoder.flattened_size
-        # The last Conv1d layer has out_channels = hidden_channels[-1]
-        self.initial_channels = hidden_channels[-1] if hidden_channels else 1
-        self.unflatten_shape = dummy_encoder.conv_stack(
-            torch.zeros(1, 1, output_dim)
-        ).shape[1:]
+        # A simpler, more direct approach for 1D is to use differentiable interpolation
+        # guided by the OT cost, but let's stick to the core concept.
+        # For now, we'll placeholder this logic.
 
-        self.fc = nn.Linear(latent_dim, self.flattened_size)
-
-        layers = []
-        in_channels = self.initial_channels
-
-        # Build deconvolutional layers in reverse order of encoder
-        for h_chan in hidden_channels[-2::-1]:
-            layers.append(
-                nn.ConvTranspose1d(
-                    in_channels,
-                    h_chan,
-                    kernel_size=3,
-                    stride=2,
-                    padding=1,
-                    output_padding=1,
-                )
-            )
-            layers.append(nn.ReLU())
-            in_channels = h_chan
-
-        # Final layer to produce 1 channel output
-        layers.append(
-            nn.ConvTranspose1d(
-                in_channels, 1, kernel_size=3, stride=2, padding=1, output_padding=1
-            )
+        # Placeholder for the actual push-forward operation
+        # In practice, you would use a library or implement a differentiable interpolation
+        # based on the transport plan.
+        latent_representation = torch.randn(
+            batch_size, input_features.shape[1], self.latent_dim, device=self.device
         )
-        layers.append(nn.Tanh())
 
-        self.deconv_stack = nn.Sequential(*layers)
-        self.final_adapter = nn.AdaptiveAvgPool1d(
-            output_dim
-        )  # Adapter to fix size mismatches
-
-    def forward(self, z):
-        x = self.fc(z)
-        x = x.view(-1, *self.unflatten_shape)  # Reshape for deconvolution
-        x = self.deconv_stack(x)
-        x = self.final_adapter(x)  # Ensure exact output_dim
-        recon = x.squeeze(
-            1
-        )  # Remove channel dim: (batch, 1, seq_len) -> (batch, seq_len)
-        return recon
-
-
-class WeakerConvDecoder(ConvDecoder):
-    """A weaker convolutional decoder with dropout."""
-
-    def __init__(
-        self,
-        latent_dim: int,
-        hidden_dim: Union[int, Sequence[int], None],
-        output_dim: int,
-        dropout_rate: float = 0.5,
-    ):
-        # Initialize the parent ConvDecoder
-        super().__init__(latent_dim, hidden_dim, output_dim)
-
-        # Rebuild the deconv_stack with dropout
-        hidden_channels = _ensure_list(hidden_dim)
-        layers = []
-        in_channels = self.initial_channels
-
-        for h_chan in hidden_channels[-2::-1]:
-            layers.append(
-                nn.ConvTranspose1d(
-                    in_channels,
-                    h_chan,
-                    kernel_size=3,
-                    stride=2,
-                    padding=1,
-                    output_padding=1,
-                )
-            )
-            layers.append(nn.ReLU())
-            layers.append(nn.Dropout(dropout_rate))  # Add dropout
-            in_channels = h_chan
-
-        layers.append(
-            nn.ConvTranspose1d(
-                in_channels, 1, kernel_size=3, stride=2, padding=1, output_padding=1
-            )
-        )
-        layers.append(nn.Tanh())
-        self.deconv_stack = nn.Sequential(*layers)
+        return latent_representation
