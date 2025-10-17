@@ -27,11 +27,10 @@ def run_experiment(config_name: str) -> bool:
     print("-" * 50)
     
     try:
-        # Run the training with wandb enabled
+        # Run the training with wandb enabled, activating virtual environment
         result = subprocess.run([
-            sys.executable, 'main.py', 'train', 
-            '--config', config_name, 
-            '--wandb'
+            'bash', '-c', 
+            'source /home/kurt-asus/surrogate-seismic-waves/.venv/bin/activate && python main.py train --config ' + config_name + ' --wandb'
         ], capture_output=True, text=True, timeout=3600)  # 1 hour timeout
         
         if result.returncode == 0:
