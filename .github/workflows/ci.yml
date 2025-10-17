@@ -41,8 +41,10 @@ jobs:
         run: |
           # Add uv to the path
           source ~/.cargo/env
+          # Clear cache to avoid hash mismatch errors
+          uv cache clean
           # Install the project in editable mode with dev dependencies
-          uv sync --extra dev
+          uv sync --extra dev --no-cache
 
       # 6. Lint the code with Ruff
       - name: Lint with Ruff
