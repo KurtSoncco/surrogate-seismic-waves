@@ -26,7 +26,6 @@ dependencies = [
     "clu",
     "google-metrax",
     "geomloss",
-    "nvidia-nvtx-cu12==12.6.77",
 ]
 
 [project.optional-dependencies]
