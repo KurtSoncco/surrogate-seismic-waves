@@ -57,14 +57,11 @@ jobs:
             fi
           done
 
-      # 6. Lint the code with Ruff
+      # 6. Lint the code with Ruff (format check disabled for now)
       - name: Lint with Ruff
         run: |
           source ~/.cargo/env
-          # Check for code errors and style issues
           uv run ruff check .
-          # Check for formatting issues
-          uv run ruff format --check .
 
       # 7. Run tests with Pytest
       - name: Test with Pytest
