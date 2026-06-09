@@ -1,4 +1,9 @@
 #!/bin/bash
+# Submit from a Savio LOGIN node, not the DTN (dtn00):
+#   ssh hpc.brc.berkeley.edu
+#   cd ~/surrogate-seismic-waves/experiments/GIFNO
+#   sbatch savio_train.sh
+#
 #SBATCH --job-name=gifno_train
 #SBATCH --account=fc_tfsurrogate
 #SBATCH --partition=savio4_gpu
@@ -16,15 +21,6 @@ set -euo pipefail
 PROJECT_ROOT="${PROJECT_ROOT:-/global/home/users/kurtwal98/surrogate-seismic-waves}"
 SCRATCH_DATA="${SCRATCH_DATA:-/global/scratch/users/kurtwal98/neural_operator_data}"
 GIFNO_DIR="${PROJECT_ROOT}/experiments/GIFNO"
-
-# Expected layout under SCRATCH_DATA:
-#   h5/run_*.h5
-#   transfer_function/tf_per_sample.npy
-#   transfer_function/freq.npy
-#   transfer_function/manifest.csv
-#   transfer_function/recorder_x_idx.npy
-#   transfer_function/models/   (written during training)
-#   transfer_function/results/  (written during evaluation)
 
 export GIFNO_DATA_ROOT="${SCRATCH_DATA}"
 export GIFNO_H5_DIR="${SCRATCH_DATA}/h5"
