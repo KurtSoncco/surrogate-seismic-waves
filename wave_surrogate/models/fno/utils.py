@@ -232,7 +232,7 @@ def plot_correlation_vs_parameters(
     # Calculate the overall mean correlation for the legend
     mean_corr = np.mean(correlation_factor)
 
-    plt.figure(figsize=(15, 5))  # Adjusted to match the aspect ratio of the image
+    plt.figure(figsize=(20, 10))  # Adjusted to match the aspect ratio of the image
 
     plot_data = [
         (
@@ -289,7 +289,7 @@ def plot_correlation_vs_parameters(
         # Position: 0.98 (right edge) and ~0.15 (bottom edge)
         ax.text(
             0.98,
-            0.15,
+            0.05,
             f"Mean: {mean_corr:.3f}",
             transform=ax.transAxes,  # Use axes coordinates
             color="darkorange",
@@ -310,7 +310,7 @@ def plot_correlation_vs_parameters(
         # y coordinate is negative in axes fraction so it's placed below the x-axis label.
         ax.text(
             0.5,
-            -0.22,
+            -0.08,
             f"({letter})",
             transform=ax.transAxes,
             fontsize=14,
@@ -320,7 +320,7 @@ def plot_correlation_vs_parameters(
         )
 
     plt.suptitle(
-        f"{title_prefix} - Correlation vs. Soil Parameters", fontsize=20, y=1.0
+        f"{title_prefix} - Correlation vs. Soil Parameters", fontsize=24, y=1.0
     )
     plt.tight_layout()
 

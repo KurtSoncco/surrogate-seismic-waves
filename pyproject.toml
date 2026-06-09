@@ -26,6 +26,9 @@ dependencies = [
     "clu",
     "google-metrax",
     "geomloss",
+    "neuraloperator>=2.0.0",
+    "h5py",
+    "hdf5plugin",
 ]
 
 [project.optional-dependencies]
