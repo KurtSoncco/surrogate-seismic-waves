@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import csv
+import os
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -19,6 +20,15 @@ except ImportError:
 import h5py
 
 import config
+
+
+def _resolve_h5_path(stored_path: str) -> Path:
+    """Map manifest H5 paths to GIFNO_H5_DIR when running on Savio/scratch."""
+    p = Path(stored_path)
+    h5_dir = os.environ.get("GIFNO_H5_DIR")
+    if h5_dir:
+        return Path(h5_dir) / p.name
+    return p
 
 
 def _pad_depth(arr: np.ndarray, nz_max: int) -> np.ndarray:
@@ -96,7 +106,7 @@ class GIFNODataset(Dataset):
 
     def __getitem__(self, idx: int):
         row = self.manifest_rows[idx]
-        h5_path = row["h5_path"]
+        h5_path = _resolve_h5_path(row["h5_path"])
 
         with h5py.File(h5_path, "r") as f:
             vs_raw = f["Vs_realization_2D"][:]
@@ -168,7 +178,6 @@ def get_data_loaders(
 
     n_train = int(n * train_split)
     n_val = int(n * val_split)
-    n_test = n - n_train - n_val
 
     train_idx = perm[:n_train]
     val_idx = perm[n_train : n_train + n_val]

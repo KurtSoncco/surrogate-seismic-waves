@@ -1,6 +1,7 @@
 # config.py
 """Centralized configuration for the GIFNO grid-direct FNO experiment."""
 
+import os
 from pathlib import Path
 from typing import Tuple
 
@@ -9,20 +10,35 @@ import torch
 
 # --- Paths ---
 EXPERIMENT_DIR = Path(__file__).resolve().parent
-DATA_DIR = EXPERIMENT_DIR / "data"
-TF_RESULTS_DIR = DATA_DIR / "transfer_function_results"
-MODEL_SAVE_DIR = EXPERIMENT_DIR / "models"
-RESULTS_SAVE_DIR = EXPERIMENT_DIR / "results"
 
-H5_DIR = Path("/mnt/box_lab/Projects/Neural Operator/data/h5")
-OPENSEES_ROOT = Path("/home/kurt-asus/opensees")
+# Data root: Box locally, Savio scratch on HPC (set GIFNO_DATA_ROOT in job script).
+DATA_ROOT = Path(
+    os.environ.get(
+        "GIFNO_DATA_ROOT",
+        "/mnt/box_lab/Projects/Neural Operator/data",
+    )
+)
+H5_DIR = Path(os.environ.get("GIFNO_H5_DIR", DATA_ROOT / "h5"))
+TF_RESULTS_DIR = Path(
+    os.environ.get("GIFNO_TF_DIR", DATA_ROOT / "transfer_function")
+)
+MODEL_SAVE_DIR = Path(
+    os.environ.get("GIFNO_MODEL_DIR", TF_RESULTS_DIR / "models")
+)
+RESULTS_SAVE_DIR = Path(
+    os.environ.get("GIFNO_RESULTS_DIR", TF_RESULTS_DIR / "results")
+)
+
+OPENSEES_ROOT = Path(
+    os.environ.get("OPENSEES_ROOT", "/home/kurt-asus/opensees")
+)
 
 TF_PER_SAMPLE_PATH = TF_RESULTS_DIR / "tf_per_sample.npy"
 TF_FREQ_PATH = TF_RESULTS_DIR / "freq.npy"
 MANIFEST_PATH = TF_RESULTS_DIR / "manifest.csv"
 MODEL_SAVE_PATH = MODEL_SAVE_DIR / "best_model.pt"
 
-for d in (DATA_DIR, TF_RESULTS_DIR, MODEL_SAVE_DIR, RESULTS_SAVE_DIR):
+for d in (TF_RESULTS_DIR, MODEL_SAVE_DIR, RESULTS_SAVE_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 # --- H5 / grid ---

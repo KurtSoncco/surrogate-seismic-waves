@@ -13,11 +13,11 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
-import config
-from data_loader import get_data_loaders
-from evaluate import evaluate_model
-from model import create_model
-from train import train_model
+import config  # noqa: E402
+from data_loader import get_data_loaders  # noqa: E402
+from evaluate import evaluate_model  # noqa: E402
+from model import create_model  # noqa: E402
+from train import train_model  # noqa: E402
 
 
 def set_seed(seed: int):

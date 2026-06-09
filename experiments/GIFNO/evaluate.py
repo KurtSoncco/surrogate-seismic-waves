@@ -75,7 +75,6 @@ def _plot_tf_heatmap(
 
     t_rec = target[recorder_idx, :]
     p_rec = pred[recorder_idx, :]
-    extent = [freq[0], freq[-1], recorder_idx[0], recorder_idx[-1]]
 
     im0 = axes[0].imshow(
         np.log10(t_rec + 1e-12),
