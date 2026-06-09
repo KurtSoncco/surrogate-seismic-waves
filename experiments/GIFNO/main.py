@@ -33,7 +33,9 @@ def ensure_tf_cache():
     if config.TF_PER_SAMPLE_PATH.exists() and config.MANIFEST_PATH.exists():
         return
     print("[GIFNO] TF cache not found — running preprocessing...")
-    preprocess_script = config.EXPERIMENT_DIR / "preprocess" / "compute_transfer_function.py"
+    preprocess_script = (
+        config.EXPERIMENT_DIR / "preprocess" / "compute_transfer_function.py"
+    )
     subprocess.run([sys.executable, str(preprocess_script)], check=True)
 
 

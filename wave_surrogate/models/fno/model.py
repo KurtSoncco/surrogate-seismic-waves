@@ -57,10 +57,10 @@ class FNO1D(nn.Module):
             (batch, length, width) - output tensor
         """
         batchsize, length, _ = x.shape
-        
+
         # Ensure the input tensor is contiguous and has the right dtype for FFT
         x = x.contiguous()
-        
+
         try:
             x_ft = torch.fft.rfft(x, dim=1, norm="ortho")
         except RuntimeError as e:
@@ -74,7 +74,7 @@ class FNO1D(nn.Module):
                     x_ft = torch.fft.rfft(x, dim=1)
             else:
                 raise e
-        
+
         out_ft = torch.zeros(
             batchsize, length // 2 + 1, self.width, dtype=torch.cfloat, device=x.device
         )
@@ -93,13 +93,15 @@ class FNO1D(nn.Module):
             if "MKL FFT error" in str(e):
                 # Fallback: use a different IFFT implementation
                 try:
-                    x_fourier = torch.fft.irfft(out_ft, n=length, dim=1, norm="backward")
+                    x_fourier = torch.fft.irfft(
+                        out_ft, n=length, dim=1, norm="backward"
+                    )
                 except RuntimeError:
                     # If still failing, try without normalization
                     x_fourier = torch.fft.irfft(out_ft, n=length, dim=1)
             else:
                 raise e
-        
+
         x_linear = self.linear_transform(x)
 
         return self.activation(x_fourier + x_linear)

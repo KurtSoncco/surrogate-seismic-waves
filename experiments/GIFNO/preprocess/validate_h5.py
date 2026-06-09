@@ -160,8 +160,10 @@ def main() -> int:
     print(f"[validate_h5] scanned: {len(files)}")
     print(f"[validate_h5] valid:   {len(valid)}")
     print(f"[validate_h5] invalid: {len(invalid)}")
-    print(f"[validate_h5] missing indices in [{min(indices) if indices else 'n/a'}, "
-          f"{max(indices) if indices else 'n/a'}]: {len(missing_in_range)}")
+    print(
+        f"[validate_h5] missing indices in [{min(indices) if indices else 'n/a'}, "
+        f"{max(indices) if indices else 'n/a'}]: {len(missing_in_range)}"
+    )
 
     for r in invalid[:30]:
         print(f"  INVALID {r.path.name}: {r.error}")
@@ -176,7 +178,9 @@ def main() -> int:
         return 0
 
     if not args.apply:
-        print("\nReport only. Re-run with --apply --quarantine-dir DIR or --delete-invalid.")
+        print(
+            "\nReport only. Re-run with --apply --quarantine-dir DIR or --delete-invalid."
+        )
         return 1
 
     if args.quarantine_dir:
@@ -190,7 +194,9 @@ def main() -> int:
             r.path.unlink(missing_ok=True)
             print(f"  deleted {r.path.name}")
     else:
-        print("No action specified. Use --quarantine-dir or --delete-invalid with --apply.")
+        print(
+            "No action specified. Use --quarantine-dir or --delete-invalid with --apply."
+        )
         return 1
 
     return 0

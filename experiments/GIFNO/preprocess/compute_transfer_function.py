@@ -152,8 +152,7 @@ def main() -> int:
             writer.writeheader()
             writer.writerows(skipped)
         print(
-            f"[GIFNO TF] Skipped {len(skipped)} invalid H5 file(s); "
-            f"see {skipped_path}",
+            f"[GIFNO TF] Skipped {len(skipped)} invalid H5 file(s); see {skipped_path}",
             flush=True,
         )
 
@@ -168,9 +167,7 @@ def main() -> int:
         n_ch = f["recorders/accel/data"].shape[1]
     n_lateral = n_ch // 2
 
-    freq_ref = np.logspace(
-        np.log10(FREQ_START_HZ), np.log10(FREQ_END_HZ), N_FREQ
-    )
+    freq_ref = np.logspace(np.log10(FREQ_START_HZ), np.log10(FREQ_END_HZ), N_FREQ)
     n_samples = len(run_files)
     print(
         f"[GIFNO TF] dt={dt_val:.5f}s, n_samples={n_samples}, "

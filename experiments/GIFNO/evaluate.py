@@ -44,8 +44,7 @@ def _compute_metrics(
     mse = float(np.mean((target_flat - pred_flat) ** 2))
     mae = float(np.mean(np.abs(target_flat - pred_flat)))
     rel_l2 = float(
-        np.linalg.norm(target_flat - pred_flat)
-        / (np.linalg.norm(target_flat) + 1e-12)
+        np.linalg.norm(target_flat - pred_flat) / (np.linalg.norm(target_flat) + 1e-12)
     )
     pearson = float(np.corrcoef(pred_flat, target_flat)[0, 1])
     if not np.isfinite(pearson):
