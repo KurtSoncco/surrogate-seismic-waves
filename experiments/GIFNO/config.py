@@ -19,19 +19,11 @@ DATA_ROOT = Path(
     )
 )
 H5_DIR = Path(os.environ.get("GIFNO_H5_DIR", DATA_ROOT / "h5"))
-TF_RESULTS_DIR = Path(
-    os.environ.get("GIFNO_TF_DIR", DATA_ROOT / "transfer_function")
-)
-MODEL_SAVE_DIR = Path(
-    os.environ.get("GIFNO_MODEL_DIR", TF_RESULTS_DIR / "models")
-)
-RESULTS_SAVE_DIR = Path(
-    os.environ.get("GIFNO_RESULTS_DIR", TF_RESULTS_DIR / "results")
-)
+TF_RESULTS_DIR = Path(os.environ.get("GIFNO_TF_DIR", DATA_ROOT / "transfer_function"))
+MODEL_SAVE_DIR = Path(os.environ.get("GIFNO_MODEL_DIR", TF_RESULTS_DIR / "models"))
+RESULTS_SAVE_DIR = Path(os.environ.get("GIFNO_RESULTS_DIR", TF_RESULTS_DIR / "results"))
 
-OPENSEES_ROOT = Path(
-    os.environ.get("OPENSEES_ROOT", "/home/kurt-asus/opensees")
-)
+OPENSEES_ROOT = Path(os.environ.get("OPENSEES_ROOT", "/home/kurt-asus/opensees"))
 
 TF_PER_SAMPLE_PATH = TF_RESULTS_DIR / "tf_per_sample.npy"
 TF_FREQ_PATH = TF_RESULTS_DIR / "freq.npy"
@@ -86,6 +78,10 @@ NUM_WORKERS: int = 2
 # --- W&B ---
 WANDB_PROJECT: str = "gifno_fno"
 WANDB_RUN_NAME: str = "gifno_grid_fno_run"
+
+# --- Evaluation plots ---
+EVAL_N_HEATMAPS: int = 3
+EVAL_N_CENTRAL_CURVES: int = 4
 
 
 def recorder_x_indices(
