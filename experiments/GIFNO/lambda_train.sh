@@ -7,6 +7,8 @@
 #   bash experiments/GIFNO/lambda_train.sh          # full training
 #   bash experiments/GIFNO/lambda_train.sh --limit 10   # smoke test
 #
+# W&B: copy lambda_secrets.env.example → lambda_secrets.env (gitignored) with your API key.
+#
 # Detach tmux: Ctrl+B then D
 # Reattach:    tmux attach -t gifno
 # Logs:        tail -f ~/surrogate-seismic-waves/wandb/latest-run/files/output.log
@@ -16,6 +18,14 @@ set -euo pipefail
 PROJECT_ROOT="${PROJECT_ROOT:-${HOME}/surrogate-seismic-waves}"
 DATA_ROOT="${GIFNO_DATA_ROOT:-${HOME}/gifno_data}"
 GIFNO_DIR="${PROJECT_ROOT}/experiments/GIFNO"
+
+SECRETS_FILE="${GIFNO_DIR}/lambda_secrets.env"
+if [[ -f "${SECRETS_FILE}" ]]; then
+    set -a
+    # shellcheck source=/dev/null
+    source "${SECRETS_FILE}"
+    set +a
+fi
 
 export GIFNO_DATA_ROOT="${DATA_ROOT}"
 export GIFNO_H5_DIR="${DATA_ROOT}/h5"
