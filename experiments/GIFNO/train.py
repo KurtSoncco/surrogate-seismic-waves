@@ -42,7 +42,9 @@ def train_model(train_loader, val_loader):
         name=config.WANDB_RUN_NAME,
         config={k: v for k, v in vars(config).items() if k.isupper()},
     )
-    wandb.watch(model, log="all")
+    # Skip wandb.watch: FNOBlocks use spectral (complex) weights; watch casts them
+    # to float and emits "Casting complex values to real" every step. Loss/lr/eval
+    # plots are logged explicitly below and in evaluate.py.
 
     best_val_loss = float("inf")
     early_stop_counter = 0
