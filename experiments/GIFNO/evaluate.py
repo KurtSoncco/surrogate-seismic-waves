@@ -60,7 +60,7 @@ def _masked_flat(pred: np.ndarray, target: np.ndarray, mask: np.ndarray):
             target_list.append(target[i, idx, :])
     if not pred_list:
         return np.array([]), np.array([])
-    return np.vstack([p.ravel() for p in pred_list]), np.vstack(
+    return np.concatenate([p.ravel() for p in pred_list]), np.concatenate(
         [t.ravel() for t in target_list]
     )
 
