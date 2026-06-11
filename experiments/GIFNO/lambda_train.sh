@@ -1,17 +1,18 @@
 #!/bin/bash
-# Run on Lambda Labs GPU instance (e.g. gpu_1x_a10):
+# Run on Lambda Labs GPU instance (e.g. gpu_1x_a10 / gpu_1x_a100):
 #
 #   ssh ubuntu@<LAMBDA_IP>
 #   cd ~/surrogate-seismic-waves && git pull
-#   tmux new -s gifno
-#   bash experiments/GIFNO/lambda_train.sh          # full training
-#   bash experiments/GIFNO/lambda_train.sh --limit 10   # smoke test
+#   tmux new-session -d -s gifno \
+#     "cd ~/surrogate-seismic-waves && bash experiments/GIFNO/lambda_train.sh --limit 50 2>&1 | tee train.log"
+#   tail -f ~/surrogate-seismic-waves/train.log
 #
-# W&B: copy lambda_secrets.env.example → lambda_secrets.env (gitignored) with your API key.
+# Local WSL smoke (Box data):
+#   go-lab   # mount Box if needed
+#   export GIFNO_DATA_ROOT="/mnt/box_lab/Projects/Neural Operator/data"
+#   bash experiments/GIFNO/lambda_train.sh --limit 50
 #
-# Detach tmux: Ctrl+B then D
-# Reattach:    tmux attach -t gifno
-# Logs:        tail -f ~/surrogate-seismic-waves/wandb/latest-run/files/output.log
+# W&B: experiments/GIFNO/lambda_secrets.env (gitignored) — copy to Lambda via scp.
 
 set -euo pipefail
 
@@ -27,7 +28,6 @@ if [[ -f "${SECRETS_FILE}" ]]; then
     set +a
 fi
 if [[ -n "${WANDB_API_KEY:-}" ]]; then
-    # Strip CR/LF and surrounding whitespace (common after scp from Windows/WSL).
     WANDB_API_KEY="${WANDB_API_KEY//$'\r'/}"
     WANDB_API_KEY="${WANDB_API_KEY#"${WANDB_API_KEY%%[![:space:]]*}"}"
     WANDB_API_KEY="${WANDB_API_KEY%"${WANDB_API_KEY##*[![:space:]]}"}"
@@ -56,7 +56,7 @@ mkdir -p "${GIFNO_MODEL_DIR}" "${GIFNO_RESULTS_DIR}"
 cd "${PROJECT_ROOT}"
 source "${PROJECT_ROOT}/.venv/bin/activate"
 
-echo "=== GIFNO training on Lambda ==="
+echo "=== GIFNO training ==="
 echo "PROJECT_ROOT=${PROJECT_ROOT}"
 echo "GIFNO_DATA_ROOT=${GIFNO_DATA_ROOT}"
 echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo n/a)"
