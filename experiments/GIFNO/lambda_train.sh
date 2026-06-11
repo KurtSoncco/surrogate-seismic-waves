@@ -26,6 +26,13 @@ if [[ -f "${SECRETS_FILE}" ]]; then
     source "${SECRETS_FILE}"
     set +a
 fi
+if [[ -n "${WANDB_API_KEY:-}" ]]; then
+    # Strip CR/LF and surrounding whitespace (common after scp from Windows/WSL).
+    WANDB_API_KEY="${WANDB_API_KEY//$'\r'/}"
+    WANDB_API_KEY="${WANDB_API_KEY#"${WANDB_API_KEY%%[![:space:]]*}"}"
+    WANDB_API_KEY="${WANDB_API_KEY%"${WANDB_API_KEY##*[![:space:]]}"}"
+    export WANDB_API_KEY
+fi
 
 export GIFNO_DATA_ROOT="${DATA_ROOT}"
 export GIFNO_H5_DIR="${DATA_ROOT}/h5"

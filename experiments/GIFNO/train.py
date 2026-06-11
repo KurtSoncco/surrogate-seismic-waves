@@ -2,13 +2,15 @@
 """Training script for the GIFNO grid-direct FNO model."""
 
 import config
+import numpy as np
 import torch
 import torch.optim as optim
 from tqdm import trange
 
 import wandb
 
-from losses import MaskedLpLoss
+from losses import build_training_loss
+from metrics import compute_val_tail_metrics_torch
 from model import create_model
 
 
@@ -27,7 +29,7 @@ def train_model(train_loader, val_loader):
     )
     assert model(dummy).shape == (1, config.NX, config.N_FREQ)
 
-    criterion = MaskedLpLoss(d=2, p=2)
+    criterion = build_training_loss()
     optimizer = optim.Adam(
         model.parameters(),
         lr=config.LEARNING_RATE,
@@ -48,6 +50,7 @@ def train_model(train_loader, val_loader):
 
     best_val_loss = float("inf")
     early_stop_counter = 0
+    freq = np.load(config.TF_FREQ_PATH)
 
     t = trange(config.NUM_EPOCHS, desc="Training")
     for epoch in t:
@@ -87,14 +90,18 @@ def train_model(train_loader, val_loader):
         val_loss /= max(n_val, 1)
         scheduler.step(val_loss)
 
-        wandb.log(
-            {
-                "epoch": epoch,
-                "train_loss": train_loss,
-                "val_loss": val_loss,
-                "learning_rate": optimizer.param_groups[0]["lr"],
-            }
+        val_tail = compute_val_tail_metrics_torch(
+            model, val_loader, config.DEVICE, freq
         )
+
+        log_payload = {
+            "epoch": epoch,
+            "train_loss": train_loss,
+            "val_loss": val_loss,
+            "learning_rate": optimizer.param_groups[0]["lr"],
+            **val_tail,
+        }
+        wandb.log(log_payload)
         t.set_postfix(train_loss=train_loss, val_loss=val_loss)
 
         if val_loss < best_val_loss:

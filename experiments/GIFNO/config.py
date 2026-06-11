@@ -82,6 +82,16 @@ WANDB_RUN_NAME: str = "gifno_grid_fno_run"
 # --- Evaluation plots ---
 EVAL_N_HEATMAPS: int = 3
 EVAL_N_CENTRAL_CURVES: int = 4
+EVAL_N_WORST_SAMPLES: int = 3
+
+# --- Loss (composite) ---
+LOSS_REL_WEIGHT: float = 1.0
+LOSS_H1_WEIGHT: float = 0.1
+LOSS_FREQ_WEIGHT: float = 0.05
+LOSS_P: int = 2
+HARD_MINING: bool = False
+HARD_MINING_POWER: float = 1.0
+FREQ_LOSS_LOG_WEIGHT: bool = True
 
 
 def recorder_x_indices(

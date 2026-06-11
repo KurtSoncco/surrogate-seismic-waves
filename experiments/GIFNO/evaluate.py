@@ -15,6 +15,11 @@ from tqdm import tqdm
 import wandb
 
 import config
+from metrics import (
+    aggregate_test_metrics,
+    pearson_1d,
+    recorder_x_indices_from_mask,
+)
 
 
 def _safe_log10(arr: np.ndarray, floor: float = 1e-12) -> np.ndarray:
@@ -22,78 +27,13 @@ def _safe_log10(arr: np.ndarray, floor: float = 1e-12) -> np.ndarray:
     return np.log10(np.maximum(np.abs(arr), floor))
 
 
-def _pearson_1d(a: np.ndarray, b: np.ndarray) -> float:
-    """Pearson r between two 1-D arrays; returns NaN if undefined."""
-    if a.size < 2:
-        return float("nan")
-    a = a.astype(np.float64)
-    b = b.astype(np.float64)
-    a = a - a.mean()
-    b = b - b.mean()
-    denom = np.linalg.norm(a) * np.linalg.norm(b)
-    if denom < 1e-12:
-        return float("nan")
-    return float(np.dot(a, b) / denom)
-
-
-def _recorder_x_indices(mask: np.ndarray) -> np.ndarray:
-    """Sorted grid x-indices where recorders are active."""
-    return np.where(mask > 0.5)[0]
-
-
 def _central_recorder_x(mask: np.ndarray) -> int:
     """Grid x-index of the central lateral recorder."""
-    recorder_idx = _recorder_x_indices(mask)
+    recorder_idx = recorder_x_indices_from_mask(mask)
     if len(recorder_idx) == 0:
         return config.NX // 2
     center = config.NX // 2
     return int(recorder_idx[np.argmin(np.abs(recorder_idx - center))])
-
-
-def _masked_flat(pred: np.ndarray, target: np.ndarray, mask: np.ndarray):
-    """Extract values at recorder positions only."""
-    pred_list, target_list = [], []
-    for i in range(len(mask)):
-        idx = _recorder_x_indices(mask[i])
-        if len(idx):
-            pred_list.append(pred[i, idx, :])
-            target_list.append(target[i, idx, :])
-    if not pred_list:
-        return np.array([]), np.array([])
-    return np.concatenate([p.ravel() for p in pred_list]), np.concatenate(
-        [t.ravel() for t in target_list]
-    )
-
-
-def _compute_metrics(
-    predictions: np.ndarray,
-    targets: np.ndarray,
-    masks: np.ndarray,
-) -> Dict[str, float]:
-    pred_flat, target_flat = _masked_flat(predictions, targets, masks)
-    if pred_flat.size == 0:
-        return {
-            "test_mse": 0.0,
-            "test_mae": 0.0,
-            "test_rel_l2": 0.0,
-            "test_pearson": 0.0,
-        }
-
-    mse = float(np.mean((target_flat - pred_flat) ** 2))
-    mae = float(np.mean(np.abs(target_flat - pred_flat)))
-    rel_l2 = float(
-        np.linalg.norm(target_flat - pred_flat) / (np.linalg.norm(target_flat) + 1e-12)
-    )
-    pearson = _pearson_1d(pred_flat, target_flat)
-    if not np.isfinite(pearson):
-        pearson = 0.0
-
-    return {
-        "test_mse": mse,
-        "test_mae": mae,
-        "test_rel_l2": rel_l2,
-        "test_pearson": pearson,
-    }
 
 
 def _pearson_by_recorder(
@@ -101,22 +41,15 @@ def _pearson_by_recorder(
     targets: np.ndarray,
     masks: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Per-sample Pearson r at each recorder x-index (correlation along frequency).
-
-    Returns
-    -------
-    recorder_x : (R,) grid x-indices
-    pearson    : (R, N) matrix — one r per recorder per test sample
-    """
-    recorder_x = _recorder_x_indices(masks[0])
+    """Per-recorder Pearson r across test samples. Returns (recorder_x, (R, N))."""
+    recorder_x = recorder_x_indices_from_mask(masks[0])
     n_rec = len(recorder_x)
     n_samples = len(predictions)
     pearson = np.full((n_rec, n_samples), np.nan, dtype=np.float64)
 
     for s in range(n_samples):
         for r, x_idx in enumerate(recorder_x):
-            pearson[r, s] = _pearson_1d(
+            pearson[r, s] = pearson_1d(
                 np.abs(predictions[s, x_idx, :]),
                 np.abs(targets[s, x_idx, :]),
             )
@@ -134,7 +67,7 @@ def _plot_tf_heatmap(
 ) -> None:
     """Plot target vs prediction TF fields at recorder positions."""
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
-    recorder_idx = _recorder_x_indices(mask)
+    recorder_idx = recorder_x_indices_from_mask(mask)
     if len(recorder_idx) == 0:
         plt.close(fig)
         return
@@ -185,8 +118,8 @@ def _plot_central_tf_curve(
     p_line = np.abs(pred[x_idx, :])
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.semilogx(freq, t_line, "-", linewidth=2, label=f"target (x={x_idx})")
-    ax.semilogx(freq, p_line, "--", linewidth=2, label=f"pred (x={x_idx})")
+    ax.loglog(freq, t_line, "-", linewidth=2, label=f"target (x={x_idx})")
+    ax.loglog(freq, p_line, "--", linewidth=2, label=f"pred (x={x_idx})")
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("|TF|")
     ax.set_title(f"Central recorder |TF| — {sample_label}")
@@ -233,11 +166,105 @@ def _plot_pearson_boxplot(
     plt.close()
 
 
+def _plot_metric_ecdf(
+    values: Dict[str, np.ndarray],
+    save_path: Path,
+    title: str,
+) -> None:
+    """ECDF of per-sample metrics."""
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for label, v in values.items():
+        v = v[np.isfinite(v)]
+        if v.size == 0:
+            continue
+        xs = np.sort(v)
+        ys = np.arange(1, len(xs) + 1) / len(xs)
+        ax.plot(xs, ys, label=label)
+    ax.set_xlabel("Metric value")
+    ax.set_ylabel("ECDF")
+    ax.set_title(title)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+
+
+def _plot_rel_l2_vs_pearson(
+    rel_l2: np.ndarray,
+    pearson: np.ndarray,
+    save_path: Path,
+) -> None:
+    """Scatter per-sample relative L2 vs Pearson r."""
+    mask = np.isfinite(rel_l2) & np.isfinite(pearson)
+    if not np.any(mask):
+        return
+    fig, ax = plt.subplots(figsize=(7, 6))
+    ax.scatter(rel_l2[mask], pearson[mask], alpha=0.35, s=12, edgecolors="none")
+    ax.set_xlabel("Per-sample relative L2")
+    ax.set_ylabel("Per-sample Pearson r")
+    ax.set_title("Tail outliers (bottom-left = bad)")
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+
+
+def _plot_per_sample_metric_boxplot(
+    per_sample: Dict[str, np.ndarray],
+    save_path: Path,
+) -> None:
+    """Box plot comparing per-sample metric distributions."""
+    labels = []
+    data = []
+    for key in ("rel_l2", "pearson", "linf", "h1_freq"):
+        v = per_sample.get(key)
+        if v is None:
+            continue
+        v = v[np.isfinite(v)]
+        if v.size == 0:
+            continue
+        labels.append(key)
+        data.append(v)
+
+    if not data:
+        return
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    bp = ax.boxplot(data, labels=labels, patch_artist=True)
+    for patch in bp["boxes"]:
+        patch.set_facecolor("steelblue")
+        patch.set_alpha(0.6)
+    ax.set_title("Per-sample metric distributions (test set)")
+    ax.grid(True, axis="y", alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+
+
 def _select_random_indices(n_total: int, n_pick: int, seed: int) -> np.ndarray:
     """Pick up to n_pick distinct sample indices (all if n_total < n_pick)."""
     n_pick = min(n_pick, n_total)
     rng = np.random.default_rng(seed)
     return np.sort(rng.choice(n_total, size=n_pick, replace=False))
+
+
+def _select_worst_indices(
+    rel_l2: np.ndarray,
+    pearson: np.ndarray,
+    n_pick: int,
+) -> np.ndarray:
+    """Pick samples with highest rel_l2 and lowest pearson (combined rank)."""
+    n_pick = min(n_pick, len(rel_l2))
+    rel_rank = np.argsort(np.nan_to_num(rel_l2, nan=-1.0))
+    pear_rank = np.argsort(np.nan_to_num(pearson, nan=2.0))  # ascending: low pearson first
+    combined = np.zeros(len(rel_l2))
+    for rank, idx in enumerate(rel_rank):
+        combined[idx] += rank
+    for rank, idx in enumerate(pear_rank):
+        combined[idx] += rank
+    worst = np.argsort(-combined)[:n_pick]
+    return np.sort(worst)
 
 
 def evaluate_model(
@@ -271,7 +298,7 @@ def evaluate_model(
     targets = np.concatenate(all_targets, axis=0)
     masks = np.concatenate(all_masks, axis=0)
 
-    metrics = _compute_metrics(predictions, targets, masks)
+    metrics, per_sample = aggregate_test_metrics(predictions, targets, masks, freq)
     recorder_x, pearson_mat = _pearson_by_recorder(predictions, targets, masks)
 
     per_rec_mean = np.nanmean(pearson_mat, axis=1)
@@ -286,6 +313,11 @@ def evaluate_model(
     )
     central_idx = _select_random_indices(
         len(predictions), config.EVAL_N_CENTRAL_CURVES, seed + 1
+    )
+    worst_idx = _select_worst_indices(
+        per_sample["rel_l2"],
+        per_sample["pearson"],
+        config.EVAL_N_WORST_SAMPLES,
     )
 
     for rank, i in enumerate(heatmap_idx):
@@ -308,8 +340,37 @@ def evaluate_model(
             sample_label=f"sample {i} (pick {rank + 1}/{len(central_idx)})",
         )
 
+    for rank, i in enumerate(worst_idx):
+        _plot_central_tf_curve(
+            predictions[i],
+            targets[i],
+            masks[i],
+            freq,
+            save_dir / f"worst_central_tf_sample_{i}.png",
+            sample_label=(
+                f"sample {i} (worst {rank + 1}/{len(worst_idx)}, "
+                f"rel_l2={per_sample['rel_l2'][i]:.3f}, "
+                f"r={per_sample['pearson'][i]:.3f})"
+            ),
+        )
+
     pearson_plot_path = save_dir / "pearson_by_recorder_boxplot.png"
     _plot_pearson_boxplot(recorder_x, pearson_mat, pearson_plot_path)
+
+    ecdf_path = save_dir / "per_sample_ecdf.png"
+    _plot_metric_ecdf(
+        {"rel_l2": per_sample["rel_l2"], "pearson": per_sample["pearson"]},
+        ecdf_path,
+        "Per-sample rel L2 and Pearson ECDF",
+    )
+
+    scatter_path = save_dir / "rel_l2_vs_pearson.png"
+    _plot_rel_l2_vs_pearson(
+        per_sample["rel_l2"], per_sample["pearson"], scatter_path
+    )
+
+    sample_box_path = save_dir / "per_sample_metrics_boxplot.png"
+    _plot_per_sample_metric_boxplot(per_sample, sample_box_path)
 
     if run is not None:
         log_payload: Dict[str, Any] = {k: v for k, v in metrics.items()}
@@ -326,11 +387,25 @@ def evaluate_model(
                 caption=f"Central recorder, sample index {i}",
             )
 
-        if pearson_plot_path.exists():
-            log_payload["eval/pearson_by_recorder"] = wandb.Image(
-                str(pearson_plot_path),
-                caption="Pearson r per recorder (box = test-sample distribution)",
+        for rank, i in enumerate(worst_idx):
+            log_payload[f"eval/worst_central_tf_{rank}"] = wandb.Image(
+                str(save_dir / f"worst_central_tf_sample_{i}.png"),
+                caption=(
+                    f"Worst sample {i}: rel_l2={per_sample['rel_l2'][i]:.3f}, "
+                    f"pearson={per_sample['pearson'][i]:.3f}"
+                ),
             )
+
+        for plot_key, plot_path, caption in [
+            ("pearson_by_recorder", pearson_plot_path, "Pearson r per recorder"),
+            ("per_sample_ecdf", ecdf_path, "Per-sample ECDF"),
+            ("rel_l2_vs_pearson", scatter_path, "rel L2 vs Pearson scatter"),
+            ("per_sample_metrics_boxplot", sample_box_path, "Per-sample metric boxplot"),
+        ]:
+            if plot_path.exists():
+                log_payload[f"eval/{plot_key}"] = wandb.Image(
+                    str(plot_path), caption=caption
+                )
 
         wandb.log(log_payload)
 
