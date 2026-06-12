@@ -10,12 +10,13 @@ set -euo pipefail
 
 DELTA_USER="${DELTA_USER:-ksonccosinchi}"
 DELTA_HOST="${DELTA_HOST:-login.delta.ncsa.illinois.edu}"
+DELTA_ALLOC="${DELTA_ALLOC:-bgpu}"
+export DELTA_ALLOC
 LOCAL_DATA="/mnt/box_lab/Projects/Neural Operator/data"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GIFNO_DIR="${PROJECT_ROOT}/experiments/GIFNO"
-REMOTE_SCRATCH="/scratch/${DELTA_USER}"
-REMOTE_REPO="${REMOTE_SCRATCH}/surrogate-seismic-waves"
-REMOTE_DATA="${REMOTE_SCRATCH}/gifno_data"
+# Delta home is /u/$USER — there is no /scratch/$USER
+REMOTE_REPO="~/surrogate-seismic-waves"
 
 step() { echo ""; echo "========== $* =========="; }
 
@@ -39,8 +40,7 @@ bash "${GIFNO_DIR}/delta_rsync_from_local.sh"
 step "3/6  Clone repo on Delta"
 ssh "${DELTA_USER}@${DELTA_HOST}" bash -s <<REMOTE
 set -euo pipefail
-mkdir -p ${REMOTE_SCRATCH}
-cd ${REMOTE_SCRATCH}
+cd ~
 if [[ -d surrogate-seismic-waves/.git ]]; then
     cd surrogate-seismic-waves && git pull
 else

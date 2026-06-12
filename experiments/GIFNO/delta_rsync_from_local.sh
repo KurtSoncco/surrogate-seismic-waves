@@ -1,5 +1,5 @@
 #!/bin/bash
-# Upload GIFNO data from local WSL (Box) to NCSA Delta scratch.
+# Upload GIFNO data from local WSL (Box) to NCSA Delta.
 #
 # Prerequisites:
 #   go-lab   # mount Box at /mnt/box_lab
@@ -7,14 +7,22 @@
 #
 # Usage:
 #   bash experiments/GIFNO/delta_rsync_from_local.sh
-#   bash experiments/GIFNO/delta_rsync_from_local.sh --h5-only
 #   bash experiments/GIFNO/delta_rsync_from_local.sh --tf-only
+#   bash experiments/GIFNO/delta_rsync_from_local.sh --h5-only
+#
+# Default target: /work/hdd/bgpu/$USER/gifno_data (override: DELTA_ALLOC or REMOTE_DATA)
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=delta_env.sh
+[[ -f "${SCRIPT_DIR}/delta_env.sh" ]] && source "${SCRIPT_DIR}/delta_env.sh"
+# shellcheck source=delta_paths.sh
+source "${SCRIPT_DIR}/delta_paths.sh"
+
 DELTA_USER="${DELTA_USER:-ksonccosinchi}"
 DELTA_HOST="${DELTA_HOST:-login.delta.ncsa.illinois.edu}"
-REMOTE_DATA="${REMOTE_DATA:-/scratch/${DELTA_USER}/gifno_data}"
+REMOTE_DATA="$(resolve_delta_remote_data "${DELTA_USER}")"
 LOCAL_DATA="${LOCAL_DATA:-/mnt/box_lab/Projects/Neural Operator/data}"
 
 RSYNC_OPTS=(-avzP --partial)
@@ -43,7 +51,11 @@ echo "Local:  ${LOCAL_DATA}"
 echo "Remote: ${DELTA_USER}@${DELTA_HOST}:${REMOTE_DATA}"
 echo ""
 
-ssh "${DELTA_USER}@${DELTA_HOST}" "mkdir -p ${REMOTE_DATA}/h5 ${REMOTE_DATA}/transfer_function"
+ssh "${DELTA_USER}@${DELTA_HOST}" "mkdir -p ${REMOTE_DATA}/h5 ${REMOTE_DATA}/transfer_function" \
+    || { echo "ERROR: cannot create ${REMOTE_DATA} on Delta." >&2; \
+         echo "  Run 'quota' on Delta to find your allocation, then:" >&2; \
+         echo "  DELTA_ALLOC=<code> bash $0 $*" >&2; \
+         exit 1; }
 
 case "${1:-all}" in
     --tf-only) sync_tf ;;

@@ -20,7 +20,7 @@
 # W&B: experiments/GIFNO/lambda_secrets.env (gitignored) — copy to Delta scratch.
 
 #SBATCH --job-name=gifno_train
-#SBATCH --account=REPLACE_WITH_DELTA_ACCOUNT
+#SBATCH --account=bgpu
 #SBATCH --partition=gpuA100x4
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -33,16 +33,19 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="${PROJECT_ROOT:-${SCRATCH:-${HOME}}/surrogate-seismic-waves}"
-if [[ -n "${GIFNO_DATA_ROOT:-}" ]]; then
-    DATA_ROOT="${GIFNO_DATA_ROOT}"
-elif [[ -n "${SCRATCH:-}" ]]; then
-    DATA_ROOT="${SCRATCH}/gifno_data"
-elif [[ -d "/scratch/${USER}/gifno_data" ]]; then
-    DATA_ROOT="/scratch/${USER}/gifno_data"
-else
-    DATA_ROOT="${HOME}/gifno_data"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=delta_env.sh
+[[ -f "${SCRIPT_DIR}/delta_env.sh" ]] && source "${SCRIPT_DIR}/delta_env.sh"
+# shellcheck source=delta_paths.sh
+source "${SCRIPT_DIR}/delta_paths.sh"
+
+# In batch jobs, module reset sets $SCRATCH / $WORK for the allocation.
+if [[ -n "${SLURM_JOB_ID:-}" ]] && command -v module &>/dev/null; then
+    module reset 2>/dev/null || true
 fi
+
+PROJECT_ROOT="$(resolve_gifno_project_root)"
+DATA_ROOT="$(resolve_gifno_data_root)"
 GIFNO_DIR="${PROJECT_ROOT}/experiments/GIFNO"
 
 SECRETS_FILE="${GIFNO_DIR}/lambda_secrets.env"

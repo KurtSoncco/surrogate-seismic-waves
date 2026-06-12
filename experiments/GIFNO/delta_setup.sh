@@ -2,31 +2,31 @@
 # One-time environment setup on NCSA Delta (run on login node).
 #
 #   ssh ksonccosinchi@login.delta.ncsa.illinois.edu
-#   cd $SCRATCH && git clone https://github.com/KurtSoncco/surrogate-seismic-waves.git
+#   git clone https://github.com/KurtSoncco/surrogate-seismic-waves.git
 #   cd surrogate-seismic-waves && bash experiments/GIFNO/delta_setup.sh
 #
-# After setup, copy W&B secrets from local:
+# After setup, copy W&B secrets from local (use ~ — $SCRATCH expands locally on WSL):
 #   scp experiments/GIFNO/lambda_secrets.env \
-#     ksonccosinchi@login.delta.ncsa.illinois.edu:$SCRATCH/surrogate-seismic-waves/experiments/GIFNO/
+#     ksonccosinchi@login.delta.ncsa.illinois.edu:~/surrogate-seismic-waves/experiments/GIFNO/
 
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=delta_env.sh
+[[ -f "${SCRIPT_DIR}/delta_env.sh" ]] && source "${SCRIPT_DIR}/delta_env.sh"
+# shellcheck source=delta_paths.sh
+source "${SCRIPT_DIR}/delta_paths.sh"
+
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 GIFNO_DIR="${PROJECT_ROOT}/experiments/GIFNO"
-if [[ -n "${GIFNO_DATA_ROOT:-}" ]]; then
-    DATA_ROOT="${GIFNO_DATA_ROOT}"
-elif [[ -n "${SCRATCH:-}" ]]; then
-    DATA_ROOT="${SCRATCH}/gifno_data"
-elif [[ -d "/scratch/${USER}/gifno_data" ]]; then
-    DATA_ROOT="/scratch/${USER}/gifno_data"
-else
-    DATA_ROOT="${HOME}/gifno_data"
-fi
+DATA_ROOT="$(resolve_gifno_data_root)"
 
 echo "=== Delta GIFNO setup ==="
 echo "PROJECT_ROOT=${PROJECT_ROOT}"
 echo "DATA_ROOT=${DATA_ROOT}"
 echo "SCRATCH=${SCRATCH:-unset}"
+echo "WORK=${WORK:-unset}"
+echo "DELTA_ALLOC=${DELTA_ALLOC:-unset}"
 echo "========================="
 
 # Delta RH9: keep default Cray PE + cudatoolkit; Savio-style python/3.11 is unavailable.
