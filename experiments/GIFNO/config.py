@@ -66,14 +66,14 @@ DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cp
 LEARNING_RATE: float = 1e-3
 WEIGHT_DECAY: float = 1e-4
 NUM_EPOCHS: int = 500
-BATCH_SIZE: int = 4
+BATCH_SIZE: int = 8
 TRAIN_SPLIT: float = 0.7
 VAL_SPLIT: float = 0.15
 TEST_SPLIT: float = 0.15
 SEED: int = 42
 EARLY_STOP_PATIENCE: int = 80
 GRAD_CLIP_NORM: float = 1.0
-NUM_WORKERS: int = 2
+NUM_WORKERS: int = 8
 
 # --- W&B ---
 WANDB_PROJECT: str = "gifno_fno"
