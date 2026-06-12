@@ -11,7 +11,11 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${SLURM_SUBMIT_DIR:-}" ]]; then
+    SCRIPT_DIR="${SLURM_SUBMIT_DIR}"
+else
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
 # shellcheck source=delta_env.sh
 [[ -f "${SCRIPT_DIR}/delta_env.sh" ]] && source "${SCRIPT_DIR}/delta_env.sh"
 # shellcheck source=delta_paths.sh

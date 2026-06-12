@@ -33,7 +33,12 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# sbatch copies this script to /var/spool/slurmd/...; BASH_SOURCE points there, not the repo.
+if [[ -n "${SLURM_SUBMIT_DIR:-}" ]]; then
+    SCRIPT_DIR="${SLURM_SUBMIT_DIR}"
+else
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
 # shellcheck source=delta_env.sh
 [[ -f "${SCRIPT_DIR}/delta_env.sh" ]] && source "${SCRIPT_DIR}/delta_env.sh"
 # shellcheck source=delta_paths.sh
@@ -44,9 +49,9 @@ if [[ -n "${SLURM_JOB_ID:-}" ]] && command -v module &>/dev/null; then
     module reset 2>/dev/null || true
 fi
 
-PROJECT_ROOT="$(resolve_gifno_project_root)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DATA_ROOT="$(resolve_gifno_data_root)"
-GIFNO_DIR="${PROJECT_ROOT}/experiments/GIFNO"
+GIFNO_DIR="${SCRIPT_DIR}"
 
 SECRETS_FILE="${GIFNO_DIR}/lambda_secrets.env"
 if [[ -f "${SECRETS_FILE}" ]]; then
