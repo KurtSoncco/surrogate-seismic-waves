@@ -34,7 +34,15 @@
 set -euo pipefail
 
 PROJECT_ROOT="${PROJECT_ROOT:-${SCRATCH:-${HOME}}/surrogate-seismic-waves}"
-DATA_ROOT="${GIFNO_DATA_ROOT:-${SCRATCH:-${HOME}}/gifno_data}"
+if [[ -n "${GIFNO_DATA_ROOT:-}" ]]; then
+    DATA_ROOT="${GIFNO_DATA_ROOT}"
+elif [[ -n "${SCRATCH:-}" ]]; then
+    DATA_ROOT="${SCRATCH}/gifno_data"
+elif [[ -d "/scratch/${USER}/gifno_data" ]]; then
+    DATA_ROOT="/scratch/${USER}/gifno_data"
+else
+    DATA_ROOT="${HOME}/gifno_data"
+fi
 GIFNO_DIR="${PROJECT_ROOT}/experiments/GIFNO"
 
 SECRETS_FILE="${GIFNO_DIR}/lambda_secrets.env"
@@ -70,9 +78,13 @@ done
 
 mkdir -p "${GIFNO_MODEL_DIR}" "${GIFNO_RESULTS_DIR}"
 
-module purge
-module load python/3.11
-module load cuda/12.4
+load_delta_python() {
+    if module is-loaded python 2>/dev/null; then
+        return 0
+    fi
+    module load gcc python 2>/dev/null || module load python
+}
+load_delta_python
 
 cd "${PROJECT_ROOT}"
 source "${PROJECT_ROOT}/.venv/bin/activate"

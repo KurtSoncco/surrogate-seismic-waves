@@ -13,7 +13,15 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GIFNO_DIR="${PROJECT_ROOT}/experiments/GIFNO"
-DATA_ROOT="${GIFNO_DATA_ROOT:-${SCRATCH:-${HOME}}/gifno_data}"
+if [[ -n "${GIFNO_DATA_ROOT:-}" ]]; then
+    DATA_ROOT="${GIFNO_DATA_ROOT}"
+elif [[ -n "${SCRATCH:-}" ]]; then
+    DATA_ROOT="${SCRATCH}/gifno_data"
+elif [[ -d "/scratch/${USER}/gifno_data" ]]; then
+    DATA_ROOT="/scratch/${USER}/gifno_data"
+else
+    DATA_ROOT="${HOME}/gifno_data"
+fi
 
 echo "=== Delta GIFNO setup ==="
 echo "PROJECT_ROOT=${PROJECT_ROOT}"
@@ -21,9 +29,16 @@ echo "DATA_ROOT=${DATA_ROOT}"
 echo "SCRATCH=${SCRATCH:-unset}"
 echo "========================="
 
-module purge
-module load python/3.11
-module load cuda/12.4
+# Delta RH9: keep default Cray PE + cudatoolkit; Savio-style python/3.11 is unavailable.
+load_delta_python() {
+    if module is-loaded python 2>/dev/null; then
+        return 0
+    fi
+    module load gcc python 2>/dev/null || module load python
+}
+load_delta_python
+DELTA_PYTHON="$(which python)"
+echo "Python: ${DELTA_PYTHON} ($("${DELTA_PYTHON}" --version))"
 
 if ! command -v uv &>/dev/null; then
     echo "Installing uv..."
@@ -32,7 +47,7 @@ if ! command -v uv &>/dev/null; then
 fi
 
 cd "${PROJECT_ROOT}"
-uv venv .venv --python 3.11
+uv venv .venv --python "${DELTA_PYTHON}"
 source .venv/bin/activate
 uv sync
 
