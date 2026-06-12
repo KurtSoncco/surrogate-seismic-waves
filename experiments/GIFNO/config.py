@@ -89,8 +89,8 @@ LOSS_REL_WEIGHT: float = 1.0
 LOSS_H1_WEIGHT: float = 0.0
 LOSS_FREQ_WEIGHT: float = 0.00
 LOSS_P: int = 2
-HARD_MINING: bool = False
-HARD_MINING_POWER: float = 1.0
+HARD_MINING: bool = True
+HARD_MINING_POWER: float = 2.0
 FREQ_LOSS_LOG_WEIGHT: bool = True
 
 
