@@ -63,7 +63,8 @@ ssh "${DELTA_USER}@${DELTA_HOST}" "cd ${REMOTE_REPO} && bash experiments/GIFNO/d
 # --- 5. Smoke test on GPU ---
 step "6/6  Smoke test (interactive GPU, --limit 50)"
 echo "Fetching Delta account..."
-DELTA_ACCOUNT="$(ssh "${DELTA_USER}@${DELTA_HOST}" "accounts 2>/dev/null | awk '/^[a-z]/ {print \$1; exit}'" || true)"
+DELTA_ACCOUNT="$(ssh "${DELTA_USER}@${DELTA_HOST}" "accounts 2>/dev/null | awk '/delta-gpu/ {print \$1; exit}'" || true)"
+DELTA_ACCOUNT="${DELTA_ACCOUNT:-bgpu-delta-gpu}"
 if [[ -z "${DELTA_ACCOUNT}" ]]; then
     echo "Could not auto-detect account. Run manually:"
     echo "  ssh ${DELTA_USER}@${DELTA_HOST}"
@@ -88,5 +89,4 @@ echo ""
 echo "All done. Full training:"
 echo "  ssh ${DELTA_USER}@${DELTA_HOST}"
 echo "  cd ${REMOTE_REPO}/experiments/GIFNO"
-echo "  # Edit #SBATCH --account= in delta_train.sh, then:"
-echo "  sbatch delta_train.sh"
+echo "  sbatch delta_train.sh   # account=bgpu-delta-gpu"

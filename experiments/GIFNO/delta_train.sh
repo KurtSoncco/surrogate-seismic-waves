@@ -20,7 +20,7 @@
 # W&B: experiments/GIFNO/lambda_secrets.env (gitignored) — copy to Delta scratch.
 
 #SBATCH --job-name=gifno_train
-#SBATCH --account=bgpu
+#SBATCH --account=bgpu-delta-gpu
 #SBATCH --partition=gpuA100x4
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

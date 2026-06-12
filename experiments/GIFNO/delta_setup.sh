@@ -89,16 +89,16 @@ if [[ -d "${DATA_ROOT}/h5" ]]; then
 fi
 
 echo ""
-echo "--- Delta account (for sbatch/srun) ---"
+echo "--- SLURM accounts (for sbatch/srun) ---"
 if command -v accounts &>/dev/null; then
     accounts
-    echo "Set DELTA_ACCOUNT in delta_train.sh #SBATCH --account= line"
+    echo "GPU jobs: DELTA_ACCOUNT=${DELTA_ACCOUNT:-bgpu-delta-gpu} (set in delta_env.sh)"
 else
-    echo "Run 'accounts' to find your allocation name"
+    echo "Run 'accounts' to find your billing account"
 fi
 
 echo ""
 echo "Setup complete. Smoke test:"
-echo "  srun --account=<YOUR_ACCOUNT> --partition=gpuA100x4-interactive \\"
+echo "  srun --account=${DELTA_ACCOUNT:-bgpu-delta-gpu} --partition=gpuA100x4-interactive \\"
 echo "    --gpus-per-node=1 --cpus-per-task=4 --mem=32g --time=00:30:00 \\"
 echo "    bash experiments/GIFNO/delta_train.sh --limit 50"
