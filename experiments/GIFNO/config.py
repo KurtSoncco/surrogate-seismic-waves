@@ -90,7 +90,7 @@ TEST_SPLIT: float = 0.15
 SEED: int = 42
 EARLY_STOP_PATIENCE: int = 80
 GRAD_CLIP_NORM: float = 1.0
-NUM_WORKERS: int = 8
+NUM_WORKERS: int = 4
 
 # --- W&B ---
 WANDB_PROJECT: str = "gifno_fno"
