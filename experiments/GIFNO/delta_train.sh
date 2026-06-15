@@ -27,7 +27,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus-per-node=1
 #SBATCH --mem=32g
-#SBATCH --time=04:00:00
+#SBATCH --time=06:00:00
 #SBATCH --output=gifno_train.o%j
 #SBATCH --error=gifno_train.e%j
 

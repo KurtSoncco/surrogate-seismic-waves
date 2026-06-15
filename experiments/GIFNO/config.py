@@ -44,6 +44,12 @@ for d in (TF_RESULTS_DIR, MODEL_SAVE_DIR, RESULTS_SAVE_DIR):
         # CI and other environments may not have access to remote data mounts.
         pass
 
+# --- Input normalization (per sample; TF targets stay in physical units) ---
+NORMALIZE_VS_SURFACE: bool = True  # Vs / Vs(surface, x) per column
+NORMALIZE_ZETA: bool = True  # zeta / max(zeta) over active depth rows
+VS_NORM_EPS: float = 1e-6
+ZETA_NORM_EPS: float = 1e-12
+
 # --- H5 / grid ---
 NZ_MAX: int = 128
 NX_FULL: int = 1500  # full OpenSees domain (500 m BC + 500 m variability + 500 m BC)

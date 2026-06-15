@@ -66,6 +66,22 @@ def _build_sample_coord_grids(
     return x_coord, z_coord
 
 
+def _normalize_vs_by_surface(vs: np.ndarray, eps: float) -> np.ndarray:
+    """Divide each column by its surface Vs (row 0); padded rows scale the same way."""
+    surface = np.maximum(vs[0:1, :], eps)
+    return (vs / surface).astype(np.float32)
+
+
+def _normalize_zeta_by_max(zeta: np.ndarray, nz: int, eps: float) -> np.ndarray:
+    """Divide by peak damping over active depth rows (excludes zero-padded tail)."""
+    if nz <= 0:
+        return zeta
+    zeta_max = float(np.max(zeta[:nz, :]))
+    if zeta_max < eps:
+        return zeta
+    return (zeta / zeta_max).astype(np.float32)
+
+
 def _scatter_tf_to_grid(
     tf_lateral: np.ndarray,
     recorder_x_idx: np.ndarray,
@@ -131,6 +147,11 @@ class GIFNODataset(Dataset):
 
         if vs[0].max() <= 0:
             raise ValueError(f"Surface row has zero Vs in {h5_path}")
+
+        if config.NORMALIZE_VS_SURFACE:
+            vs = _normalize_vs_by_surface(vs, config.VS_NORM_EPS)
+        if config.NORMALIZE_ZETA:
+            zeta = _normalize_zeta_by_max(zeta, nz, config.ZETA_NORM_EPS)
 
         x = np.stack([vs, zeta, x_coord, z_coord], axis=0)
         tf_lateral = self.tf_array[idx]
