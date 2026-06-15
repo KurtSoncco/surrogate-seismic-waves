@@ -52,3 +52,6 @@ logs/
 # OS files
 .DS_Store
 Thumbs.db
+
+# GIFNO local test / fallback data (no Box mount required)
+experiments/GIFNO/dummy_data/

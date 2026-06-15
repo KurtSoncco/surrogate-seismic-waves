@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -10,6 +11,7 @@ import numpy as np
 import torch
 
 GIFNO_DIR = Path(__file__).resolve().parents[1]
+os.environ.setdefault("GIFNO_DATA_ROOT", str(GIFNO_DIR / "dummy_data"))
 if str(GIFNO_DIR) not in sys.path:
     sys.path.insert(0, str(GIFNO_DIR))
 

@@ -10,14 +10,21 @@ import torch
 
 # --- Paths ---
 EXPERIMENT_DIR = Path(__file__).resolve().parent
+_BOX_DATA_ROOT = Path("/mnt/box_lab/Projects/Neural Operator/data")
+_DUMMY_DATA_ROOT = EXPERIMENT_DIR / "dummy_data"
+
+
+def _resolve_data_root() -> Path:
+    """Prefer explicit env, then writable Box mount, else local dummy data."""
+    if env_root := os.environ.get("GIFNO_DATA_ROOT"):
+        return Path(env_root)
+    if _BOX_DATA_ROOT.exists() and os.access(_BOX_DATA_ROOT, os.W_OK | os.X_OK):
+        return _BOX_DATA_ROOT
+    return _DUMMY_DATA_ROOT
+
 
 # Data root: Box locally, Savio scratch on HPC (set GIFNO_DATA_ROOT in job script).
-DATA_ROOT = Path(
-    os.environ.get(
-        "GIFNO_DATA_ROOT",
-        "/mnt/box_lab/Projects/Neural Operator/data",
-    )
-)
+DATA_ROOT = _resolve_data_root()
 H5_DIR = Path(os.environ.get("GIFNO_H5_DIR", DATA_ROOT / "h5"))
 TF_RESULTS_DIR = Path(os.environ.get("GIFNO_TF_DIR", DATA_ROOT / "transfer_function"))
 MODEL_SAVE_DIR = Path(os.environ.get("GIFNO_MODEL_DIR", TF_RESULTS_DIR / "models"))
@@ -31,7 +38,11 @@ MANIFEST_PATH = TF_RESULTS_DIR / "manifest.csv"
 MODEL_SAVE_PATH = MODEL_SAVE_DIR / "best_model.pt"
 
 for d in (TF_RESULTS_DIR, MODEL_SAVE_DIR, RESULTS_SAVE_DIR):
-    d.mkdir(parents=True, exist_ok=True)
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # CI and other environments may not have access to remote data mounts.
+        pass
 
 # --- H5 / grid ---
 NZ_MAX: int = 128
