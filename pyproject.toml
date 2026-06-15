@@ -40,6 +40,9 @@ dev = [
 [tool.setuptools]
 packages = ["wave_surrogate"]
 
+[tool.pytest.ini_options]
+addopts = "--ignore=experiments/dae"
+
 [tool.uv]
 package = true
 extra-index-url = ["https://download.pytorch.org/whl/cu126"]
