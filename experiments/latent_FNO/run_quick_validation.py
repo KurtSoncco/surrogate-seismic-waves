@@ -57,31 +57,31 @@ def parse_experiment_results(output: str) -> dict:
         if "Test MSE:" in line:
             try:
                 results["test_mse"] = float(line.split("Test MSE:")[1].strip())
-            except:
+            except (ValueError, IndexError):
                 pass
         elif "Test MAE:" in line:
             try:
                 results["test_mae"] = float(line.split("Test MAE:")[1].strip())
-            except:
+            except (ValueError, IndexError):
                 pass
         elif "Test Correlation:" in line:
             try:
                 results["test_correlation"] = float(
                     line.split("Test Correlation:")[1].strip()
                 )
-            except:
+            except (ValueError, IndexError):
                 pass
         elif "min sample correlation:" in line.lower():
             try:
                 results["min_sample_correlation"] = float(line.split(":")[1].strip())
-            except:
+            except (ValueError, IndexError):
                 pass
         elif "Best validation loss:" in line:
             try:
                 results["best_val_loss"] = float(
                     line.split("Best validation loss:")[1].split("at")[0].strip()
                 )
-            except:
+            except (ValueError, IndexError):
                 pass
 
     return results

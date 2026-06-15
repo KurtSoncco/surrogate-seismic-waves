@@ -97,7 +97,6 @@ def run_ablation_study():
         train_loader, val_loader, test_loader, freq_data = trainer.load_data()
 
         # Quick training for ablation (fewer epochs)
-        original_epochs = config.num_epochs
         config.num_epochs = 50  # Reduced for quick ablation
 
         # Train model
@@ -256,11 +255,11 @@ def main():
         if args.batch_size:
             config.batch_size = args.batch_size
 
-        results = train_experiment(args.config, args.wandb)
+        train_experiment(args.config, args.wandb)
         print("Training completed successfully!")
 
     elif args.command == "ablation":
-        results = run_ablation_study()
+        run_ablation_study()
         print("Ablation study completed!")
 
     elif args.command == "compare":

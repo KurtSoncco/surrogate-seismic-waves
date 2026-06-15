@@ -3,11 +3,10 @@ from pathlib import Path
 from typing import Tuple
 
 import numpy as np
-import pandas as pd
 import torch
-from dataloader import get_material_dataloaders
 from dotenv import load_dotenv
 from sklearn.preprocessing import MinMaxScaler
+from dataloader import get_material_dataloaders
 from test import test_model_dae  # type: ignore
 from train import train_stage1, train_stage2
 from utils import TrainingConfig, init_wandb
@@ -51,25 +50,10 @@ def load_data(
     Returns:
         A tuple containing the train, validation, and test DataLoader objects.
     """
-    config = TrainingConfig()
-    dataset_file = config.vs_data_path
-
-    try:
-        # Load the dataset
-        data = pd.read_parquet(dataset_file)
-        vs_profiles_list = data["model_data"].tolist()
-        logger.info(
-            f"Loaded and converted {len(vs_profiles_list)} profiles from {dataset_file}."
-        )
-    except FileNotFoundError:
-        logger.error(f"Dataset file not found: {dataset_file}")
-        raise
-
-    return get_vs_dataloaders(
-        vs_profiles=vs_profiles_list,
+    return get_material_dataloaders(
+        dataset_path=config.materials_data_path,
         batch_size=config.batch_size,
-        save_path=config.model_dir,
-        config=config,
+        save_path=str(config.model_dir),
     )
 
 

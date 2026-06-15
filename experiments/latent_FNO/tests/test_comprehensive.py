@@ -30,6 +30,7 @@ else:
     if fallback not in sys.path:
         sys.path.insert(0, fallback)
 
+# ruff: noqa: E402
 from src.configs.config import get_config
 from src.models.pipeline import (
     AblationStudyPipeline,

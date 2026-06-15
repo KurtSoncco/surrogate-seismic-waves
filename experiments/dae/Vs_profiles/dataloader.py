@@ -71,7 +71,9 @@ class MaterialsDataset(Dataset):
                     lengths_list.append(0)
                     last_vals.append(torch.tensor(0.0, dtype=torch.float32))
                 else:
-                    arr = torch.from_numpy(np.nan_to_num(np.asarray(p, dtype=np.float32)))
+                    arr = torch.from_numpy(
+                        np.nan_to_num(np.asarray(p, dtype=np.float32))
+                    )
                     tensors.append(arr)
                     lengths_list.append(min(arr.numel(), max_raw_len))
                     last_vals.append(arr[-1])
@@ -230,7 +232,13 @@ def get_material_dataloaders(
 
         # Create the depth coordinate grid based on fixed spacing (vectorized)
         num_points = data_tensor.shape[2]
-        depth_grid = torch.linspace(0, spacing_z * (num_points - 1), num_points, dtype=data_tensor.dtype, device=data_tensor.device)
+        depth_grid = torch.linspace(
+            0,
+            spacing_z * (num_points - 1),
+            num_points,
+            dtype=data_tensor.dtype,
+            device=data_tensor.device,
+        )
         grid_tensor = depth_grid.unsqueeze(0).repeat(data_tensor.shape[0], 1)
 
         # Concatenate grid as an extra channel: output shape (B, 4, L)

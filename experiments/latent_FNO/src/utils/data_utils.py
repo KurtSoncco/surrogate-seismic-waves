@@ -54,38 +54,40 @@ class SeismicDataLoader:
             Tuple of (vs_data, ttf_data, freq_data)
         """
         import pickle
-        
+
         # Load Vs profiles using pickle (as used in SpecBoost)
         with open(self.vs_data_path, "rb") as f:
             vs_profiles = np.array(pickle.load(f), dtype=object)
-        
+
         # Process Vs profiles to match expected input dimension
         processed_profiles = []
         for profile in vs_profiles:
             # Convert to numeric array and handle NaN/inf values
             numeric_p = np.array(profile, dtype=float)
             cleaned_p = np.nan_to_num(numeric_p, nan=0.0, posinf=0.0, neginf=0.0)
-            
+
             # Pad or truncate to desired input dimension
             if len(cleaned_p) < self.input_dim:
-                padded = np.pad(cleaned_p, (0, self.input_dim - len(cleaned_p)), mode='edge')
+                padded = np.pad(
+                    cleaned_p, (0, self.input_dim - len(cleaned_p)), mode="edge"
+                )
             else:
-                padded = cleaned_p[:self.input_dim]
-            
+                padded = cleaned_p[: self.input_dim]
+
             processed_profiles.append(padded)
-        
+
         self.vs_data = torch.tensor(np.array(processed_profiles), dtype=torch.float32)
 
         # Load transfer functions using pickle
         with open(self.ttf_data_path, "rb") as f:
             ttf_data_raw = np.array(pickle.load(f))
-        
+
         # Process TTF data
         processed_ttf = []
         for ttf in ttf_data_raw:
             cleaned_ttf = np.nan_to_num(ttf, nan=0.0, posinf=0.0, neginf=0.0)
             processed_ttf.append(cleaned_ttf)
-        
+
         self.ttf_data = torch.tensor(np.array(processed_ttf), dtype=torch.float32)
 
         # Load frequency data

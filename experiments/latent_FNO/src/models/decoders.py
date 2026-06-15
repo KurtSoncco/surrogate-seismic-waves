@@ -266,7 +266,9 @@ class AutoEncoderDecoder(BaseDecoder):
     def load_pretrained_decoder(self, decoder_path: str):
         """Load pre-trained decoder weights."""
         try:
-            state_dict = torch.load(decoder_path, map_location="cpu", weights_only=False)
+            state_dict = torch.load(
+                decoder_path, map_location="cpu", weights_only=False
+            )
             self.decoder.load_state_dict(state_dict)
             print(f"Loaded pre-trained decoder from {decoder_path}")
         except Exception as e:
@@ -295,12 +297,12 @@ class FNOOperatorDecoder(BaseDecoder):
 
         self.fno_modes = fno_modes
         self.fno_width = fno_width
-        
+
         # Use a FFT-friendly length if not specified
         if fft_length is None:
             # Find the smallest power of 2 >= output_dim
             fft_length = 2 ** int(np.ceil(np.log2(output_dim)))
-        
+
         self.fft_length = fft_length
 
         # Project latent to FNO width

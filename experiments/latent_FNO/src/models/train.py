@@ -295,7 +295,9 @@ class LatentFNOTrainer:
         # Load best model
         checkpoint_path = self.config.model_save_dir / "best_model.pth"
         if checkpoint_path.exists():
-            checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
+            checkpoint = torch.load(
+                checkpoint_path, map_location=self.device, weights_only=False
+            )
             self.model.load_state_dict(checkpoint["model_state_dict"])
             print(f"Loaded best model from epoch {checkpoint['epoch']}")
 
