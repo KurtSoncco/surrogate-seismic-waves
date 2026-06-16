@@ -1,0 +1,4 @@
+# GIFNO-FDO architecture sweep @ --limit 2000 (H1=0.25 backbone)
+fdn_h1
+fdn_h1_wide	DEEPONET_LATENT_DIM=128
+fdn_h1_depth	BRANCH_MODE=depth
