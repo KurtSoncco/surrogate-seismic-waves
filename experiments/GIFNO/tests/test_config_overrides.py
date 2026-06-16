@@ -108,6 +108,15 @@ def test_default_latent_channels_is_96():
     cfg = _reload_config()
     assert cfg.LATENT_CHANNELS == 96
     assert cfg.HARD_MINING is False
+    assert cfg.BATCH_SIZE == 16
+    assert cfg.NUM_WORKERS == 4
+    assert cfg.USE_AMP is True
+
+
+def test_env_override_use_amp_false(monkeypatch):
+    monkeypatch.setenv("GIFNO_USE_AMP", "false")
+    cfg = _reload_config()
+    assert cfg.USE_AMP is False
 
 
 def test_sweep_variants_r2_loads_nine():

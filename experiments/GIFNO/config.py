@@ -83,14 +83,16 @@ DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cp
 LEARNING_RATE: float = 1e-3
 WEIGHT_DECAY: float = 1e-4
 NUM_EPOCHS: int = 1500
-BATCH_SIZE: int = 8
+BATCH_SIZE: int = 16  # A100-friendly; override with GIFNO_BATCH_SIZE if OOM
 TRAIN_SPLIT: float = 0.7
 VAL_SPLIT: float = 0.15
 TEST_SPLIT: float = 0.15
 SEED: int = 42
 EARLY_STOP_PATIENCE: int = 80
 GRAD_CLIP_NORM: float = 1.0
-NUM_WORKERS: int = 4
+NUM_WORKERS: int = 4  # match Slurm --cpus-per-task=4; more workers triggers dataloader warnings
+USE_AMP: bool = True  # mixed precision on CUDA (GIFNO_USE_AMP=false to disable)
+TORCH_COMPILE: bool = False  # off by default (FNO spectral layers may not compile cleanly)
 
 # --- W&B ---
 WANDB_PROJECT: str = "gifno_fno"
@@ -129,6 +131,8 @@ def _parse_gifno_env_value(key: str, raw: str):
         "NORMALIZE_ZETA",
         "FREQ_LOSS_LOG_WEIGHT",
         "LOG_TF_LOSS",
+        "USE_AMP",
+        "TORCH_COMPILE",
     ):
         return raw.lower() in ("1", "true", "yes", "on")
     if key in (
@@ -182,6 +186,8 @@ _OVERRIDABLE_KEYS = (
     "LOG_TF_LOSS",
     "VALLEY_LOSS_WEIGHT",
     "VALLEY_PERCENTILE",
+    "USE_AMP",
+    "TORCH_COMPILE",
     "WANDB_RUN_NAME",
 )
 

@@ -30,8 +30,8 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus-per-node=1
-#SBATCH --mem=32g
-#SBATCH --time=06:00:00
+#SBATCH --mem=48g
+#SBATCH --time=08:00:00
 #SBATCH --output=gifno_train.o%j
 #SBATCH --error=gifno_train.e%j
 
@@ -77,6 +77,11 @@ export GIFNO_TF_DIR="${DATA_ROOT}/transfer_function"
 export GIFNO_MODEL_DIR="${GIFNO_MODEL_DIR:-${GIFNO_TF_DIR}/models}"
 export GIFNO_RESULTS_DIR="${GIFNO_RESULTS_DIR:-${GIFNO_TF_DIR}/results}"
 
+# Speed defaults (1 GPU): larger batch + AMP; keep 4 workers to match --cpus-per-task=4
+export GIFNO_BATCH_SIZE="${GIFNO_BATCH_SIZE:-16}"
+export GIFNO_NUM_WORKERS="${GIFNO_NUM_WORKERS:-4}"
+export GIFNO_USE_AMP="${GIFNO_USE_AMP:-true}"
+
 for req in \
     "${GIFNO_H5_DIR}" \
     "${GIFNO_TF_DIR}/tf_per_sample.npy" \
@@ -105,6 +110,7 @@ echo "=== GIFNO training on Delta ==="
 echo "PROJECT_ROOT=${PROJECT_ROOT}"
 echo "GIFNO_DATA_ROOT=${GIFNO_DATA_ROOT}"
 echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo n/a)"
+echo "Speed:  BATCH_SIZE=${GIFNO_BATCH_SIZE} NUM_WORKERS=${GIFNO_NUM_WORKERS} USE_AMP=${GIFNO_USE_AMP}"
 echo "TF cache: ${GIFNO_TF_DIR}"
 echo "H5 dir:   ${GIFNO_H5_DIR} ($(ls "${GIFNO_H5_DIR}"/run_*.h5 2>/dev/null | wc -l) files)"
 echo "Args:     $*"

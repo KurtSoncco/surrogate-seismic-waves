@@ -14,6 +14,10 @@ from metrics import compute_val_tail_metrics_torch
 from model import create_model
 
 
+def _use_amp() -> bool:
+    return config.USE_AMP and config.DEVICE.type == "cuda"
+
+
 def train_model(train_loader, val_loader):
     """Main training and validation loop."""
     model = create_model(
@@ -24,10 +28,18 @@ def train_model(train_loader, val_loader):
         num_fno_layers=config.NUM_FNO_LAYERS,
     ).to(config.DEVICE)
 
+    if config.TORCH_COMPILE and hasattr(torch, "compile"):
+        model = torch.compile(model)
+
     dummy = torch.randn(1, config.IN_CHANNELS, config.NZ_MAX, config.NX).to(
         config.DEVICE
     )
     assert model(dummy).shape == (1, config.NX, config.N_FREQ)
+
+    amp_enabled = _use_amp()
+    scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
+    autocast = torch.autocast(device_type="cuda", enabled=amp_enabled)
+    non_blocking = amp_enabled
 
     criterion = build_training_loss()
     optimizer = optim.Adam(
@@ -58,16 +70,19 @@ def train_model(train_loader, val_loader):
         train_loss = 0.0
         n_train = 0
         for inputs, targets, masks in train_loader:
-            inputs = inputs.to(config.DEVICE)
-            targets = targets.to(config.DEVICE)
-            masks = masks.to(config.DEVICE)
+            inputs = inputs.to(config.DEVICE, non_blocking=non_blocking)
+            targets = targets.to(config.DEVICE, non_blocking=non_blocking)
+            masks = masks.to(config.DEVICE, non_blocking=non_blocking)
 
-            outputs = model(inputs)
-            loss = criterion(outputs, targets, masks)
-            optimizer.zero_grad()
-            loss.backward()
+            optimizer.zero_grad(set_to_none=True)
+            with autocast:
+                outputs = model(inputs)
+                loss = criterion(outputs, targets, masks)
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), config.GRAD_CLIP_NORM)
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
 
             train_loss += loss.item() * inputs.size(0)
             n_train += inputs.size(0)
@@ -79,11 +94,12 @@ def train_model(train_loader, val_loader):
         n_val = 0
         with torch.no_grad():
             for inputs, targets, masks in val_loader:
-                inputs = inputs.to(config.DEVICE)
-                targets = targets.to(config.DEVICE)
-                masks = masks.to(config.DEVICE)
-                outputs = model(inputs)
-                loss = criterion(outputs, targets, masks)
+                inputs = inputs.to(config.DEVICE, non_blocking=non_blocking)
+                targets = targets.to(config.DEVICE, non_blocking=non_blocking)
+                masks = masks.to(config.DEVICE, non_blocking=non_blocking)
+                with autocast:
+                    outputs = model(inputs)
+                    loss = criterion(outputs, targets, masks)
                 val_loss += loss.item() * inputs.size(0)
                 n_val += inputs.size(0)
 

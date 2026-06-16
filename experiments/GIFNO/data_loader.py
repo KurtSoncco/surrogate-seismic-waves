@@ -204,25 +204,28 @@ def get_data_loaders(
     val_idx = perm[n_train : n_train + n_val]
     test_idx = perm[n_train + n_val :]
 
+    loader_kwargs = {
+        "batch_size": batch_size,
+        "num_workers": num_workers,
+        "pin_memory": True,
+    }
+    if num_workers > 0:
+        loader_kwargs["persistent_workers"] = True
+        loader_kwargs["prefetch_factor"] = 2
+
     train_loader = DataLoader(
         Subset(dataset, train_idx),
-        batch_size=batch_size,
         shuffle=True,
-        num_workers=num_workers,
-        pin_memory=True,
+        **loader_kwargs,
     )
     val_loader = DataLoader(
         Subset(dataset, val_idx),
-        batch_size=batch_size,
         shuffle=False,
-        num_workers=num_workers,
-        pin_memory=True,
+        **loader_kwargs,
     )
     test_loader = DataLoader(
         Subset(dataset, test_idx),
-        batch_size=batch_size,
         shuffle=False,
-        num_workers=num_workers,
-        pin_memory=True,
+        **loader_kwargs,
     )
     return train_loader, val_loader, test_loader, freq
