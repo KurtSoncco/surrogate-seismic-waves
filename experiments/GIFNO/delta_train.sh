@@ -80,7 +80,7 @@ export GIFNO_RESULTS_DIR="${GIFNO_RESULTS_DIR:-${GIFNO_TF_DIR}/results}"
 # Speed defaults (1 GPU): larger batch + AMP; keep 4 workers to match --cpus-per-task=4
 export GIFNO_BATCH_SIZE="${GIFNO_BATCH_SIZE:-16}"
 export GIFNO_NUM_WORKERS="${GIFNO_NUM_WORKERS:-4}"
-export GIFNO_USE_AMP="${GIFNO_USE_AMP:-true}"
+export GIFNO_USE_AMP="${GIFNO_USE_AMP:-false}"
 
 for req in \
     "${GIFNO_H5_DIR}" \

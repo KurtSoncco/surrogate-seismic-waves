@@ -110,7 +110,7 @@ def test_default_latent_channels_is_96():
     assert cfg.HARD_MINING is False
     assert cfg.BATCH_SIZE == 16
     assert cfg.NUM_WORKERS == 4
-    assert cfg.USE_AMP is True
+    assert cfg.USE_AMP is False
 
 
 def test_env_override_use_amp_false(monkeypatch):

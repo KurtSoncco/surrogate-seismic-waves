@@ -91,7 +91,7 @@ SEED: int = 42
 EARLY_STOP_PATIENCE: int = 80
 GRAD_CLIP_NORM: float = 1.0
 NUM_WORKERS: int = 4  # match Slurm --cpus-per-task=4; more workers triggers dataloader warnings
-USE_AMP: bool = True  # mixed precision on CUDA (GIFNO_USE_AMP=false to disable)
+USE_AMP: bool = False  # FNO spectral FFT fails in fp16/bf16 on (128, 500) grid
 TORCH_COMPILE: bool = False  # off by default (FNO spectral layers may not compile cleanly)
 
 # --- W&B ---
