@@ -4,6 +4,7 @@
 #   cd ~/surrogate-seismic-waves/experiments/GIFNO
 #   source delta_env.sh
 #   bash delta_sweep.sh              # 6 jobs, --limit 1000 each
+#   bash delta_sweep.sh --limit 4000 # 6 jobs, 4000 samples (separate W&B + checkpoints)
 #   bash delta_sweep.sh --dry-run    # print what would be submitted
 #
 # After comparing in W&B, rerun the winner at full scale:

@@ -27,6 +27,7 @@ wandb/
 # Data - NEVER commit large data files
 *.csv
 *.tsv
+!experiments/GIFNO/sweep_variants.tsv
 *.json
 *.parquet
 *.pkl

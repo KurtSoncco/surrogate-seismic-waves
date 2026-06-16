@@ -57,6 +57,24 @@ def test_env_override_wandb_run_name(monkeypatch):
     assert cfg.WANDB_RUN_NAME == "sweep_test_screen"
 
 
+def test_sweep_run_tag_and_paths():
+    from sweep_launch import SweepVariant, build_export_env, sweep_run_tag
+
+    assert sweep_run_tag(screen=True, limit=4000) == "n4000"
+    assert sweep_run_tag(screen=False, limit=None) == "full"
+
+    tf = Path("/data/transfer_function")
+    env = build_export_env(
+        SweepVariant("latent_wide", {"LATENT_CHANNELS": "96"}),
+        tf,
+        screen=True,
+        limit=4000,
+    )
+    assert env["WANDB_RUN_NAME"] == "sweep_latent_wide_n4000"
+    assert env["GIFNO_MODEL_DIR"].endswith("models/sweep/n4000/latent_wide")
+    assert env["GIFNO_LATENT_CHANNELS"] == "96"
+
+
 def test_sweep_variants_tsv_loads_six():
     from sweep_launch import load_variants
 

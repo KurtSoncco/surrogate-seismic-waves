@@ -17,9 +17,20 @@ class SweepVariant:
     overrides: dict[str, str] = field(default_factory=dict)
 
 
-def load_variants(path: Path) -> list[SweepVariant]:
+# Built-in fallback if sweep_variants.tsv was not synced to the cluster.
+DEFAULT_VARIANTS_TSV = """\
+baseline
+h1_strong\tLOSS_H1_WEIGHT=0.25
+fno_wide\tFNO_MODES=48,48
+latent_wide\tLATENT_CHANNELS=96
+freq_loss\tLOSS_FREQ_WEIGHT=0.05
+no_mining\tHARD_MINING=false
+"""
+
+
+def load_variants_from_text(text: str) -> list[SweepVariant]:
     variants: list[SweepVariant] = []
-    for line in path.read_text().splitlines():
+    for line in text.splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
@@ -38,17 +49,37 @@ def load_variants(path: Path) -> list[SweepVariant]:
     return variants
 
 
+def load_variants(path: Path) -> list[SweepVariant]:
+    if path.is_file():
+        return load_variants_from_text(path.read_text())
+    print(
+        f"[GIFNO sweep] WARNING: {path} not found — using built-in default variants.",
+        file=sys.stderr,
+        flush=True,
+    )
+    return load_variants_from_text(DEFAULT_VARIANTS_TSV)
+
+
+def sweep_run_tag(*, screen: bool, limit: int | None) -> str:
+    """Unique tag for W&B and output dirs (e.g. n1000, n4000, full)."""
+    if not screen:
+        return "full"
+    return f"n{limit}" if limit is not None else "screen"
+
+
 def build_export_env(
     variant: SweepVariant,
     tf_dir: Path,
     *,
     screen: bool,
+    limit: int | None,
 ) -> dict[str, str]:
-    suffix = "screen" if screen else "full"
+    tag = sweep_run_tag(screen=screen, limit=limit)
+    sweep_root = "sweep" if tag == "full" else f"sweep/{tag}"
     env = {
-        "WANDB_RUN_NAME": f"sweep_{variant.name}_{suffix}",
-        "GIFNO_MODEL_DIR": str(tf_dir / "models" / "sweep" / variant.name),
-        "GIFNO_RESULTS_DIR": str(tf_dir / "results" / "sweep" / variant.name),
+        "WANDB_RUN_NAME": f"sweep_{variant.name}_{tag}",
+        "GIFNO_MODEL_DIR": str(tf_dir / "models" / sweep_root / variant.name),
+        "GIFNO_RESULTS_DIR": str(tf_dir / "results" / sweep_root / variant.name),
     }
     for key, val in variant.overrides.items():
         env[f"GIFNO_{key}"] = val
@@ -65,7 +96,7 @@ def submit_job(
     dry_run: bool,
 ) -> str | None:
     env = os.environ.copy()
-    env.update(build_export_env(variant, tf_dir, screen=screen))
+    env.update(build_export_env(variant, tf_dir, screen=screen, limit=limit))
 
     cmd = ["sbatch", f"--job-name=gifno_{variant.name}", "--export=ALL"]
     train_script = gifno_dir / "delta_train.sh"
