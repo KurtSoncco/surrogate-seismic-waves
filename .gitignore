@@ -29,6 +29,7 @@ wandb/
 *.tsv
 !experiments/GIFNO/sweep_variants.tsv
 !experiments/GIFNO/sweep_variants_r2.tsv
+!experiments/GIFNO/sweep_variants_r3.tsv
 *.json
 *.parquet
 *.pkl

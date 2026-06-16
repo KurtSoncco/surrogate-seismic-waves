@@ -82,6 +82,93 @@ def per_sample_rel_l2_numpy(
     return num / den
 
 
+def valley_mask_from_log_target(
+    target: np.ndarray,
+    percentile: float = config.VALLEY_PERCENTILE,
+) -> np.ndarray:
+    """
+    Boolean mask (..., F) for TF valleys: local minima in log(|TF|) and bottom
+    ``percentile`` of log(|TF|) per recorder curve.
+    """
+    log_t = np.log(np.maximum(np.abs(target), _EPS))
+    thresh = np.percentile(log_t, percentile, axis=-1, keepdims=True)
+    below = log_t <= thresh
+    local_min = np.zeros_like(below, dtype=bool)
+    if log_t.shape[-1] >= 3:
+        mid = log_t[..., 1:-1]
+        local_min[..., 1:-1] = (mid < log_t[..., :-2]) & (mid < log_t[..., 2:])
+    if log_t.shape[-1] >= 2:
+        local_min[..., 0] |= log_t[..., 0] < log_t[..., 1]
+        local_min[..., -1] |= log_t[..., -1] < log_t[..., -2]
+    return below | local_min
+
+
+def valley_mask_from_log_target_torch(
+    target: torch.Tensor,
+    percentile: float = config.VALLEY_PERCENTILE,
+) -> torch.Tensor:
+    """Torch version of ``valley_mask_from_log_target`` for (B, R, F) tensors."""
+    log_t = torch.log(target.abs().clamp_min(_EPS))
+    flat = log_t.reshape(-1, log_t.shape[-1])
+    q = max(0.0, min(100.0, percentile)) / 100.0
+    thresh = torch.quantile(flat, q, dim=1, keepdim=True)
+    thresh = thresh.view(*log_t.shape[:-1], 1)
+    below = log_t <= thresh
+    local_min = torch.zeros_like(below)
+    if log_t.shape[-1] >= 3:
+        mid = log_t[..., 1:-1]
+        local_min[..., 1:-1] = (mid < log_t[..., :-2]) & (mid < log_t[..., 2:])
+    if log_t.shape[-1] >= 2:
+        local_min[..., 0] = local_min[..., 0] | (log_t[..., 0] < log_t[..., 1])
+        local_min[..., -1] = local_min[..., -1] | (
+            log_t[..., -1] < log_t[..., -2]
+        )
+    return below | local_min.bool()
+
+
+def per_sample_linf_split_numpy(
+    pred: np.ndarray,
+    target: np.ndarray,
+    recorder_x: Optional[np.ndarray] = None,
+    percentile: float = config.VALLEY_PERCENTILE,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Per-sample max |error| at valley vs non-valley bins. Shapes (N,), (N,)."""
+    p = gather_recorder_tf_numpy(pred, recorder_x)
+    t = gather_recorder_tf_numpy(target, recorder_x)
+    err = np.abs(p - t)
+    n = len(pred)
+    linf_valley = np.zeros(n, dtype=np.float64)
+    linf_peak = np.zeros(n, dtype=np.float64)
+    for i in range(n):
+        vmask = valley_mask_from_log_target(t[i], percentile=percentile)
+        if np.any(vmask):
+            linf_valley[i] = float(np.max(err[i][vmask]))
+        if np.any(~vmask):
+            linf_peak[i] = float(np.max(err[i][~vmask]))
+    return linf_valley, linf_peak
+
+
+def per_sample_rel_l2_valley_numpy(
+    pred: np.ndarray,
+    target: np.ndarray,
+    recorder_x: Optional[np.ndarray] = None,
+    percentile: float = config.VALLEY_PERCENTILE,
+) -> np.ndarray:
+    """Relative L2 on valley bins only. Shape (N,)."""
+    p = gather_recorder_tf_numpy(pred, recorder_x)
+    t = gather_recorder_tf_numpy(target, recorder_x)
+    n = len(pred)
+    out = np.full(n, np.nan, dtype=np.float64)
+    for i in range(n):
+        vmask = valley_mask_from_log_target(t[i], percentile=percentile)
+        if not np.any(vmask):
+            continue
+        pv = p[i][vmask].reshape(-1)
+        tv = t[i][vmask].reshape(-1)
+        out[i] = np.linalg.norm(pv - tv) / (np.linalg.norm(tv) + _EPS)
+    return out
+
+
 def per_sample_linf_numpy(
     pred: np.ndarray,
     target: np.ndarray,
@@ -176,7 +263,7 @@ def distribution_summary(values: np.ndarray, prefix: str) -> Dict[str, float]:
         f"{prefix}_p50": float(p50),
         f"{prefix}_p90": float(p90),
     }
-    if prefix.endswith("linf"):
+    if "linf" in prefix:
         out[f"{prefix}_max"] = float(np.max(v))
     return out
 
@@ -189,9 +276,16 @@ def compute_per_sample_metrics_numpy(
 ) -> Dict[str, np.ndarray]:
     """Compute per-sample metric vectors."""
     recorder_x = recorder_x_indices_from_mask(masks[0])
+    linf_valley, linf_peak = per_sample_linf_split_numpy(
+        predictions, targets, recorder_x
+    )
+    rel_l2_valley = per_sample_rel_l2_valley_numpy(predictions, targets, recorder_x)
     return {
         "rel_l2": per_sample_rel_l2_numpy(predictions, targets, recorder_x),
         "linf": per_sample_linf_numpy(predictions, targets, recorder_x),
+        "linf_valley": linf_valley,
+        "linf_peak": linf_peak,
+        "rel_l2_valley": rel_l2_valley,
         "pearson": per_sample_pearson_numpy(predictions, targets, recorder_x),
         "h1_freq": per_sample_h1_freq_numpy(predictions, targets, freq, recorder_x),
     }
@@ -232,6 +326,9 @@ def aggregate_test_metrics(
 
     summary.update(distribution_summary(per_sample["rel_l2"], "test_rel_l2"))
     summary.update(distribution_summary(per_sample["linf"], "test_linf"))
+    summary.update(distribution_summary(per_sample["linf_valley"], "test_linf_valley"))
+    summary.update(distribution_summary(per_sample["linf_peak"], "test_linf_peak"))
+    summary.update(distribution_summary(per_sample["rel_l2_valley"], "test_rel_l2_valley"))
     summary.update(distribution_summary(per_sample["pearson"], "test_pearson"))
     summary.update(distribution_summary(per_sample["h1_freq"], "test_h1_freq"))
 

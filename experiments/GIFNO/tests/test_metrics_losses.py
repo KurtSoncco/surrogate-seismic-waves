@@ -86,9 +86,34 @@ def test_aggregate_test_metrics_keys():
     summary, per_sample = aggregate_test_metrics(pred, target, mask, freq)
     assert "test_rel_l2_p10" in summary
     assert "test_linf_max" in summary
+    assert "test_linf_valley_max" in summary
+    assert "test_linf_peak_max" in summary
+    assert "test_rel_l2_valley_mean" in summary
     assert "test_pearson_p10" in summary
     assert "test_h1_freq_mean" in summary
-    assert set(per_sample.keys()) == {"rel_l2", "linf", "pearson", "h1_freq"}
+    assert "linf_valley" in per_sample
+    assert "linf_peak" in per_sample
+    assert "rel_l2_valley" in per_sample
+
+
+def test_linf_valley_dominates_on_missed_dip():
+    from metrics import per_sample_linf_split_numpy, valley_mask_from_log_target
+
+    n_freq = 128
+    nx = config.NX
+    rec = config.recorder_x_indices()
+    freq = np.logspace(-1, 1, n_freq)
+    pred = np.zeros((1, nx, n_freq), dtype=np.float32)
+    target = np.zeros((1, nx, n_freq), dtype=np.float32)
+    x = rec[len(rec) // 2]
+    base = 1.0 + 0.2 * np.sin(2 * np.pi * freq / 3.0)
+    dip = 0.4 * np.exp(-((np.arange(n_freq) - 50) ** 2) / 40.0)
+    target[0, x, :] = base - dip
+    pred[0, x, :] = base - 0.1 * dip
+    vmask = valley_mask_from_log_target(target[0, x : x + 1, :])[0]
+    assert np.any(vmask)
+    linf_valley, linf_peak = per_sample_linf_split_numpy(pred, target)
+    assert linf_valley[0] >= linf_peak[0]
 
 
 def test_masked_lp_loss_forward():
@@ -98,6 +123,39 @@ def test_masked_lp_loss_forward():
     t_mask = torch.from_numpy(mask)
     loss = MaskedLpLoss()(t_pred, t_target, t_mask)
     assert loss.ndim == 0
+    assert float(loss) >= 0.0
+
+
+def test_composite_loss_log_tf_and_linf():
+    pred, target, mask, freq = _synthetic_batch()
+    t_pred = torch.from_numpy(pred)
+    t_target = torch.from_numpy(target)
+    t_mask = torch.from_numpy(mask)
+
+    crit = MaskedCompositeLoss(
+        rel_weight=1.0,
+        linf_weight=0.1,
+        log_tf_loss=True,
+        hard_mining=False,
+        freq=freq,
+    )
+    loss = crit(t_pred, t_target, t_mask)
+    assert float(loss) >= 0.0
+
+
+def test_composite_loss_valley_weighting():
+    pred, target, mask, freq = _synthetic_batch()
+    t_pred = torch.from_numpy(pred)
+    t_target = torch.from_numpy(target)
+    t_mask = torch.from_numpy(mask)
+
+    crit = MaskedCompositeLoss(
+        rel_weight=1.0,
+        valley_loss_weight=2.0,
+        hard_mining=False,
+        freq=freq,
+    )
+    loss = crit(t_pred, t_target, t_mask)
     assert float(loss) >= 0.0
 
 

@@ -80,6 +80,36 @@ def test_env_override_learning_rate(monkeypatch):
     assert cfg.LEARNING_RATE == 0.005
 
 
+def test_sweep_variants_r3_loads_four():
+    from sweep_launch import load_variants
+
+    path = GIFNO_DIR / "sweep_variants_r3.tsv"
+    variants = load_variants(path)
+    assert len(variants) == 4
+    logtf = next(v for v in variants if v.name == "lw_nm_logtf")
+    assert logtf.overrides["LOG_TF_LOSS"] == "true"
+    valley = next(v for v in variants if v.name == "lw_nm_valley")
+    assert valley.overrides["VALLEY_LOSS_WEIGHT"] == "2.0"
+
+
+def test_env_override_log_tf_loss(monkeypatch):
+    monkeypatch.setenv("GIFNO_LOG_TF_LOSS", "true")
+    cfg = _reload_config()
+    assert cfg.LOG_TF_LOSS is True
+
+
+def test_env_override_valley_loss_weight(monkeypatch):
+    monkeypatch.setenv("GIFNO_VALLEY_LOSS_WEIGHT", "2.0")
+    cfg = _reload_config()
+    assert cfg.VALLEY_LOSS_WEIGHT == 2.0
+
+
+def test_default_latent_channels_is_96():
+    cfg = _reload_config()
+    assert cfg.LATENT_CHANNELS == 96
+    assert cfg.HARD_MINING is False
+
+
 def test_sweep_variants_r2_loads_nine():
     from sweep_launch import load_variants
 

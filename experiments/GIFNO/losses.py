@@ -11,7 +11,7 @@ import torch.nn as nn
 from neuralop.losses import LpLoss
 
 import config
-from metrics import gather_recorder_tf_torch
+from metrics import gather_recorder_tf_torch, valley_mask_from_log_target_torch
 
 _EPS = 1e-8
 
@@ -79,20 +79,28 @@ class MaskedCompositeLoss(nn.Module):
         rel_weight: float = 1.0,
         h1_weight: float = 0.0,
         freq_weight: float = 0.0,
+        linf_weight: float = 0.0,
         p: int = 2,
         hard_mining: bool = False,
         hard_mining_power: float = 1.0,
         freq_loss_log_weight: bool = True,
+        log_tf_loss: bool = False,
+        valley_loss_weight: float = 0.0,
+        valley_percentile: float = 20.0,
         freq: Optional[np.ndarray] = None,
     ):
         super().__init__()
         self.rel_weight = rel_weight
         self.h1_weight = h1_weight
         self.freq_weight = freq_weight
+        self.linf_weight = linf_weight
         self.p = p
         self.hard_mining = hard_mining
         self.hard_mining_power = hard_mining_power
         self.freq_loss_log_weight = freq_loss_log_weight
+        self.log_tf_loss = log_tf_loss
+        self.valley_loss_weight = valley_loss_weight
+        self.valley_percentile = valley_percentile
         self.rel_loss = MaskedLpLoss(d=2, p=p)
 
         if freq is None:
@@ -113,10 +121,21 @@ class MaskedCompositeLoss(nn.Module):
             persistent=False,
         )
 
+    def _transform_for_rel_loss(
+        self, pred: torch.Tensor, target: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if not self.log_tf_loss:
+            return pred, target
+        return (
+            torch.log(pred.abs().clamp_min(_EPS)),
+            torch.log(target.abs().clamp_min(_EPS)),
+        )
+
     def _relative_lp_on_recorder(
         self, pred: torch.Tensor, target: torch.Tensor
     ) -> torch.Tensor:
         """Relative Lp per batch item on gathered recorder curves (B, R, F)."""
+        pred, target = self._transform_for_rel_loss(pred, target)
         diff = (pred - target).reshape(pred.shape[0], -1)
         y = target.reshape(target.shape[0], -1)
         p = self.p
@@ -130,6 +149,31 @@ class MaskedCompositeLoss(nn.Module):
             num = torch.sum(torch.abs(diff) ** p, dim=1) ** (1.0 / p)
             den = torch.sum(torch.abs(y) ** p, dim=1) ** (1.0 / p)
         return num / (den + _EPS)
+
+    def _valley_weighted_relative_lp(
+        self, pred: torch.Tensor, target: torch.Tensor
+    ) -> torch.Tensor:
+        """Relative L2 with extra weight on valley bins from the target curve."""
+        pred_t, target_t = self._transform_for_rel_loss(pred, target)
+        valley = valley_mask_from_log_target_torch(
+            target, percentile=self.valley_percentile
+        ).float()
+        weights = 1.0 + self.valley_loss_weight * valley
+        diff = (pred_t - target_t) * weights
+        y = target_t * weights
+        num = torch.linalg.norm(diff.reshape(diff.shape[0], -1), dim=1)
+        den = torch.linalg.norm(y.reshape(y.shape[0], -1), dim=1).clamp_min(_EPS)
+        return num / den
+
+    def _relative_linf_on_recorder(
+        self, pred: torch.Tensor, target: torch.Tensor
+    ) -> torch.Tensor:
+        """Mean per-sample relative max frequency error."""
+        pred_t, target_t = self._transform_for_rel_loss(pred, target)
+        rel_point = torch.abs(pred_t - target_t) / (
+            target_t.abs().clamp_min(_EPS) if self.log_tf_loss else target.abs().clamp_min(_EPS)
+        )
+        return rel_point.amax(dim=(1, 2))
 
     def _h1_log_freq_loss(
         self, pred: torch.Tensor, target: torch.Tensor
@@ -167,7 +211,10 @@ class MaskedCompositeLoss(nn.Module):
         t_rec = gather_recorder_tf_torch(target)
 
         if self.rel_weight > 0:
-            rel_ps = self._relative_lp_on_recorder(p_rec, t_rec)
+            if self.valley_loss_weight > 0:
+                rel_ps = self._valley_weighted_relative_lp(p_rec, t_rec)
+            else:
+                rel_ps = self._relative_lp_on_recorder(p_rec, t_rec)
         else:
             rel_ps = torch.zeros(pred.shape[0], device=pred.device)
 
@@ -181,6 +228,10 @@ class MaskedCompositeLoss(nn.Module):
             freq_loss = self._freq_domain_loss(p_rec, t_rec)
             total = total + self.freq_weight * freq_loss
 
+        if self.linf_weight > 0:
+            linf = self._relative_linf_on_recorder(p_rec, t_rec)
+            total = total + self.linf_weight * linf
+
         if self.hard_mining and total.numel() > 0:
             mean = total.mean().clamp_min(_EPS)
             weights = (total / mean) ** self.hard_mining_power
@@ -191,18 +242,26 @@ class MaskedCompositeLoss(nn.Module):
 
 def build_training_loss() -> nn.Module:
     """Factory using weights from config."""
-    if (
-        config.LOSS_H1_WEIGHT == 0.0
-        and config.LOSS_FREQ_WEIGHT == 0.0
-        and not config.HARD_MINING
-    ):
+    use_composite = (
+        config.LOSS_H1_WEIGHT != 0.0
+        or config.LOSS_FREQ_WEIGHT != 0.0
+        or config.LOSS_LINF_WEIGHT != 0.0
+        or config.VALLEY_LOSS_WEIGHT != 0.0
+        or config.LOG_TF_LOSS
+        or config.HARD_MINING
+    )
+    if not use_composite:
         return MaskedLpLoss(d=2, p=config.LOSS_P)
     return MaskedCompositeLoss(
         rel_weight=config.LOSS_REL_WEIGHT,
         h1_weight=config.LOSS_H1_WEIGHT,
         freq_weight=config.LOSS_FREQ_WEIGHT,
+        linf_weight=config.LOSS_LINF_WEIGHT,
         p=config.LOSS_P,
         hard_mining=config.HARD_MINING,
         hard_mining_power=config.HARD_MINING_POWER,
         freq_loss_log_weight=config.FREQ_LOSS_LOG_WEIGHT,
+        log_tf_loss=config.LOG_TF_LOSS,
+        valley_loss_weight=config.VALLEY_LOSS_WEIGHT,
+        valley_percentile=config.VALLEY_PERCENTILE,
     )

@@ -12,7 +12,13 @@
 #   bash delta_sweep.sh --dry-run    # print what would be submitted
 #
 # After comparing in W&B, rerun the winner at full scale:
-#   bash delta_sweep_rerun.sh lw_no_mine_fno --variants sweep_variants_r2.tsv --full
+#   bash delta_sweep_rerun.sh lw_no_mine --variants sweep_variants_r2.tsv --full
+#
+# Round 3 (valley/linf fixes, 4 jobs @ 2000 samples):
+#   bash delta_sweep.sh --variants sweep_variants_r3.tsv --limit 2000
+#
+# After round 3, full train with winner (default: lw_nm_logtf until W&B pick):
+#   bash delta_sweep_rerun.sh lw_nm_logtf --variants sweep_variants_r3.tsv --full
 
 set -euo pipefail
 

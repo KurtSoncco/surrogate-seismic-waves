@@ -19,6 +19,7 @@ from metrics import (
     aggregate_test_metrics,
     pearson_1d,
     recorder_x_indices_from_mask,
+    valley_mask_from_log_target,
 )
 
 
@@ -111,6 +112,8 @@ def _plot_central_tf_curve(
     freq: np.ndarray,
     save_path: Path,
     sample_label: str,
+    *,
+    mark_valleys: bool = False,
 ) -> None:
     """|TF| vs frequency at the central lateral recorder — pred vs target."""
     x_idx = _central_recorder_x(mask)
@@ -120,6 +123,17 @@ def _plot_central_tf_curve(
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.loglog(freq, t_line, "-", linewidth=2, label=f"target (x={x_idx})")
     ax.loglog(freq, p_line, "--", linewidth=2, label=f"pred (x={x_idx})")
+    if mark_valleys:
+        vmask = valley_mask_from_log_target(target[x_idx : x_idx + 1, :])[0]
+        if np.any(vmask):
+            ax.scatter(
+                freq[vmask],
+                t_line[vmask],
+                c="crimson",
+                s=18,
+                zorder=5,
+                label="valley bins (target)",
+            )
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("|TF|")
     ax.set_title(f"Central recorder |TF| — {sample_label}")
@@ -217,7 +231,7 @@ def _plot_per_sample_metric_boxplot(
     """Box plot comparing per-sample metric distributions."""
     labels = []
     data = []
-    for key in ("rel_l2", "pearson", "linf", "h1_freq"):
+    for key in ("rel_l2", "pearson", "linf", "linf_valley", "linf_peak", "h1_freq"):
         v = per_sample.get(key)
         if v is None:
             continue
@@ -350,12 +364,25 @@ def evaluate_model(
             sample_label=(
                 f"sample {i} (worst {rank + 1}/{len(worst_idx)}, "
                 f"rel_l2={per_sample['rel_l2'][i]:.3f}, "
-                f"r={per_sample['pearson'][i]:.3f})"
+                f"r={per_sample['pearson'][i]:.3f}, "
+                f"linf_valley={per_sample['linf_valley'][i]:.3f})"
             ),
+            mark_valleys=True,
         )
 
     pearson_plot_path = save_dir / "pearson_by_recorder_boxplot.png"
     _plot_pearson_boxplot(recorder_x, pearson_mat, pearson_plot_path)
+
+    _plot_metric_ecdf(
+        {
+            "rel_l2": per_sample["rel_l2"],
+            "pearson": per_sample["pearson"],
+            "linf_valley": per_sample["linf_valley"],
+            "linf_peak": per_sample["linf_peak"],
+        },
+        save_dir / "per_sample_linf_split_ecdf.png",
+        "Per-sample linf valley vs peak ECDF",
+    )
 
     ecdf_path = save_dir / "per_sample_ecdf.png"
     _plot_metric_ecdf(
@@ -399,6 +426,7 @@ def evaluate_model(
         for plot_key, plot_path, caption in [
             ("pearson_by_recorder", pearson_plot_path, "Pearson r per recorder"),
             ("per_sample_ecdf", ecdf_path, "Per-sample ECDF"),
+            ("per_sample_linf_split_ecdf", save_dir / "per_sample_linf_split_ecdf.png", "linf valley vs peak ECDF"),
             ("rel_l2_vs_pearson", scatter_path, "rel L2 vs Pearson scatter"),
             ("per_sample_metrics_boxplot", sample_box_path, "Per-sample metric boxplot"),
         ]:

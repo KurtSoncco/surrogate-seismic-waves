@@ -74,7 +74,7 @@ SMOOTH_COEFF: float = 500
 
 # --- Model ---
 IN_CHANNELS: int = 4
-LATENT_CHANNELS: int = 64
+LATENT_CHANNELS: int = 96
 FNO_MODES: Tuple[int, int] = (32, 32)
 NUM_FNO_LAYERS: int = 5
 
@@ -106,9 +106,13 @@ LOSS_REL_WEIGHT: float = 1.0
 LOSS_H1_WEIGHT: float = 0.1
 LOSS_FREQ_WEIGHT: float = 0.00
 LOSS_P: int = 2
-HARD_MINING: bool = True
+HARD_MINING: bool = False
 HARD_MINING_POWER: float = 2.0
 FREQ_LOSS_LOG_WEIGHT: bool = True
+LOG_TF_LOSS: bool = False  # train relative L2 on log(|TF|)
+LOSS_LINF_WEIGHT: float = 0.0  # relative max per-frequency error
+VALLEY_LOSS_WEIGHT: float = 0.0  # extra weight on TF valley bins in rel loss
+VALLEY_PERCENTILE: float = 20.0  # bottom percentile of log(|TF|) per recorder curve
 
 
 def _parse_gifno_env_value(key: str, raw: str):
@@ -119,7 +123,13 @@ def _parse_gifno_env_value(key: str, raw: str):
         if len(parts) != 2:
             raise ValueError(f"FNO_MODES expects two integers, got {raw!r}")
         return tuple(parts)
-    if key in ("HARD_MINING", "NORMALIZE_VS_SURFACE", "NORMALIZE_ZETA", "FREQ_LOSS_LOG_WEIGHT"):
+    if key in (
+        "HARD_MINING",
+        "NORMALIZE_VS_SURFACE",
+        "NORMALIZE_ZETA",
+        "FREQ_LOSS_LOG_WEIGHT",
+        "LOG_TF_LOSS",
+    ):
         return raw.lower() in ("1", "true", "yes", "on")
     if key in (
         "NUM_FNO_LAYERS",
@@ -138,6 +148,9 @@ def _parse_gifno_env_value(key: str, raw: str):
         "LOSS_REL_WEIGHT",
         "LOSS_H1_WEIGHT",
         "LOSS_FREQ_WEIGHT",
+        "LOSS_LINF_WEIGHT",
+        "VALLEY_LOSS_WEIGHT",
+        "VALLEY_PERCENTILE",
         "HARD_MINING_POWER",
         "GRAD_CLIP_NORM",
     ):
@@ -162,9 +175,13 @@ _OVERRIDABLE_KEYS = (
     "LOSS_REL_WEIGHT",
     "LOSS_H1_WEIGHT",
     "LOSS_FREQ_WEIGHT",
+    "LOSS_LINF_WEIGHT",
     "LOSS_P",
     "HARD_MINING",
     "HARD_MINING_POWER",
+    "LOG_TF_LOSS",
+    "VALLEY_LOSS_WEIGHT",
+    "VALLEY_PERCENTILE",
     "WANDB_RUN_NAME",
 )
 
