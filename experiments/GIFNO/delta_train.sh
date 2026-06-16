@@ -14,6 +14,10 @@
 # --- Full training (batch) ---
 #   cd experiments/GIFNO && sbatch delta_train.sh
 #
+# --- Hyperparameter sweep (6 parallel screening jobs) ---
+#   bash delta_sweep.sh
+#   bash delta_sweep_rerun.sh <variant> --full
+#
 # --- Local data upload (from WSL, Box mounted) ---
 #   bash experiments/GIFNO/delta_rsync_from_local.sh
 #
@@ -70,8 +74,8 @@ fi
 export GIFNO_DATA_ROOT="${DATA_ROOT}"
 export GIFNO_H5_DIR="${DATA_ROOT}/h5"
 export GIFNO_TF_DIR="${DATA_ROOT}/transfer_function"
-export GIFNO_MODEL_DIR="${GIFNO_TF_DIR}/models"
-export GIFNO_RESULTS_DIR="${GIFNO_TF_DIR}/results"
+export GIFNO_MODEL_DIR="${GIFNO_MODEL_DIR:-${GIFNO_TF_DIR}/models}"
+export GIFNO_RESULTS_DIR="${GIFNO_RESULTS_DIR:-${GIFNO_TF_DIR}/results}"
 
 for req in \
     "${GIFNO_H5_DIR}" \

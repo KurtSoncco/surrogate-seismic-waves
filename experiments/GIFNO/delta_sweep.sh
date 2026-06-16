@@ -1,0 +1,28 @@
+#!/bin/bash
+# Submit 6 parallel GIFNO screening jobs (one hyperparameter change each).
+#
+#   cd ~/surrogate-seismic-waves/experiments/GIFNO
+#   source delta_env.sh
+#   bash delta_sweep.sh              # 6 jobs, --limit 1000 each
+#   bash delta_sweep.sh --dry-run    # print what would be submitted
+#
+# After comparing in W&B, rerun the winner at full scale:
+#   bash delta_sweep_rerun.sh fno_wide --full
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=delta_env.sh
+[[ -f "${SCRIPT_DIR}/delta_env.sh" ]] && source "${SCRIPT_DIR}/delta_env.sh"
+# shellcheck source=delta_paths.sh
+source "${SCRIPT_DIR}/delta_paths.sh"
+
+DATA_ROOT="$(resolve_gifno_data_root)"
+export GIFNO_DATA_ROOT="${DATA_ROOT}"
+export GIFNO_TF_DIR="${DATA_ROOT}/transfer_function"
+
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+cd "${PROJECT_ROOT}"
+source "${PROJECT_ROOT}/.venv/bin/activate"
+
+exec python "${SCRIPT_DIR}/sweep_launch.py" "$@"

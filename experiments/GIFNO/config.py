@@ -111,6 +111,83 @@ HARD_MINING_POWER: float = 2.0
 FREQ_LOSS_LOG_WEIGHT: bool = True
 
 
+def _parse_gifno_env_value(key: str, raw: str):
+    """Parse GIFNO_<KEY> env string into the correct Python type."""
+    raw = raw.strip()
+    if key == "FNO_MODES":
+        parts = [int(x.strip()) for x in raw.split(",")]
+        if len(parts) != 2:
+            raise ValueError(f"FNO_MODES expects two integers, got {raw!r}")
+        return tuple(parts)
+    if key in ("HARD_MINING", "NORMALIZE_VS_SURFACE", "NORMALIZE_ZETA", "FREQ_LOSS_LOG_WEIGHT"):
+        return raw.lower() in ("1", "true", "yes", "on")
+    if key in (
+        "NUM_FNO_LAYERS",
+        "LATENT_CHANNELS",
+        "BATCH_SIZE",
+        "EARLY_STOP_PATIENCE",
+        "NUM_EPOCHS",
+        "SEED",
+        "NUM_WORKERS",
+        "LOSS_P",
+    ):
+        return int(raw)
+    if key in (
+        "LEARNING_RATE",
+        "WEIGHT_DECAY",
+        "LOSS_REL_WEIGHT",
+        "LOSS_H1_WEIGHT",
+        "LOSS_FREQ_WEIGHT",
+        "HARD_MINING_POWER",
+        "GRAD_CLIP_NORM",
+    ):
+        return float(raw)
+    if key == "WANDB_RUN_NAME":
+        return raw
+    raise KeyError(f"Unknown config override key: {key}")
+
+
+_OVERRIDABLE_KEYS = (
+    "LEARNING_RATE",
+    "WEIGHT_DECAY",
+    "NUM_EPOCHS",
+    "BATCH_SIZE",
+    "SEED",
+    "EARLY_STOP_PATIENCE",
+    "GRAD_CLIP_NORM",
+    "NUM_WORKERS",
+    "LATENT_CHANNELS",
+    "FNO_MODES",
+    "NUM_FNO_LAYERS",
+    "LOSS_REL_WEIGHT",
+    "LOSS_H1_WEIGHT",
+    "LOSS_FREQ_WEIGHT",
+    "LOSS_P",
+    "HARD_MINING",
+    "HARD_MINING_POWER",
+    "WANDB_RUN_NAME",
+)
+
+
+def apply_env_overrides() -> list[str]:
+    """Apply GIFNO_<KEY> and WANDB_RUN_NAME env overrides to module-level config."""
+    applied: list[str] = []
+    g = globals()
+    for key in _OVERRIDABLE_KEYS:
+        env_key = "WANDB_RUN_NAME" if key == "WANDB_RUN_NAME" else f"GIFNO_{key}"
+        raw = os.environ.get(env_key)
+        if raw is None or raw == "":
+            continue
+        g[key] = _parse_gifno_env_value(key, raw)
+        applied.append(f"{key}={g[key]!r}")
+    if applied:
+        print("[GIFNO config] env overrides: " + ", ".join(applied), flush=True)
+    return applied
+
+
+apply_env_overrides()
+
+
 def recorder_x_indices(
     nx: int = NX,
     nodes_each_side: int = NODES_EACH_SIDE,
