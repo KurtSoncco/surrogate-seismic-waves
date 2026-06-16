@@ -74,6 +74,25 @@ def test_sweep_run_tag_and_paths():
     assert env["GIFNO_LATENT_CHANNELS"] == "96"
 
 
+def test_env_override_learning_rate(monkeypatch):
+    monkeypatch.setenv("GIFNO_LEARNING_RATE", "0.005")
+    cfg = _reload_config()
+    assert cfg.LEARNING_RATE == 0.005
+
+
+def test_sweep_variants_r2_loads_nine():
+    from sweep_launch import load_variants
+
+    path = GIFNO_DIR / "sweep_variants_r2.tsv"
+    variants = load_variants(path)
+    assert len(variants) == 9
+    combo = next(v for v in variants if v.name == "lw_no_mine_fno_lr5e3")
+    assert combo.overrides["LATENT_CHANNELS"] == "96"
+    assert combo.overrides["HARD_MINING"] == "false"
+    assert combo.overrides["FNO_MODES"] == "48,48"
+    assert combo.overrides["LEARNING_RATE"] == "0.005"
+
+
 def test_sweep_variants_tsv_loads_six():
     from sweep_launch import load_variants
 

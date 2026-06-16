@@ -27,6 +27,18 @@ freq_loss\tLOSS_FREQ_WEIGHT=0.05
 no_mining\tHARD_MINING=false
 """
 
+DEFAULT_VARIANTS_R2_TSV = """\
+lw_anchor\tLATENT_CHANNELS=96
+lw_no_mine\tLATENT_CHANNELS=96;HARD_MINING=false
+lw_fno\tLATENT_CHANNELS=96;FNO_MODES=48,48
+lw_no_mine_fno\tLATENT_CHANNELS=96;HARD_MINING=false;FNO_MODES=48,48
+lw_no_mine_h1\tLATENT_CHANNELS=96;HARD_MINING=false;LOSS_H1_WEIGHT=0.25
+lw_no_mine_freq\tLATENT_CHANNELS=96;HARD_MINING=false;LOSS_FREQ_WEIGHT=0.05
+lw_anchor_lr5e3\tLATENT_CHANNELS=96;LEARNING_RATE=0.005
+lw_no_mine_lr5e3\tLATENT_CHANNELS=96;HARD_MINING=false;LEARNING_RATE=0.005
+lw_no_mine_fno_lr5e3\tLATENT_CHANNELS=96;HARD_MINING=false;FNO_MODES=48,48;LEARNING_RATE=0.005
+"""
+
 
 def load_variants_from_text(text: str) -> list[SweepVariant]:
     variants: list[SweepVariant] = []
@@ -52,12 +64,17 @@ def load_variants_from_text(text: str) -> list[SweepVariant]:
 def load_variants(path: Path) -> list[SweepVariant]:
     if path.is_file():
         return load_variants_from_text(path.read_text())
+    fallback = (
+        DEFAULT_VARIANTS_R2_TSV
+        if path.name == "sweep_variants_r2.tsv"
+        else DEFAULT_VARIANTS_TSV
+    )
     print(
-        f"[GIFNO sweep] WARNING: {path} not found — using built-in default variants.",
+        f"[GIFNO sweep] WARNING: {path} not found — using built-in fallback.",
         file=sys.stderr,
         flush=True,
     )
-    return load_variants_from_text(DEFAULT_VARIANTS_TSV)
+    return load_variants_from_text(fallback)
 
 
 def sweep_run_tag(*, screen: bool, limit: int | None) -> str:

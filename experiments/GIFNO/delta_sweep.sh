@@ -3,12 +3,16 @@
 #
 #   cd ~/surrogate-seismic-waves/experiments/GIFNO
 #   source delta_env.sh
-#   bash delta_sweep.sh              # 6 jobs, --limit 1000 each
-#   bash delta_sweep.sh --limit 4000 # 6 jobs, 4000 samples (separate W&B + checkpoints)
+#   bash delta_sweep.sh              # round 1: 6 jobs, --limit 1000
+#   bash delta_sweep.sh --limit 4000 # round 1 at 4000 samples
+#
+# Round 2 (latent_wide family, 9 jobs @ 2000 samples):
+#   bash delta_sweep.sh --variants sweep_variants_r2.tsv --limit 2000
+#
 #   bash delta_sweep.sh --dry-run    # print what would be submitted
 #
 # After comparing in W&B, rerun the winner at full scale:
-#   bash delta_sweep_rerun.sh fno_wide --full
+#   bash delta_sweep_rerun.sh lw_no_mine_fno --variants sweep_variants_r2.tsv --full
 
 set -euo pipefail
 
