@@ -84,9 +84,7 @@ class RecorderDeepONetHeadXT(nn.Module):
             torch.from_numpy(log_f),
             persistent=False,
         )
-        x_trunk = config.recorder_x_trunk_coords(
-            recorder_x, nx=nx, mode=x_coord_mode
-        )
+        x_trunk = config.recorder_x_trunk_coords(recorder_x, nx=nx, mode=x_coord_mode)
         self.register_buffer(
             "_x_trunk",
             torch.from_numpy(x_trunk),

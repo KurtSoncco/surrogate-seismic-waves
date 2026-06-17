@@ -62,7 +62,9 @@ def _log_freq_derivative(values: np.ndarray, freq: np.ndarray) -> np.ndarray:
     return deriv
 
 
-def _log_freq_derivative_torch(values: torch.Tensor, log_f: torch.Tensor) -> torch.Tensor:
+def _log_freq_derivative_torch(
+    values: torch.Tensor, log_f: torch.Tensor
+) -> torch.Tensor:
     """Central difference d(values)/d(log f) along last axis."""
     d_log = log_f[1:] - log_f[:-1]
     d_val = values[..., 1:] - values[..., :-1]
@@ -120,9 +122,7 @@ def valley_mask_from_log_target_torch(
         local_min[..., 1:-1] = (mid < log_t[..., :-2]) & (mid < log_t[..., 2:])
     if log_t.shape[-1] >= 2:
         local_min[..., 0] = local_min[..., 0] | (log_t[..., 0] < log_t[..., 1])
-        local_min[..., -1] = local_min[..., -1] | (
-            log_t[..., -1] < log_t[..., -2]
-        )
+        local_min[..., -1] = local_min[..., -1] | (log_t[..., -1] < log_t[..., -2])
     return below | local_min.bool()
 
 
@@ -328,7 +328,9 @@ def aggregate_test_metrics(
     summary.update(distribution_summary(per_sample["linf"], "test_linf"))
     summary.update(distribution_summary(per_sample["linf_valley"], "test_linf_valley"))
     summary.update(distribution_summary(per_sample["linf_peak"], "test_linf_peak"))
-    summary.update(distribution_summary(per_sample["rel_l2_valley"], "test_rel_l2_valley"))
+    summary.update(
+        distribution_summary(per_sample["rel_l2_valley"], "test_rel_l2_valley")
+    )
     summary.update(distribution_summary(per_sample["pearson"], "test_pearson"))
     summary.update(distribution_summary(per_sample["h1_freq"], "test_h1_freq"))
 

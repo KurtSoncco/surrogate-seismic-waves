@@ -118,7 +118,9 @@ def submit_job(
     cmd.append(str(train_script))
     cmd.extend(main_args)
 
-    override_str = ", ".join(f"{k}={v}" for k, v in variant.overrides.items()) or "(baseline)"
+    override_str = (
+        ", ".join(f"{k}={v}" for k, v in variant.overrides.items()) or "(baseline)"
+    )
     print(f"  variant={variant.name}  overrides={override_str}")
     print(f"    WANDB_RUN_NAME={env['WANDB_RUN_NAME']}")
     print(f"    GIFNO_MODEL_DIR={env['GIFNO_MODEL_DIR']}")

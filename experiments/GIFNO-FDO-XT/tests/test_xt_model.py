@@ -59,12 +59,22 @@ def test_depth_branch_mode():
     assert model(x).shape == (1, config.NX, 64)
 
 
-def test_x_norm_symmetric_and_unit():
+def test_x_norm_domain_based_and_symmetric():
     rec = config.recorder_x_indices()
     x_norm = config.recorder_x_trunk_coords(rec, mode="normalized")
+    half_w = config.domain_half_width_m()
     assert x_norm.shape == rec.shape
-    assert np.isclose(np.max(np.abs(x_norm)), 1.0)
     assert np.isclose(x_norm[0], -x_norm[-1], atol=1e-5)
+    # Outermost recorders at ±150 m; domain half-width is 250 m → |x_norm| = 0.6
+    assert np.isclose(abs(x_norm[0]), 150.0 / half_w)
+    assert np.isclose(abs(x_norm[-1]), 150.0 / half_w)
+    assert np.isclose(abs(x_norm).max(), 150.0 / half_w)
+    # Domain edges (columns 0 and nx-1) would be exactly ±1
+    center = config.NX // 2
+    left_edge = ((0 - center) * config.DX) / half_w
+    right_edge = ((config.NX - 1 - center) * config.DX) / half_w
+    assert np.isclose(left_edge, -1.0)
+    assert np.isclose(right_edge, 249.0 / half_w)
 
 
 def test_x_meters_mode():

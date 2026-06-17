@@ -75,7 +75,7 @@ BRANCH_MODE: str = "surface"  # surface | depth
 DEEPONET_LATENT_DIM: int = 128
 TRUNK_HIDDEN: int = 128
 TRUNK_LAYERS: int = 4
-X_COORD_MODE: str = "normalized"  # normalized | meters
+X_COORD_MODE: str = "normalized"  # normalized: x / domain half-width | meters
 
 # --- Training (wide_h1_p1_amsgrad winner defaults) ---
 DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -258,6 +258,11 @@ def recorder_x_indices(
     return np.arange(lo, hi + 1, step, dtype=np.int64)
 
 
+def domain_half_width_m(nx: int = NX, dx: float = DX) -> float:
+    """Half-width of the lateral model strip [m]; domain edges normalize to ±1."""
+    return float(nx // 2) * dx
+
+
 def recorder_x_trunk_coords(
     recorder_x: np.ndarray | None = None,
     *,
@@ -265,17 +270,22 @@ def recorder_x_trunk_coords(
     dx: float = DX,
     mode: str = X_COORD_MODE,
 ) -> np.ndarray:
-    """Lateral coordinate for trunk input: meters from center or normalized to [-1, 1]."""
+    """
+    Lateral coordinate for trunk input.
+
+    meters: offset from domain center in metres.
+    normalized: x_m / domain_half_width so model edges are ±1 (recorders lie inside).
+    """
     if recorder_x is None:
         recorder_x = recorder_x_indices(nx=nx, dx=dx)
     center = nx // 2
     x_m = (recorder_x.astype(np.float64) - center) * dx
     if mode == "meters":
         return x_m.astype(np.float32)
-    max_abs = float(np.max(np.abs(x_m)))
-    if max_abs < 1e-8:
+    half_w = domain_half_width_m(nx=nx, dx=dx)
+    if half_w < 1e-8:
         return np.zeros_like(x_m, dtype=np.float32)
-    return (x_m / max_abs).astype(np.float32)
+    return (x_m / half_w).astype(np.float32)
 
 
 def setup_import_paths() -> None:

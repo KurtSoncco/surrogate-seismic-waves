@@ -1,4 +1,4 @@
-# GIFNO-FDO-XT round-1: 2D trunk (log f, x_norm) on wide_h1_p1_amsgrad backbone @ --limit 2000
+# GIFNO-FDO-XT round-1: 2D trunk (log f, x/domain_half_width) on wide_h1_p1_amsgrad backbone @ --limit 2000
 # Defaults: DEEPONET_LATENT_DIM=128, LOSS_P=1, AMSGRAD=true, LOSS_H1_WEIGHT=0.25
 xt_p1_amsgrad_wide
 xt_p1_amsgrad_wide_meters	X_COORD_MODE=meters

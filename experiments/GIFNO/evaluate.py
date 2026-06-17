@@ -271,7 +271,9 @@ def _select_worst_indices(
     """Pick samples with highest rel_l2 and lowest pearson (combined rank)."""
     n_pick = min(n_pick, len(rel_l2))
     rel_rank = np.argsort(np.nan_to_num(rel_l2, nan=-1.0))
-    pear_rank = np.argsort(np.nan_to_num(pearson, nan=2.0))  # ascending: low pearson first
+    pear_rank = np.argsort(
+        np.nan_to_num(pearson, nan=2.0)
+    )  # ascending: low pearson first
     combined = np.zeros(len(rel_l2))
     for rank, idx in enumerate(rel_rank):
         combined[idx] += rank
@@ -322,9 +324,7 @@ def evaluate_model(
         )
         metrics["test_pearson_recorder_mean"] = float(np.nanmean(per_rec_mean))
 
-    heatmap_idx = _select_random_indices(
-        len(predictions), config.EVAL_N_HEATMAPS, seed
-    )
+    heatmap_idx = _select_random_indices(len(predictions), config.EVAL_N_HEATMAPS, seed)
     central_idx = _select_random_indices(
         len(predictions), config.EVAL_N_CENTRAL_CURVES, seed + 1
     )
@@ -392,9 +392,7 @@ def evaluate_model(
     )
 
     scatter_path = save_dir / "rel_l2_vs_pearson.png"
-    _plot_rel_l2_vs_pearson(
-        per_sample["rel_l2"], per_sample["pearson"], scatter_path
-    )
+    _plot_rel_l2_vs_pearson(per_sample["rel_l2"], per_sample["pearson"], scatter_path)
 
     sample_box_path = save_dir / "per_sample_metrics_boxplot.png"
     _plot_per_sample_metric_boxplot(per_sample, sample_box_path)
@@ -426,9 +424,17 @@ def evaluate_model(
         for plot_key, plot_path, caption in [
             ("pearson_by_recorder", pearson_plot_path, "Pearson r per recorder"),
             ("per_sample_ecdf", ecdf_path, "Per-sample ECDF"),
-            ("per_sample_linf_split_ecdf", save_dir / "per_sample_linf_split_ecdf.png", "linf valley vs peak ECDF"),
+            (
+                "per_sample_linf_split_ecdf",
+                save_dir / "per_sample_linf_split_ecdf.png",
+                "linf valley vs peak ECDF",
+            ),
             ("rel_l2_vs_pearson", scatter_path, "rel L2 vs Pearson scatter"),
-            ("per_sample_metrics_boxplot", sample_box_path, "Per-sample metric boxplot"),
+            (
+                "per_sample_metrics_boxplot",
+                sample_box_path,
+                "Per-sample metric boxplot",
+            ),
         ]:
             if plot_path.exists():
                 log_payload[f"eval/{plot_key}"] = wandb.Image(

@@ -171,7 +171,9 @@ class MaskedCompositeLoss(nn.Module):
         """Mean per-sample relative max frequency error."""
         pred_t, target_t = self._transform_for_rel_loss(pred, target)
         rel_point = torch.abs(pred_t - target_t) / (
-            target_t.abs().clamp_min(_EPS) if self.log_tf_loss else target.abs().clamp_min(_EPS)
+            target_t.abs().clamp_min(_EPS)
+            if self.log_tf_loss
+            else target.abs().clamp_min(_EPS)
         )
         return rel_point.amax(dim=(1, 2))
 
