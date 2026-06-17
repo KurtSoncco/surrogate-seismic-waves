@@ -92,6 +92,13 @@ NUM_WORKERS: int = 4
 USE_AMP: bool = False
 TORCH_COMPILE: bool = False
 
+# --- Optimizer ---
+OPTIMIZER: str = "adam"  # adam | adamw
+ADAM_BETA1: float = 0.9
+ADAM_BETA2: float = 0.999
+ADAM_EPS: float = 1e-8
+AMSGRAD: bool = False
+
 # --- W&B (separate project from GIFNO grid-FNO) ---
 WANDB_PROJECT: str = "gifno_fno_deeponet"
 WANDB_RUN_NAME: str = "fdo_run"
@@ -125,6 +132,11 @@ def _parse_env_value(key: str, raw: str):
         if mode not in ("surface", "depth"):
             raise ValueError(f"BRANCH_MODE must be surface or depth, got {raw!r}")
         return mode
+    if key == "OPTIMIZER":
+        opt = raw.lower()
+        if opt not in ("adam", "adamw"):
+            raise ValueError(f"OPTIMIZER must be adam or adamw, got {raw!r}")
+        return opt
     if key in (
         "HARD_MINING",
         "NORMALIZE_VS_SURFACE",
@@ -133,6 +145,7 @@ def _parse_env_value(key: str, raw: str):
         "LOG_TF_LOSS",
         "USE_AMP",
         "TORCH_COMPILE",
+        "AMSGRAD",
     ):
         return raw.lower() in ("1", "true", "yes", "on")
     if key in (
@@ -160,6 +173,9 @@ def _parse_env_value(key: str, raw: str):
         "VALLEY_PERCENTILE",
         "HARD_MINING_POWER",
         "GRAD_CLIP_NORM",
+        "ADAM_BETA1",
+        "ADAM_BETA2",
+        "ADAM_EPS",
     ):
         return float(raw)
     if key == "WANDB_RUN_NAME":
@@ -195,6 +211,11 @@ _OVERRIDABLE_KEYS = (
     "VALLEY_PERCENTILE",
     "USE_AMP",
     "TORCH_COMPILE",
+    "OPTIMIZER",
+    "ADAM_BETA1",
+    "ADAM_BETA2",
+    "ADAM_EPS",
+    "AMSGRAD",
     "WANDB_RUN_NAME",
 )
 

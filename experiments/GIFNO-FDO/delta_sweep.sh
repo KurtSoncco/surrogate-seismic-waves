@@ -5,6 +5,7 @@
 #   source ../GIFNO/delta_env.sh
 #   bash delta_sweep.sh --limit 2000
 #   bash delta_sweep.sh --variants sweep_variants_combo.tsv --limit 2000
+#   bash delta_sweep.sh --variants sweep_variants_opt.tsv --limit 2000
 #   bash delta_sweep_rerun.sh fdn_h1 --full
 
 set -euo pipefail

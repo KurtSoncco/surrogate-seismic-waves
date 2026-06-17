@@ -27,6 +27,12 @@ DEFAULT_VARIANTS_COMBO_TSV = """\
 lw_nm_h1_valley\tLOSS_H1_WEIGHT=0.25;VALLEY_LOSS_WEIGHT=2.0
 """
 
+DEFAULT_VARIANTS_OPT_TSV = """\
+wide_h1_p2_adam\tDEEPONET_LATENT_DIM=128
+wide_h1_p1_adam\tDEEPONET_LATENT_DIM=128;LOSS_P=1
+wide_h1_p2_adamw\tDEEPONET_LATENT_DIM=128;OPTIMIZER=adamw
+"""
+
 
 def load_variants_from_text(text: str) -> list[SweepVariant]:
     variants: list[SweepVariant] = []
@@ -52,11 +58,13 @@ def load_variants_from_text(text: str) -> list[SweepVariant]:
 def load_variants(path: Path) -> list[SweepVariant]:
     if path.is_file():
         return load_variants_from_text(path.read_text())
-    fallback = (
-        DEFAULT_VARIANTS_COMBO_TSV
-        if path.name == "sweep_variants_combo.tsv"
-        else DEFAULT_VARIANTS_ARCH_TSV
-    )
+    fallback = DEFAULT_VARIANTS_COMBO_TSV
+    if path.name == "sweep_variants_arch.tsv":
+        fallback = DEFAULT_VARIANTS_ARCH_TSV
+    elif path.name == "sweep_variants_opt.tsv":
+        fallback = DEFAULT_VARIANTS_OPT_TSV
+    elif path.name != "sweep_variants_combo.tsv":
+        fallback = DEFAULT_VARIANTS_ARCH_TSV
     print(
         f"[GIFNO-FDO sweep] WARNING: {path} not found — using built-in fallback.",
         file=sys.stderr,

@@ -14,6 +14,23 @@ from metrics import compute_val_tail_metrics_torch
 from model import create_model
 
 
+def build_optimizer(model: torch.nn.Module) -> optim.Optimizer:
+    """Adam or AdamW with config-driven hyperparameters."""
+    opt_name = config.OPTIMIZER.lower()
+    kwargs = {
+        "lr": config.LEARNING_RATE,
+        "betas": (config.ADAM_BETA1, config.ADAM_BETA2),
+        "eps": config.ADAM_EPS,
+        "weight_decay": config.WEIGHT_DECAY,
+        "amsgrad": config.AMSGRAD,
+    }
+    if opt_name == "adamw":
+        return optim.AdamW(model.parameters(), **kwargs)
+    if opt_name == "adam":
+        return optim.Adam(model.parameters(), **kwargs)
+    raise ValueError(f"Unsupported OPTIMIZER={config.OPTIMIZER!r}")
+
+
 def _use_amp() -> bool:
     return config.USE_AMP and config.DEVICE.type == "cuda"
 
@@ -35,11 +52,7 @@ def train_model(train_loader, val_loader):
     non_blocking = amp_enabled
 
     criterion = build_training_loss()
-    optimizer = optim.Adam(
-        model.parameters(),
-        lr=config.LEARNING_RATE,
-        weight_decay=config.WEIGHT_DECAY,
-    )
+    optimizer = build_optimizer(model)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, "min", patience=20, factor=0.5
     )
