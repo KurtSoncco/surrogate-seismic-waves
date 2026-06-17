@@ -1,6 +1,5 @@
-"""Pytest fixtures for GIFNO — use local dummy data, never Box mounts."""
-
-from __future__ import annotations
+# tests/conftest.py
+"""Pytest setup for GIFNO-FDO-XT."""
 
 import importlib.util
 import os
@@ -9,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-_GIFNO_DIR = Path(__file__).resolve().parents[1]
-_FDO_DIR = _GIFNO_DIR.parent / "GIFNO-FDO"
-_XT_DIR = _GIFNO_DIR.parent / "GIFNO-FDO-XT"
-_DUMMY_DATA_ROOT = _GIFNO_DIR / "dummy_data"
+_XT_DIR = Path(__file__).resolve().parents[1]
+_GIFNO_DIR = _XT_DIR.parent / "GIFNO"
+_FDO_DIR = _XT_DIR.parent / "GIFNO-FDO"
+_DUMMY = _GIFNO_DIR / "dummy_data"
 
 _SHARED_MODULES = (
     "config",
@@ -25,7 +24,7 @@ _SHARED_MODULES = (
     "train",
 )
 
-os.environ.setdefault("GIFNO_DATA_ROOT", str(_DUMMY_DATA_ROOT))
+os.environ.setdefault("GIFNO_DATA_ROOT", str(_DUMMY))
 
 
 def _load_config_module(config_path: Path):
@@ -38,20 +37,22 @@ def _load_config_module(config_path: Path):
     return mod
 
 
-def _activate_gifno_imports() -> None:
+def _activate_xt_imports() -> None:
     for name in _SHARED_MODULES:
         sys.modules.pop(name, None)
-    for path in (str(_FDO_DIR), str(_XT_DIR), str(_GIFNO_DIR)):
+    for path in (str(_XT_DIR), str(_FDO_DIR), str(_GIFNO_DIR)):
         while path in sys.path:
             sys.path.remove(path)
-    sys.path.insert(0, str(_GIFNO_DIR))
-    _load_config_module(_GIFNO_DIR / "config.py")
+    sys.path.insert(0, str(_XT_DIR))
+    sys.path.insert(1, str(_GIFNO_DIR))
+    config = _load_config_module(_XT_DIR / "config.py")
+    config.setup_import_paths()
 
 
-_activate_gifno_imports()
+_activate_xt_imports()
 
 
 @pytest.fixture(autouse=True)
-def _isolate_gifno_imports():
-    _activate_gifno_imports()
+def _isolate_xt_imports():
+    _activate_xt_imports()
     yield

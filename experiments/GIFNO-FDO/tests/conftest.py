@@ -10,6 +10,7 @@ import pytest
 
 _FDO_DIR = Path(__file__).resolve().parents[1]
 _GIFNO_DIR = _FDO_DIR.parent / "GIFNO"
+_XT_DIR = _FDO_DIR.parent / "GIFNO-FDO-XT"
 _DUMMY = _GIFNO_DIR / "dummy_data"
 
 _SHARED_MODULES = (
@@ -40,7 +41,7 @@ def _load_config_module(config_path: Path):
 def _activate_fdo_imports() -> None:
     for name in _SHARED_MODULES:
         sys.modules.pop(name, None)
-    for path in (str(_FDO_DIR), str(_GIFNO_DIR)):
+    for path in (str(_FDO_DIR), str(_XT_DIR), str(_GIFNO_DIR)):
         while path in sys.path:
             sys.path.remove(path)
     sys.path.insert(0, str(_FDO_DIR))
