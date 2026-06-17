@@ -4,7 +4,7 @@
 #   cd ~/surrogate-seismic-waves/experiments/GIFNO-FDO-XT
 #   source ../GIFNO/delta_env.sh
 #   bash delta_sweep.sh --variants sweep_variants_xt.tsv --limit 2000
-#   bash delta_sweep_rerun.sh xt_p1_amsgrad_wide --full
+#   bash delta_sweep_rerun.sh xt_wide_ref --full
 
 set -euo pipefail
 

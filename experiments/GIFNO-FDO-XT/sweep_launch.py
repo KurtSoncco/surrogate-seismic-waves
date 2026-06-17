@@ -18,9 +18,9 @@ class SweepVariant:
 
 
 DEFAULT_VARIANTS_XT_TSV = """\
-xt_p1_amsgrad_wide
-xt_p1_amsgrad_wide_meters\tX_COORD_MODE=meters
-xt_p1_amsgrad_depth\tBRANCH_MODE=depth
+xt_wide_ref
+xt_lat64_d64\tLATENT_CHANNELS=64;DEEPONET_LATENT_DIM=64
+xt_lat128_d128\tLATENT_CHANNELS=128;DEEPONET_LATENT_DIM=128
 """
 
 

@@ -1,5 +1,8 @@
-# GIFNO-FDO-XT round-1: 2D trunk (log f, x/domain_half_width) on wide_h1_p1_amsgrad backbone @ --limit 2000
-# Defaults: DEEPONET_LATENT_DIM=128, LOSS_P=1, AMSGRAD=true, LOSS_H1_WEIGHT=0.25
-xt_p1_amsgrad_wide
-xt_p1_amsgrad_wide_meters	X_COORD_MODE=meters
-xt_p1_amsgrad_depth	BRANCH_MODE=depth
+# GIFNO-FDO-XT round-1: 2D trunk + capacity sweep on wide_h1_p1_amsgrad backbone @ --limit 2000
+# Defaults: LATENT=96, DEEPONET=128, LOSS_P=1, AMSGRAD=true, X_COORD normalized by domain half-width
+xt_wide_ref
+xt_lat64_d64	LATENT_CHANNELS=64;DEEPONET_LATENT_DIM=64
+xt_lat128_d128	LATENT_CHANNELS=128;DEEPONET_LATENT_DIM=128
+xt_lat96_d64	DEEPONET_LATENT_DIM=64
+xt_lat96_d192	DEEPONET_LATENT_DIM=192
+xt_depth	BRANCH_MODE=depth

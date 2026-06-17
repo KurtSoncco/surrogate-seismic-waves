@@ -81,7 +81,26 @@ def test_h1_freq_detects_shape_mismatch():
     assert np.all(h1 > rel)
 
 
-def test_aggregate_test_metrics_keys():
+def test_per_recorder_tail_summary_worst_site():
+    from metrics import per_recorder_rel_l2_numpy, per_recorder_tail_summary
+
+    pred, target, _mask, _freq = _synthetic_batch(n=20)
+    # Degrade one edge recorder for all samples
+    rec_x = config.recorder_x_indices()
+    bad = rec_x[0]
+    pred[:, bad, :] *= 0.5
+    rec_rel = per_recorder_rel_l2_numpy(pred, target)
+    summary = per_recorder_tail_summary(rec_rel, "test_rec_rel_l2")
+    assert "test_rec_rel_l2_min_p10" in summary
+    assert summary["test_rec_rel_l2_min_p10"] >= summary["test_rec_rel_l2_mean_p10"] * 0.5
+
+
+def test_aggregate_test_metrics_includes_per_recorder():
+    pred, target, mask, freq = _synthetic_batch(n=5)
+    summary, _ = aggregate_test_metrics(pred, target, mask, freq)
+    assert "test_rec_rel_l2_min_p10" in summary
+    assert "test_rec_pearson_min_p10" in summary
+
     pred, target, mask, freq = _synthetic_batch()
     summary, per_sample = aggregate_test_metrics(pred, target, mask, freq)
     assert "test_rel_l2_p10" in summary

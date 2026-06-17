@@ -27,11 +27,12 @@ def test_build_optimizer_amsgrad_default():
     assert cfg.LOSS_P == 1
 
 
-def test_sweep_variants_xt_loads_three():
+def test_sweep_variants_xt_loads_six():
     from sweep_launch import load_variants
 
     path = Path(__file__).resolve().parents[1] / "sweep_variants_xt.tsv"
     variants = load_variants(path)
-    assert len(variants) == 3
-    meters = next(v for v in variants if v.name == "xt_p1_amsgrad_wide_meters")
-    assert meters.overrides["X_COORD_MODE"] == "meters"
+    assert len(variants) == 6
+    wide = next(v for v in variants if v.name == "xt_lat128_d128")
+    assert wide.overrides["LATENT_CHANNELS"] == "128"
+    assert wide.overrides["DEEPONET_LATENT_DIM"] == "128"

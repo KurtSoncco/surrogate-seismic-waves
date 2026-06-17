@@ -246,6 +246,76 @@ def per_sample_linf_torch(
     return torch.amax(torch.abs(p - t), dim=(1, 2))
 
 
+def per_recorder_rel_l2_numpy(
+    pred: np.ndarray,
+    target: np.ndarray,
+    recorder_x: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Relative L2 per sample at each recorder. Shape (N, R)."""
+    p = gather_recorder_tf_numpy(pred, recorder_x)
+    t = gather_recorder_tf_numpy(target, recorder_x)
+    num = np.linalg.norm(p - t, axis=2)
+    den = np.linalg.norm(t, axis=2) + _EPS
+    return num / den
+
+
+def per_recorder_pearson_numpy(
+    pred: np.ndarray,
+    target: np.ndarray,
+    recorder_x: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Pearson r per sample at each recorder (|TF| vs freq). Shape (N, R)."""
+    p = gather_recorder_tf_numpy(np.abs(pred), recorder_x)
+    t = gather_recorder_tf_numpy(np.abs(target), recorder_x)
+    n, n_rec, _ = p.shape
+    out = np.full((n, n_rec), np.nan, dtype=np.float64)
+    for i in range(n):
+        for r in range(n_rec):
+            out[i, r] = pearson_1d(p[i, r], t[i, r])
+    return out
+
+
+def per_recorder_rel_l2_torch(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    recorder_x: Optional[np.ndarray] = None,
+) -> torch.Tensor:
+    """Relative L2 per batch item at each recorder. Shape (B, R)."""
+    p = gather_recorder_tf_torch(pred, recorder_x)
+    t = gather_recorder_tf_torch(target, recorder_x)
+    num = torch.linalg.norm(p - t, dim=2)
+    den = torch.linalg.norm(t, dim=2).clamp_min(_EPS)
+    return num / den
+
+
+def per_recorder_tail_summary(values_nr: np.ndarray, prefix: str) -> Dict[str, float]:
+    """
+    Summarize (N, R) per-sample metrics per recorder.
+
+    For each recorder, compute p10/p50 across samples, then report min across
+    recorders (worst lateral site tail) plus mean of per-recorder p10.
+    """
+    if values_nr.size == 0:
+        return {}
+    n_rec = values_nr.shape[1]
+    p10_per_rec = np.full(n_rec, np.nan, dtype=np.float64)
+    p50_per_rec = np.full(n_rec, np.nan, dtype=np.float64)
+    for j in range(n_rec):
+        col = values_nr[:, j]
+        col = col[np.isfinite(col)]
+        if col.size:
+            p10_per_rec[j] = np.percentile(col, 10)
+            p50_per_rec[j] = np.percentile(col, 50)
+    out: Dict[str, float] = {}
+    if np.any(np.isfinite(p10_per_rec)):
+        out[f"{prefix}_min_p10"] = float(np.nanmin(p10_per_rec))
+        out[f"{prefix}_mean_p10"] = float(np.nanmean(p10_per_rec))
+    if np.any(np.isfinite(p50_per_rec)):
+        out[f"{prefix}_min_p50"] = float(np.nanmin(p50_per_rec))
+        out[f"{prefix}_mean_p50"] = float(np.nanmean(p50_per_rec))
+    return out
+
+
 def distribution_summary(values: np.ndarray, prefix: str) -> Dict[str, float]:
     """Mean and percentile summaries for a 1-D metric array."""
     v = values[np.isfinite(values)]
@@ -334,6 +404,12 @@ def aggregate_test_metrics(
     summary.update(distribution_summary(per_sample["pearson"], "test_pearson"))
     summary.update(distribution_summary(per_sample["h1_freq"], "test_h1_freq"))
 
+    recorder_x = recorder_x_indices_from_mask(masks[0])
+    rec_rel_l2 = per_recorder_rel_l2_numpy(predictions, targets, recorder_x)
+    rec_pearson = per_recorder_pearson_numpy(predictions, targets, recorder_x)
+    summary.update(per_recorder_tail_summary(rec_rel_l2, "test_rec_rel_l2"))
+    summary.update(per_recorder_tail_summary(rec_pearson, "test_rec_pearson"))
+
     return summary, per_sample
 
 
@@ -343,10 +419,12 @@ def compute_val_tail_metrics_torch(
     device: torch.device,
     freq: np.ndarray,
 ) -> Dict[str, float]:
-    """Lightweight validation pass: per-sample rel_l2 and linf tail stats."""
+    """Validation pass: pooled and per-recorder tail stats."""
     model.eval()
     rel_all: list[np.ndarray] = []
     linf_all: list[np.ndarray] = []
+    rec_rel_all: list[np.ndarray] = []
+    rec_pearson_all: list[np.ndarray] = []
 
     with torch.no_grad():
         for inputs, targets, _masks in loader:
@@ -355,9 +433,22 @@ def compute_val_tail_metrics_torch(
             outputs = model(inputs)
             rel_all.append(per_sample_rel_l2_torch(outputs, targets).cpu().numpy())
             linf_all.append(per_sample_linf_torch(outputs, targets).cpu().numpy())
+            rec_rel_all.append(
+                per_recorder_rel_l2_torch(outputs, targets).cpu().numpy()
+            )
+            rec_pearson_all.append(
+                per_recorder_pearson_numpy(
+                    outputs.cpu().numpy(),
+                    targets.cpu().numpy(),
+                )
+            )
 
     rel = np.concatenate(rel_all) if rel_all else np.array([])
     linf = np.concatenate(linf_all) if linf_all else np.array([])
+    rec_rel = np.concatenate(rec_rel_all) if rec_rel_all else np.array([]).reshape(0, 0)
+    rec_pearson = (
+        np.concatenate(rec_pearson_all) if rec_pearson_all else np.array([]).reshape(0, 0)
+    )
 
     out: Dict[str, float] = {}
     if rel.size:
@@ -376,4 +467,8 @@ def compute_val_tail_metrics_torch(
                 "val_linf_max": float(np.max(linf)),
             }
         )
+    if rec_rel.size:
+        out.update(per_recorder_tail_summary(rec_rel, "val_rec_rel_l2"))
+    if rec_pearson.size:
+        out.update(per_recorder_tail_summary(rec_pearson, "val_rec_pearson"))
     return out
