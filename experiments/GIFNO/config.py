@@ -72,6 +72,11 @@ FREQ_START_HZ: float = 0.1
 FREQ_END_HZ: float = 10.0
 SMOOTH_COEFF: float = 500
 
+# --- TF engineering metric bands (Hz) ---
+FREQ_BAND_LOW: Tuple[float, float] = (0.1, 0.5)
+FREQ_BAND_MID: Tuple[float, float] = (0.5, 2.0)
+FREQ_BAND_HIGH: Tuple[float, float] = (2.0, 10.0)
+
 # --- Model ---
 IN_CHANNELS: int = 4
 LATENT_CHANNELS: int = 96

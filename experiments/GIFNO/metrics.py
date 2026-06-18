@@ -197,6 +197,105 @@ def per_sample_pearson_numpy(
     return out
 
 
+def _freq_band_slice(freq: np.ndarray, f_lo: float, f_hi: float) -> slice:
+    """Index slice for frequencies in [f_lo, f_hi]."""
+    lo = int(np.searchsorted(freq, f_lo, side="left"))
+    hi = int(np.searchsorted(freq, f_hi, side="right"))
+    return slice(lo, max(lo + 1, hi))
+
+
+def _rel_l2_on_slice(
+    pred_rf: np.ndarray, target_rf: np.ndarray, f_slice: slice
+) -> np.ndarray:
+    """Relative L2 per sample on recorder×freq subset. pred/target: (N, R, F)."""
+    p = pred_rf[..., f_slice].reshape(len(pred_rf), -1)
+    t = target_rf[..., f_slice].reshape(len(target_rf), -1)
+    num = np.linalg.norm(p - t, axis=1)
+    den = np.linalg.norm(t, axis=1) + _EPS
+    return num / den
+
+
+def per_sample_peak_freq_err_numpy(
+    pred: np.ndarray,
+    target: np.ndarray,
+    freq: np.ndarray,
+    recorder_x: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Mean |Δlog f| of dominant peaks across recorders. Shape (N,)."""
+    p = gather_recorder_tf_numpy(np.abs(pred), recorder_x)
+    t = gather_recorder_tf_numpy(np.abs(target), recorder_x)
+    log_f = np.log(np.maximum(freq, _EPS))
+    n, n_rec, _ = p.shape
+    out = np.full(n, np.nan, dtype=np.float64)
+    for i in range(n):
+        errs: list[float] = []
+        for r in range(n_rec):
+            t_idx = int(np.argmax(np.log(t[i, r] + _EPS)))
+            p_idx = int(np.argmax(np.log(p[i, r] + _EPS)))
+            errs.append(float(abs(log_f[p_idx] - log_f[t_idx])))
+        out[i] = float(np.mean(errs)) if errs else float("nan")
+    return out
+
+
+def per_sample_peak_amp_err_numpy(
+    pred: np.ndarray,
+    target: np.ndarray,
+    freq: np.ndarray,
+    recorder_x: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Mean relative amplitude error at target peak frequency. Shape (N,)."""
+    del freq  # peak index comes from target curve
+    p = gather_recorder_tf_numpy(np.abs(pred), recorder_x)
+    t = gather_recorder_tf_numpy(np.abs(target), recorder_x)
+    n, n_rec, _ = p.shape
+    out = np.full(n, np.nan, dtype=np.float64)
+    for i in range(n):
+        errs: list[float] = []
+        for r in range(n_rec):
+            t_idx = int(np.argmax(np.log(t[i, r] + _EPS)))
+            tv = float(t[i, r, t_idx])
+            if tv < _EPS:
+                continue
+            errs.append(float(abs(p[i, r, t_idx] - tv) / tv))
+        out[i] = float(np.mean(errs)) if errs else float("nan")
+    return out
+
+
+def per_sample_bandwise_rel_l2_numpy(
+    pred: np.ndarray,
+    target: np.ndarray,
+    freq: np.ndarray,
+    recorder_x: Optional[np.ndarray] = None,
+) -> Dict[str, np.ndarray]:
+    """Relative L2 in low/mid/high frequency bands. Each array shape (N,)."""
+    p = gather_recorder_tf_numpy(pred, recorder_x)
+    t = gather_recorder_tf_numpy(target, recorder_x)
+    bands = {
+        "low": getattr(config, "FREQ_BAND_LOW", (0.1, 0.5)),
+        "mid": getattr(config, "FREQ_BAND_MID", (0.5, 2.0)),
+        "high": getattr(config, "FREQ_BAND_HIGH", (2.0, 10.0)),
+    }
+    return {
+        name: _rel_l2_on_slice(p, t, _freq_band_slice(freq, lo, hi))
+        for name, (lo, hi) in bands.items()
+    }
+
+
+def per_sample_logspec_rel_l2_numpy(
+    pred: np.ndarray,
+    target: np.ndarray,
+    recorder_x: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Relative L2 on log(|TF|) over recorders×freq. Shape (N,)."""
+    p = gather_recorder_tf_numpy(np.abs(pred), recorder_x)
+    t = gather_recorder_tf_numpy(np.abs(target), recorder_x)
+    lp = np.log(np.maximum(p, _EPS)).reshape(len(pred), -1)
+    lt = np.log(np.maximum(t, _EPS)).reshape(len(target), -1)
+    num = np.linalg.norm(lp - lt, axis=1)
+    den = np.linalg.norm(lt, axis=1) + _EPS
+    return num / den
+
+
 def per_sample_h1_freq_numpy(
     pred: np.ndarray,
     target: np.ndarray,
@@ -350,6 +449,7 @@ def compute_per_sample_metrics_numpy(
         predictions, targets, recorder_x
     )
     rel_l2_valley = per_sample_rel_l2_valley_numpy(predictions, targets, recorder_x)
+    band_rel = per_sample_bandwise_rel_l2_numpy(predictions, targets, freq, recorder_x)
     return {
         "rel_l2": per_sample_rel_l2_numpy(predictions, targets, recorder_x),
         "linf": per_sample_linf_numpy(predictions, targets, recorder_x),
@@ -358,6 +458,18 @@ def compute_per_sample_metrics_numpy(
         "rel_l2_valley": rel_l2_valley,
         "pearson": per_sample_pearson_numpy(predictions, targets, recorder_x),
         "h1_freq": per_sample_h1_freq_numpy(predictions, targets, freq, recorder_x),
+        "peak_freq_err": per_sample_peak_freq_err_numpy(
+            predictions, targets, freq, recorder_x
+        ),
+        "peak_amp_err": per_sample_peak_amp_err_numpy(
+            predictions, targets, freq, recorder_x
+        ),
+        "rel_l2_band_low": band_rel["low"],
+        "rel_l2_band_mid": band_rel["mid"],
+        "rel_l2_band_high": band_rel["high"],
+        "logspec_rel_l2": per_sample_logspec_rel_l2_numpy(
+            predictions, targets, recorder_x
+        ),
     }
 
 
@@ -403,6 +515,24 @@ def aggregate_test_metrics(
     )
     summary.update(distribution_summary(per_sample["pearson"], "test_pearson"))
     summary.update(distribution_summary(per_sample["h1_freq"], "test_h1_freq"))
+    summary.update(
+        distribution_summary(per_sample["peak_freq_err"], "test_peak_freq_err")
+    )
+    summary.update(
+        distribution_summary(per_sample["peak_amp_err"], "test_peak_amp_err")
+    )
+    summary.update(
+        distribution_summary(per_sample["rel_l2_band_low"], "test_rel_l2_band_low")
+    )
+    summary.update(
+        distribution_summary(per_sample["rel_l2_band_mid"], "test_rel_l2_band_mid")
+    )
+    summary.update(
+        distribution_summary(per_sample["rel_l2_band_high"], "test_rel_l2_band_high")
+    )
+    summary.update(
+        distribution_summary(per_sample["logspec_rel_l2"], "test_logspec_rel_l2")
+    )
 
     recorder_x = recorder_x_indices_from_mask(masks[0])
     rec_rel_l2 = per_recorder_rel_l2_numpy(predictions, targets, recorder_x)
@@ -425,6 +555,13 @@ def compute_val_tail_metrics_torch(
     linf_all: list[np.ndarray] = []
     rec_rel_all: list[np.ndarray] = []
     rec_pearson_all: list[np.ndarray] = []
+    peak_freq_all: list[np.ndarray] = []
+    peak_amp_all: list[np.ndarray] = []
+    logspec_all: list[np.ndarray] = []
+    band_low_all: list[np.ndarray] = []
+    band_mid_all: list[np.ndarray] = []
+    band_high_all: list[np.ndarray] = []
+    pearson_all: list[np.ndarray] = []
 
     with torch.no_grad():
         for inputs, targets, _masks in loader:
@@ -436,39 +573,60 @@ def compute_val_tail_metrics_torch(
             rec_rel_all.append(
                 per_recorder_rel_l2_torch(outputs, targets).cpu().numpy()
             )
-            rec_pearson_all.append(
-                per_recorder_pearson_numpy(
-                    outputs.cpu().numpy(),
-                    targets.cpu().numpy(),
-                )
-            )
+            pred_np = outputs.cpu().numpy()
+            tgt_np = targets.cpu().numpy()
+            rec_pearson_all.append(per_recorder_pearson_numpy(pred_np, tgt_np))
+            peak_freq_all.append(per_sample_peak_freq_err_numpy(pred_np, tgt_np, freq))
+            peak_amp_all.append(per_sample_peak_amp_err_numpy(pred_np, tgt_np, freq))
+            logspec_all.append(per_sample_logspec_rel_l2_numpy(pred_np, tgt_np))
+            bands = per_sample_bandwise_rel_l2_numpy(pred_np, tgt_np, freq)
+            band_low_all.append(bands["low"])
+            band_mid_all.append(bands["mid"])
+            band_high_all.append(bands["high"])
+            pearson_all.append(per_sample_pearson_numpy(pred_np, tgt_np))
 
     rel = np.concatenate(rel_all) if rel_all else np.array([])
     linf = np.concatenate(linf_all) if linf_all else np.array([])
     rec_rel = np.concatenate(rec_rel_all) if rec_rel_all else np.array([]).reshape(0, 0)
     rec_pearson = (
-        np.concatenate(rec_pearson_all) if rec_pearson_all else np.array([]).reshape(0, 0)
+        np.concatenate(rec_pearson_all)
+        if rec_pearson_all
+        else np.array([]).reshape(0, 0)
     )
 
     out: Dict[str, float] = {}
     if rel.size:
-        out.update(
-            {
-                "val_rel_l2_mean": float(np.mean(rel)),
-                "val_rel_l2_p10": float(np.percentile(rel, 10)),
-                "val_rel_l2_p90": float(np.percentile(rel, 90)),
-            }
-        )
+        out.update(distribution_summary(rel, "val_rel_l2"))
     if linf.size:
-        out.update(
-            {
-                "val_linf_mean": float(np.mean(linf)),
-                "val_linf_p90": float(np.percentile(linf, 90)),
-                "val_linf_max": float(np.max(linf)),
-            }
-        )
+        out.update(distribution_summary(linf, "val_linf"))
     if rec_rel.size:
         out.update(per_recorder_tail_summary(rec_rel, "val_rec_rel_l2"))
     if rec_pearson.size:
         out.update(per_recorder_tail_summary(rec_pearson, "val_rec_pearson"))
+    if peak_freq_all:
+        out.update(
+            distribution_summary(np.concatenate(peak_freq_all), "val_peak_freq_err")
+        )
+    if peak_amp_all:
+        out.update(
+            distribution_summary(np.concatenate(peak_amp_all), "val_peak_amp_err")
+        )
+    if logspec_all:
+        out.update(
+            distribution_summary(np.concatenate(logspec_all), "val_logspec_rel_l2")
+        )
+    if band_low_all:
+        out.update(
+            distribution_summary(np.concatenate(band_low_all), "val_rel_l2_band_low")
+        )
+    if band_mid_all:
+        out.update(
+            distribution_summary(np.concatenate(band_mid_all), "val_rel_l2_band_mid")
+        )
+    if band_high_all:
+        out.update(
+            distribution_summary(np.concatenate(band_high_all), "val_rel_l2_band_high")
+        )
+    if pearson_all:
+        out.update(distribution_summary(np.concatenate(pearson_all), "val_pearson"))
     return out

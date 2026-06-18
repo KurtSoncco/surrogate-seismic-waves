@@ -20,6 +20,8 @@ from losses import MaskedCompositeLoss, MaskedLpLoss  # noqa: E402
 from metrics import (  # noqa: E402
     aggregate_test_metrics,
     per_sample_h1_freq_numpy,
+    per_sample_peak_amp_err_numpy,
+    per_sample_peak_freq_err_numpy,
     per_sample_pearson_numpy,
     per_sample_rel_l2_numpy,
 )
@@ -92,7 +94,9 @@ def test_per_recorder_tail_summary_worst_site():
     rec_rel = per_recorder_rel_l2_numpy(pred, target)
     summary = per_recorder_tail_summary(rec_rel, "test_rec_rel_l2")
     assert "test_rec_rel_l2_min_p10" in summary
-    assert summary["test_rec_rel_l2_min_p10"] >= summary["test_rec_rel_l2_mean_p10"] * 0.5
+    assert (
+        summary["test_rec_rel_l2_min_p10"] >= summary["test_rec_rel_l2_mean_p10"] * 0.5
+    )
 
 
 def test_aggregate_test_metrics_includes_per_recorder():
@@ -113,6 +117,32 @@ def test_aggregate_test_metrics_includes_per_recorder():
     assert "linf_valley" in per_sample
     assert "linf_peak" in per_sample
     assert "rel_l2_valley" in per_sample
+    assert "peak_freq_err" in per_sample
+    assert "peak_amp_err" in per_sample
+    assert "rel_l2_band_mid" in per_sample
+    assert "logspec_rel_l2" in per_sample
+    assert "test_peak_freq_err_p50" in summary
+    assert "test_rel_l2_band_mid_p50" in summary
+    assert "test_logspec_rel_l2_p50" in summary
+
+
+def test_peak_metrics_detect_shifted_resonance():
+    n_freq = 200
+    nx = config.NX
+    rec = config.recorder_x_indices()
+    freq = np.logspace(-1, 1, n_freq)
+    pred = np.zeros((1, nx, n_freq), dtype=np.float32)
+    target = np.zeros((1, nx, n_freq), dtype=np.float32)
+    x = rec[len(rec) // 2]
+    peak_t = 50
+    peak_p = 120
+    for f_idx in range(n_freq):
+        target[0, x, f_idx] = np.exp(-((f_idx - peak_t) ** 2) / 80.0) + 0.1
+        pred[0, x, f_idx] = np.exp(-((f_idx - peak_p) ** 2) / 80.0) + 0.1
+    pf = per_sample_peak_freq_err_numpy(pred, target, freq)
+    pa = per_sample_peak_amp_err_numpy(pred, target, freq)
+    assert pf[0] > 0.05
+    assert pa[0] > 0.1  # amplitude mismatch at target peak frequency
 
 
 def test_linf_valley_dominates_on_missed_dip():
