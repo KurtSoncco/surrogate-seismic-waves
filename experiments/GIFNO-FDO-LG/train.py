@@ -16,7 +16,8 @@ from transfer import (
     apply_train_phase,
     build_phase_optimizer,
     l2sp_penalty,
-    load_xt_pretrained,
+    load_pretrained_weights,
+    load_xt_anchor,
 )
 
 
@@ -29,9 +30,14 @@ def train_model(train_loader, val_loader):
 
     anchor: dict[str, torch.Tensor] = {}
     if config.PRETRAIN_CHECKPOINT:
-        anchor = load_xt_pretrained(model, config.PRETRAIN_CHECKPOINT)
+        anchor, mode = load_pretrained_weights(model, config.PRETRAIN_CHECKPOINT)
+        print(f"[train] Pretrain load mode: {mode}")
     else:
         print("[train] WARNING: no PRETRAIN_CHECKPOINT — training from scratch")
+
+    if config.XT_ANCHOR_CHECKPOINT:
+        anchor = load_xt_anchor(model, config.XT_ANCHOR_CHECKPOINT)
+        print("[train] Using XT_ANCHOR_CHECKPOINT for L2-SP")
 
     apply_train_phase(model, config.TRAIN_PHASE)
 

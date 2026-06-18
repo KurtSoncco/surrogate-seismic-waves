@@ -84,6 +84,7 @@ X_COORD_MODE: str = "normalized"
 
 # --- Transfer learning from XT ---
 PRETRAIN_CHECKPOINT: str = ""
+XT_ANCHOR_CHECKPOINT: str = ""  # optional XT ckpt for L2-SP when init from LG phase ckpt
 TRAIN_PHASE: int = 1  # 1: unet+fusion | 2: +head | 3: all
 L2SP_WEIGHT: float = 1e-4
 PHASE1_LR: float = 1e-3
@@ -210,7 +211,7 @@ def _parse_env_value(key: str, raw: str):
         "PHASE3_OTHER_LR",
     ):
         return float(raw)
-    if key in ("WANDB_RUN_NAME", "PRETRAIN_CHECKPOINT"):
+    if key in ("WANDB_RUN_NAME", "PRETRAIN_CHECKPOINT", "XT_ANCHOR_CHECKPOINT"):
         return raw
     raise KeyError(f"Unknown config override key: {key}")
 
@@ -253,6 +254,7 @@ _OVERRIDABLE_KEYS = (
     "AMSGRAD",
     "WANDB_RUN_NAME",
     "PRETRAIN_CHECKPOINT",
+    "XT_ANCHOR_CHECKPOINT",
     "TRAIN_PHASE",
     "L2SP_WEIGHT",
     "PHASE1_LR",
@@ -266,7 +268,10 @@ def apply_env_overrides() -> list[str]:
     applied: list[str] = []
     g = globals()
     for key in _OVERRIDABLE_KEYS:
-        env_key = "WANDB_RUN_NAME" if key == "WANDB_RUN_NAME" else f"GIFNO_{key}"
+        if key in ("WANDB_RUN_NAME", "PRETRAIN_CHECKPOINT", "XT_ANCHOR_CHECKPOINT"):
+            env_key = key
+        else:
+            env_key = f"GIFNO_{key}"
         raw = os.environ.get(env_key)
         if raw is None or raw == "":
             continue

@@ -15,6 +15,25 @@ import config
 _XT_PREFIXES = ("lift.", "fno.", "head.")
 
 
+def load_xt_anchor(
+    model: nn.Module,
+    checkpoint: str | Path,
+) -> Dict[str, torch.Tensor]:
+    """Load XT anchor tensors for L2-SP without modifying the model."""
+    del model
+    ckpt = Path(checkpoint)
+    if not ckpt.is_file():
+        raise FileNotFoundError(f"Anchor checkpoint not found: {ckpt}")
+    src = torch.load(ckpt, map_location="cpu", weights_only=True)
+    anchor: Dict[str, torch.Tensor] = {}
+    for key, tensor in src.items():
+        if any(key.startswith(p) for p in _XT_PREFIXES):
+            anchor[key] = tensor.detach().clone()
+    if not anchor:
+        raise RuntimeError(f"No XT anchor keys in {ckpt}")
+    return anchor
+
+
 def load_xt_pretrained(
     model: nn.Module,
     checkpoint: str | Path,
@@ -55,6 +74,35 @@ def load_xt_pretrained(
     return {k: v.detach().clone() for k, v in to_load.items()}
 
 
+def load_pretrained_weights(
+    model: nn.Module,
+    checkpoint: str | Path,
+) -> tuple[Dict[str, torch.Tensor], str]:
+    """
+    Load weights from XT or a prior LG checkpoint.
+
+    Returns (L2-SP anchor from XT keys in checkpoint, load_mode).
+    """
+    ckpt_path = Path(checkpoint)
+    if not ckpt_path.is_file():
+        raise FileNotFoundError(f"Pretrain checkpoint not found: {ckpt_path}")
+
+    src = torch.load(ckpt_path, map_location="cpu", weights_only=True)
+    is_lg = any(k.startswith(("unet.", "fusion.", "lift_unet.")) for k in src)
+
+    if is_lg:
+        model.load_state_dict(src, strict=True)
+        print(f"[transfer] Loaded full LG checkpoint {ckpt_path.name}")
+        anchor = {
+            k: v.detach().clone()
+            for k, v in src.items()
+            if any(k.startswith(p) for p in _XT_PREFIXES)
+        }
+        return anchor, "lg_full"
+
+    return load_xt_pretrained(model, ckpt_path), "xt_partial"
+
+
 def l2sp_penalty(
     model: nn.Module,
     anchor: Dict[str, torch.Tensor],
@@ -90,8 +138,6 @@ def apply_train_phase(model: nn.Module, phase: int) -> list[str]:
     Phase 2: + head
     Phase 3: all (FNO uses lower LR via optimizer param groups)
     """
-    from model import GIFNOLGModel  # noqa: F401, F841
-
     trainable: list[str] = []
     freeze_all = [
         model.lift,

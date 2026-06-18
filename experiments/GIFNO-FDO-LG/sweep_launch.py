@@ -17,10 +17,8 @@ class SweepVariant:
     overrides: dict[str, str] = field(default_factory=dict)
 
 
-DEFAULT_VARIANTS_XT_TSV = """\
-xt_wide_ref
-xt_lat64_d64\tLATENT_CHANNELS=64;DEEPONET_LATENT_DIM=64
-xt_lat128_d128\tLATENT_CHANNELS=128;DEEPONET_LATENT_DIM=128
+DEFAULT_VARIANTS_LG_TSV = """\
+lg_phase1_ref\tTRAIN_PHASE=1;LATENT_CHANNELS=128;DEEPONET_LATENT_DIM=128
 """
 
 
@@ -49,11 +47,11 @@ def load_variants(path: Path) -> list[SweepVariant]:
     if path.is_file():
         return load_variants_from_text(path.read_text())
     print(
-        f"[GIFNO-FDO-XT sweep] WARNING: {path} not found — using built-in fallback.",
+        f"[GIFNO-FDO-LG sweep] WARNING: {path} not found — using built-in fallback.",
         file=sys.stderr,
         flush=True,
     )
-    return load_variants_from_text(DEFAULT_VARIANTS_XT_TSV)
+    return load_variants_from_text(DEFAULT_VARIANTS_LG_TSV)
 
 
 def sweep_run_tag(*, screen: bool, limit: int | None) -> str:
@@ -70,20 +68,23 @@ def build_export_env(
     limit: int | None,
 ) -> dict[str, str]:
     tag = sweep_run_tag(screen=screen, limit=limit)
-    sweep_root = "fdo_xt/sweep" if tag == "full" else f"fdo_xt/sweep/{tag}"
+    sweep_root = "fdo_lg/sweep" if tag == "full" else f"fdo_lg/sweep/{tag}"
     env = {
         "WANDB_RUN_NAME": f"sweep_{variant.name}_{tag}",
         "GIFNO_MODEL_DIR": str(tf_dir / "models" / sweep_root / variant.name),
         "GIFNO_RESULTS_DIR": str(tf_dir / "results" / sweep_root / variant.name),
     }
     for key, val in variant.overrides.items():
-        env[f"GIFNO_{key}"] = val
+        if key in ("PRETRAIN_CHECKPOINT", "XT_ANCHOR_CHECKPOINT", "WANDB_RUN_NAME"):
+            env[key] = val
+        else:
+            env[f"GIFNO_{key}"] = val
     return env
 
 
 def submit_job(
     variant: SweepVariant,
-    xt_dir: Path,
+    lg_dir: Path,
     tf_dir: Path,
     *,
     screen: bool,
@@ -94,7 +95,7 @@ def submit_job(
     env.update(build_export_env(variant, tf_dir, screen=screen, limit=limit))
 
     cmd = ["sbatch", f"--job-name={variant.name}", "--export=ALL"]
-    train_script = xt_dir / "delta_train.sh"
+    train_script = lg_dir / "delta_train.sh"
     main_args: list[str] = []
     if limit is not None:
         main_args.extend(["--limit", str(limit)])
@@ -107,12 +108,14 @@ def submit_job(
     print(f"  variant={variant.name}  overrides={override_str}")
     print(f"    WANDB_RUN_NAME={env['WANDB_RUN_NAME']}")
     print(f"    GIFNO_MODEL_DIR={env['GIFNO_MODEL_DIR']}")
+    if env.get("PRETRAIN_CHECKPOINT"):
+        print(f"    PRETRAIN_CHECKPOINT={env['PRETRAIN_CHECKPOINT']}")
 
     if dry_run:
         print(f"    [dry-run] would run: {' '.join(cmd)}")
         return None
 
-    result = subprocess.run(cmd, env=env, cwd=xt_dir, capture_output=True, text=True)
+    result = subprocess.run(cmd, env=env, cwd=lg_dir, capture_output=True, text=True)
     if result.returncode != 0:
         print(result.stderr or result.stdout, file=sys.stderr)
         raise RuntimeError(f"sbatch failed for {variant.name}")
@@ -122,11 +125,11 @@ def submit_job(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Submit GIFNO-FDO-XT sweep jobs")
+    parser = argparse.ArgumentParser(description="Submit GIFNO-FDO-LG sweep jobs")
     parser.add_argument(
         "--variants",
         type=Path,
-        default=Path(__file__).resolve().parent / "sweep_variants_xt.tsv",
+        default=Path(__file__).resolve().parent / "sweep_variants_lg.tsv",
     )
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--limit", type=int, default=2000)
@@ -134,10 +137,10 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    xt_dir = Path(__file__).resolve().parent
+    lg_dir = Path(__file__).resolve().parent
     variants_path = args.variants
     if not variants_path.is_absolute():
-        variants_path = xt_dir / variants_path
+        variants_path = lg_dir / variants_path
     tf_dir = Path(os.environ.get("GIFNO_TF_DIR", ""))
     if not tf_dir:
         data_root = os.environ.get("GIFNO_DATA_ROOT", "")
@@ -152,13 +155,13 @@ def main() -> int:
 
     limit = None if args.full else args.limit
     mode = "full" if args.full else f"screen (limit={limit})"
-    print(f"=== GIFNO-FDO-XT sweep: {len(variants)} job(s), mode={mode} ===")
+    print(f"=== GIFNO-FDO-LG sweep: {len(variants)} job(s), mode={mode} ===")
 
     job_ids: list[str] = []
     for variant in variants:
         jid = submit_job(
             variant,
-            xt_dir,
+            lg_dir,
             tf_dir,
             screen=not args.full,
             limit=limit,
