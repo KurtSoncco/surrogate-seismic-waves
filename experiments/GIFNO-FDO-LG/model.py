@@ -233,8 +233,15 @@ class GIFNOLGModel(nn.Module):
             freq=freq,
         )
 
+    def _fno_frozen(self) -> bool:
+        return not any(p.requires_grad for p in self.fno.parameters())
+
     def encode(self, x: torch.Tensor) -> torch.Tensor:
-        z_fno = self.fno(self.lift(x))
+        if self._fno_frozen():
+            with torch.no_grad():
+                z_fno = self.fno(self.lift(x))
+        else:
+            z_fno = self.fno(self.lift(x))
         z_unet = self.unet(self.lift_unet(x))
         return self.fusion(z_fno, z_unet)
 

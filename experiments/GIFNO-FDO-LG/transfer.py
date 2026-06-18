@@ -60,13 +60,18 @@ def l2sp_penalty(
     anchor: Dict[str, torch.Tensor],
     weight: float,
 ) -> torch.Tensor:
-    """L2-SP: penalize deviation from pretrained anchor weights."""
+    """L2-SP: penalize deviation from pretrained anchor on trainable weights only."""
     if weight <= 0 or not anchor:
         return torch.zeros((), device=next(model.parameters()).device)
     loss = torch.zeros((), device=next(model.parameters()).device)
     for name, param in model.named_parameters():
-        if name in anchor:
-            loss = loss + torch.sum((param - anchor[name].to(param.device)) ** 2)
+        if name not in anchor or not param.requires_grad:
+            continue
+        diff = param - anchor[name].to(param.device)
+        if torch.is_complex(param):
+            loss = loss + torch.sum(diff.real.pow(2) + diff.imag.pow(2))
+        else:
+            loss = loss + torch.sum(diff.pow(2))
     return weight * loss
 
 
