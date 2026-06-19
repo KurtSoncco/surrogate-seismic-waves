@@ -34,6 +34,7 @@ wandb/
 !experiments/GIFNO-FDO/sweep_variants_combo.tsv
 !experiments/GIFNO-FDO/sweep_variants_opt.tsv
 !experiments/GIFNO-FDO-XT/sweep_variants_xt.tsv
+!experiments/GIFNO-FDO-LG/sweep_variants_lg.tsv
 experiments/GIFNO-FDO-XT/analysis/
 *.json
 *.parquet
