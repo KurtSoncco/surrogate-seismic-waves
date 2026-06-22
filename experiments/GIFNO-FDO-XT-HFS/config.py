@@ -1,5 +1,5 @@
 # config.py
-"""GIFNO-FDO-LG: FNO global + U-Net local branch fused before XT DeepONet head."""
+"""Configuration for GIFNO-FDO-XT-HFS: FNO + HFS latent scaling + position-aware 2D DeepONet trunk."""
 
 import os
 import sys
@@ -11,7 +11,6 @@ import torch
 
 EXPERIMENT_DIR = Path(__file__).resolve().parent
 _GIFNO_DIR = EXPERIMENT_DIR.parent / "GIFNO"
-_XT_DIR = EXPERIMENT_DIR.parent / "GIFNO-FDO-XT"
 _BOX_DATA_ROOT = Path("/mnt/box_lab/Projects/Neural Operator/data")
 _DUMMY_DATA_ROOT = _GIFNO_DIR / "dummy_data"
 
@@ -28,10 +27,10 @@ DATA_ROOT = _resolve_data_root()
 H5_DIR = Path(os.environ.get("GIFNO_H5_DIR", DATA_ROOT / "h5"))
 TF_RESULTS_DIR = Path(os.environ.get("GIFNO_TF_DIR", DATA_ROOT / "transfer_function"))
 MODEL_SAVE_DIR = Path(
-    os.environ.get("GIFNO_MODEL_DIR", TF_RESULTS_DIR / "models" / "fdo_lg")
+    os.environ.get("GIFNO_MODEL_DIR", TF_RESULTS_DIR / "models" / "fdo_xt_hfs")
 )
 RESULTS_SAVE_DIR = Path(
-    os.environ.get("GIFNO_RESULTS_DIR", TF_RESULTS_DIR / "results" / "fdo_lg")
+    os.environ.get("GIFNO_RESULTS_DIR", TF_RESULTS_DIR / "results" / "fdo_xt_hfs")
 )
 
 TF_PER_SAMPLE_PATH = TF_RESULTS_DIR / "tf_per_sample.npy"
@@ -67,38 +66,25 @@ N_FREQ: int = 1000
 
 # --- FNO encoder ---
 IN_CHANNELS: int = 4
-LATENT_CHANNELS: int = 128
+LATENT_CHANNELS: int = 96
 FNO_MODES: Tuple[int, int] = (32, 32)
 NUM_FNO_LAYERS: int = 5
 
-# --- U-Net local branch ---
-UNET_BASE_CHANNELS: int = 64
-FUSION_MODE: str = "concat"  # concat | gated
+# --- HFS (post-FNO latent only) ---
+HFS_PATCH_SIZE: int = 4
 
 # --- DeepONet readout (2D trunk: log f + x) ---
-BRANCH_MODE: str = "surface"
+BRANCH_MODE: str = "surface"  # surface | depth
 DEEPONET_LATENT_DIM: int = 128
 TRUNK_HIDDEN: int = 128
 TRUNK_LAYERS: int = 4
-X_COORD_MODE: str = "normalized"
+X_COORD_MODE: str = "normalized"  # normalized: x / domain half-width | meters
 
-# --- Transfer learning from XT ---
-PRETRAIN_CHECKPOINT: str = ""
-XT_ANCHOR_CHECKPOINT: str = (
-    ""  # optional XT ckpt for L2-SP when init from LG phase ckpt
-)
-TRAIN_PHASE: int = 1  # 1: unet+fusion | 2: +head | 3: all
-L2SP_WEIGHT: float = 1e-4
-PHASE1_LR: float = 1e-3
-PHASE2_LR: float = 3e-4
-PHASE3_FNO_LR: float = 1e-4
-PHASE3_OTHER_LR: float = 3e-4
-
-# --- Training (XT winner defaults) ---
+# --- Training (wide_h1_p1_amsgrad winner defaults) ---
 DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-LEARNING_RATE: float = PHASE1_LR
+LEARNING_RATE: float = 1e-3
 WEIGHT_DECAY: float = 1e-4
-NUM_EPOCHS: int = 200
+NUM_EPOCHS: int = 1500
 BATCH_SIZE: int = 16
 TRAIN_SPLIT: float = 0.7
 VAL_SPLIT: float = 0.15
@@ -110,19 +96,23 @@ NUM_WORKERS: int = 4
 USE_AMP: bool = False
 TORCH_COMPILE: bool = False
 
+# --- Optimizer ---
 OPTIMIZER: str = "adam"
 ADAM_BETA1: float = 0.9
 ADAM_BETA2: float = 0.999
 ADAM_EPS: float = 1e-8
 AMSGRAD: bool = True
 
-WANDB_PROJECT: str = "gifno_fdo_lg"
-WANDB_RUN_NAME: str = "lg_transfer"
+# --- W&B ---
+WANDB_PROJECT: str = "gifno_fdo_xt_hfs"
+WANDB_RUN_NAME: str = "hfs_run"
 
+# --- Eval plots ---
 EVAL_N_HEATMAPS: int = 3
 EVAL_N_CENTRAL_CURVES: int = 4
 EVAL_N_WORST_SAMPLES: int = 3
 
+# --- Loss ---
 LOSS_REL_WEIGHT: float = 1.0
 LOSS_H1_WEIGHT: float = 0.25
 LOSS_FREQ_WEIGHT: float = 0.0
@@ -135,16 +125,12 @@ LOSS_LINF_WEIGHT: float = 0.0
 VALLEY_LOSS_WEIGHT: float = 0.0
 VALLEY_PERCENTILE: float = 20.0
 
-# --- TF engineering metric bands (Hz) — shared with GIFNO metrics ---
-FREQ_BAND_LOW: Tuple[float, float] = (0.1, 0.5)
-FREQ_BAND_MID: Tuple[float, float] = (0.5, 2.0)
-FREQ_BAND_HIGH: Tuple[float, float] = (2.0, 10.0)
-
 
 def _parse_env_value(key: str, raw: str):
     raw = raw.strip()
     if key == "FNO_MODES":
-        return tuple(int(x.strip()) for x in raw.split(","))
+        parts = [int(x.strip()) for x in raw.split(",")]
+        return tuple(parts)
     if key == "BRANCH_MODE":
         mode = raw.lower()
         if mode not in ("surface", "depth"):
@@ -154,11 +140,6 @@ def _parse_env_value(key: str, raw: str):
         mode = raw.lower()
         if mode not in ("normalized", "meters"):
             raise ValueError(f"X_COORD_MODE must be normalized or meters, got {raw!r}")
-        return mode
-    if key == "FUSION_MODE":
-        mode = raw.lower()
-        if mode not in ("concat", "gated"):
-            raise ValueError(f"FUSION_MODE must be concat or gated, got {raw!r}")
         return mode
     if key == "OPTIMIZER":
         opt = raw.lower()
@@ -179,7 +160,6 @@ def _parse_env_value(key: str, raw: str):
     if key in (
         "NUM_FNO_LAYERS",
         "LATENT_CHANNELS",
-        "UNET_BASE_CHANNELS",
         "DEEPONET_LATENT_DIM",
         "TRUNK_HIDDEN",
         "TRUNK_LAYERS",
@@ -189,7 +169,7 @@ def _parse_env_value(key: str, raw: str):
         "SEED",
         "NUM_WORKERS",
         "LOSS_P",
-        "TRAIN_PHASE",
+        "HFS_PATCH_SIZE",
     ):
         return int(raw)
     if key in (
@@ -206,14 +186,9 @@ def _parse_env_value(key: str, raw: str):
         "ADAM_BETA1",
         "ADAM_BETA2",
         "ADAM_EPS",
-        "L2SP_WEIGHT",
-        "PHASE1_LR",
-        "PHASE2_LR",
-        "PHASE3_FNO_LR",
-        "PHASE3_OTHER_LR",
     ):
         return float(raw)
-    if key in ("WANDB_RUN_NAME", "PRETRAIN_CHECKPOINT", "XT_ANCHOR_CHECKPOINT"):
+    if key == "WANDB_RUN_NAME":
         return raw
     raise KeyError(f"Unknown config override key: {key}")
 
@@ -228,7 +203,6 @@ _OVERRIDABLE_KEYS = (
     "GRAD_CLIP_NORM",
     "NUM_WORKERS",
     "LATENT_CHANNELS",
-    "UNET_BASE_CHANNELS",
     "FNO_MODES",
     "NUM_FNO_LAYERS",
     "BRANCH_MODE",
@@ -236,7 +210,6 @@ _OVERRIDABLE_KEYS = (
     "TRUNK_HIDDEN",
     "TRUNK_LAYERS",
     "X_COORD_MODE",
-    "FUSION_MODE",
     "LOSS_REL_WEIGHT",
     "LOSS_H1_WEIGHT",
     "LOSS_FREQ_WEIGHT",
@@ -255,14 +228,7 @@ _OVERRIDABLE_KEYS = (
     "ADAM_EPS",
     "AMSGRAD",
     "WANDB_RUN_NAME",
-    "PRETRAIN_CHECKPOINT",
-    "XT_ANCHOR_CHECKPOINT",
-    "TRAIN_PHASE",
-    "L2SP_WEIGHT",
-    "PHASE1_LR",
-    "PHASE2_LR",
-    "PHASE3_FNO_LR",
-    "PHASE3_OTHER_LR",
+    "HFS_PATCH_SIZE",
 )
 
 
@@ -270,17 +236,16 @@ def apply_env_overrides() -> list[str]:
     applied: list[str] = []
     g = globals()
     for key in _OVERRIDABLE_KEYS:
-        if key in ("WANDB_RUN_NAME", "PRETRAIN_CHECKPOINT", "XT_ANCHOR_CHECKPOINT"):
-            env_key = key
-        else:
-            env_key = f"GIFNO_{key}"
+        env_key = "WANDB_RUN_NAME" if key == "WANDB_RUN_NAME" else f"GIFNO_{key}"
         raw = os.environ.get(env_key)
         if raw is None or raw == "":
             continue
         g[key] = _parse_env_value(key, raw)
         applied.append(f"{key}={g[key]!r}")
     if applied:
-        print("[GIFNO-FDO-LG config] env overrides: " + ", ".join(applied), flush=True)
+        print(
+            "[GIFNO-FDO-XT-HFS config] env overrides: " + ", ".join(applied), flush=True
+        )
     return applied
 
 
@@ -301,6 +266,7 @@ def recorder_x_indices(
 
 
 def domain_half_width_m(nx: int = NX, dx: float = DX) -> float:
+    """Half-width of the lateral model strip [m]; domain edges normalize to ±1."""
     return float(nx // 2) * dx
 
 
@@ -311,6 +277,12 @@ def recorder_x_trunk_coords(
     dx: float = DX,
     mode: str = X_COORD_MODE,
 ) -> np.ndarray:
+    """
+    Lateral coordinate for trunk input.
+
+    meters: offset from domain center in metres.
+    normalized: x_m / domain_half_width so model edges are ±1 (recorders lie inside).
+    """
     if recorder_x is None:
         recorder_x = recorder_x_indices(nx=nx, dx=dx)
     center = nx // 2
@@ -324,17 +296,10 @@ def recorder_x_trunk_coords(
 
 
 def setup_import_paths() -> None:
-    lg = str(EXPERIMENT_DIR)
+    """Ensure HFS config is used when importing shared GIFNO modules."""
+    xt = str(EXPERIMENT_DIR)
     gifno = str(_GIFNO_DIR)
-    if lg not in sys.path:
-        sys.path.insert(0, lg)
+    if xt not in sys.path:
+        sys.path.insert(0, xt)
     if gifno not in sys.path:
         sys.path.insert(1, gifno)
-
-
-def phase_learning_rate(phase: int) -> float:
-    if phase <= 1:
-        return PHASE1_LR
-    if phase == 2:
-        return PHASE2_LR
-    return PHASE3_OTHER_LR

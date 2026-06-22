@@ -44,7 +44,9 @@ def test_l2sp_penalty_skips_frozen_complex_fno(tmp_path):
     """L2-SP must not sum complex FNO spectral weights when FNO is frozen."""
     model = create_model(latent_channels=32, deeponet_dim=16, n_freq=64)
     xt_keys = {
-        k: v for k, v in model.state_dict().items() if k.startswith(("lift.", "fno.", "head."))
+        k: v
+        for k, v in model.state_dict().items()
+        if k.startswith(("lift.", "fno.", "head."))
     }
     anchor = {k: v.detach().clone() for k, v in xt_keys.items()}
     apply_train_phase(model, phase=1)
