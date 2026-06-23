@@ -12,6 +12,7 @@ from neuralop.losses import LpLoss
 
 import config
 from metrics import gather_recorder_tf_torch, valley_mask_from_log_target_torch
+from radial_spectral_loss import RadialBinnedSpectralLoss
 
 _EPS = 1e-8
 
@@ -87,6 +88,9 @@ class MaskedCompositeLoss(nn.Module):
         log_tf_loss: bool = False,
         valley_loss_weight: float = 0.0,
         valley_percentile: float = 20.0,
+        radial_weight: float = 0.0,
+        radial_i_low: int = 4,
+        radial_i_high: int = 12,
         freq: Optional[np.ndarray] = None,
     ):
         super().__init__()
@@ -94,6 +98,7 @@ class MaskedCompositeLoss(nn.Module):
         self.h1_weight = h1_weight
         self.freq_weight = freq_weight
         self.linf_weight = linf_weight
+        self.radial_weight = radial_weight
         self.p = p
         self.hard_mining = hard_mining
         self.hard_mining_power = hard_mining_power
@@ -119,6 +124,13 @@ class MaskedCompositeLoss(nn.Module):
             "_freq_weights",
             torch.from_numpy(w.astype(np.float32)),
             persistent=False,
+        )
+        self.radial_loss = (
+            RadialBinnedSpectralLoss(
+                i_low=radial_i_low, i_high=radial_i_high, mid_high_only=True
+            )
+            if radial_weight > 0
+            else None
         )
 
     def _transform_for_rel_loss(
@@ -234,6 +246,10 @@ class MaskedCompositeLoss(nn.Module):
             linf = self._relative_linf_on_recorder(p_rec, t_rec)
             total = total + self.linf_weight * linf
 
+        if self.radial_weight > 0 and self.radial_loss is not None:
+            radial = self.radial_loss(p_rec, t_rec)
+            total = total + self.radial_weight * radial
+
         if self.hard_mining and total.numel() > 0:
             mean = total.mean().clamp_min(_EPS)
             weights = (total / mean) ** self.hard_mining_power
@@ -244,11 +260,15 @@ class MaskedCompositeLoss(nn.Module):
 
 def build_training_loss() -> nn.Module:
     """Factory using weights from config."""
+    radial_weight = getattr(config, "LOSS_RADIAL_WEIGHT", 0.0)
+    radial_i_low = getattr(config, "RADIAL_I_LOW", 4)
+    radial_i_high = getattr(config, "RADIAL_I_HIGH", 12)
     use_composite = (
         config.LOSS_H1_WEIGHT != 0.0
         or config.LOSS_FREQ_WEIGHT != 0.0
         or config.LOSS_LINF_WEIGHT != 0.0
         or config.VALLEY_LOSS_WEIGHT != 0.0
+        or radial_weight != 0.0
         or config.LOG_TF_LOSS
         or config.HARD_MINING
     )
@@ -266,4 +286,7 @@ def build_training_loss() -> nn.Module:
         log_tf_loss=config.LOG_TF_LOSS,
         valley_loss_weight=config.VALLEY_LOSS_WEIGHT,
         valley_percentile=config.VALLEY_PERCENTILE,
+        radial_weight=radial_weight,
+        radial_i_low=radial_i_low,
+        radial_i_high=radial_i_high,
     )

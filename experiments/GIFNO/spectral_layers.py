@@ -142,3 +142,135 @@ class HFSModule(nn.Module):
             .reshape(b, c, h, w)
         )
         return out[..., :orig_h, :orig_w]
+
+
+class LocalPatchSpectralConv2d(nn.Module):
+    """LOGLO-style local spectral conv on non-overlapping patches (all rfft modes)."""
+
+    def __init__(self, channels: int, patch_size: Tuple[int, int]):
+        super().__init__()
+        ph, pw = patch_size
+        if ph < 1 or pw < 1:
+            raise ValueError(f"patch_size must be positive, got {patch_size}")
+        self.ph = ph
+        self.pw = pw
+        mh, mw = ph, pw // 2 + 1
+        scale = 1.0 / max(channels * channels, 1)
+        weight = scale * torch.randn(channels, channels, mh, mw, dtype=torch.cfloat)
+        self.weight = nn.Parameter(weight)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b, c, h, w = x.shape
+        ph, pw = self.ph, self.pw
+        if h % ph != 0 or w % pw != 0:
+            raise ValueError(
+                f"Spatial dims ({h}, {w}) must be divisible by patch ({ph}, {pw})"
+            )
+        patches = F.unfold(x, kernel_size=(ph, pw), stride=(ph, pw))
+        n_p = patches.shape[-1]
+        patches = patches.view(b, c, ph, pw, n_p).permute(0, 4, 1, 2, 3)
+        patches = patches.reshape(b * n_p, c, ph, pw)
+        x_ft = torch.fft.rfft2(patches, norm="ortho")
+        out_ft = torch.einsum("bixy,ijxy->bjxy", x_ft, self.weight)
+        out = torch.fft.irfft2(out_ft, s=(ph, pw), norm="ortho")
+        out = out.view(b, n_p, c, ph, pw).permute(0, 2, 3, 4, 1)
+        out = out.reshape(b, c * ph * pw, n_p)
+        return F.fold(out, output_size=(h, w), kernel_size=(ph, pw), stride=(ph, pw))
+
+
+class HighFrequencyPropagation(nn.Module):
+    """HFP: X - upsample(avgpool(X)) per LOGLO-FNO Eq. 4."""
+
+    def __init__(self, kernel_size: int = 4, stride: int = 4):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.stride = stride
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        low = F.avg_pool2d(x, self.kernel_size, stride=self.stride)
+        up = F.interpolate(low, size=x.shape[-2:], mode="bilinear", align_corners=False)
+        return x - up
+
+
+def _hf_adaptive_noise(x_hf: torch.Tensor, alpha: float) -> torch.Tensor:
+    """Per-sample HF adaptive Gaussian noise (LOGLO training augmentation)."""
+    flat = x_hf.reshape(x_hf.shape[0], -1)
+    mu = flat.mean(dim=1, keepdim=True)
+    sigma = flat.std(dim=1, keepdim=True).clamp_min(1e-8)
+    noise = torch.randn_like(x_hf)
+    return (mu.view(-1, 1, 1, 1) + alpha * sigma.view(-1, 1, 1, 1) * noise).to(
+        dtype=x_hf.dtype
+    )
+
+
+class DualPathLOGLOStack(nn.Module):
+    """
+    Dual-path LOGLO encoder: separate global FNO and local patch-spectral streams.
+
+    Returns (x_global, x_local) after L layers for concat at the readout branch.
+    """
+
+    def __init__(
+        self,
+        n_modes: Tuple[int, int],
+        channels: int,
+        n_layers: int,
+        patch_size: Tuple[int, int] = (16, 20),
+        hfp_kernel: int = 4,
+        hfp_stride: int = 4,
+        hf_noise_alpha: float = 0.025,
+    ):
+        super().__init__()
+        self.channels = channels
+        self.n_layers = n_layers
+        self.hf_noise_alpha = hf_noise_alpha
+        self.fno = FNOBlocks(
+            n_modes=n_modes,
+            in_channels=channels,
+            out_channels=channels,
+            n_layers=n_layers,
+            non_linearity=nn.functional.gelu,
+        )
+        self.local_layers = nn.ModuleList(
+            [LocalPatchSpectralConv2d(channels, patch_size) for _ in range(n_layers)]
+        )
+        self.hfp = HighFrequencyPropagation(hfp_kernel, hfp_stride)
+        self.hf_mlps = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Conv2d(channels, channels, kernel_size=1),
+                    nn.GELU(),
+                    nn.Conv2d(channels, channels, kernel_size=1),
+                )
+                for _ in range(n_layers)
+            ]
+        )
+        self.skips = nn.ModuleList(
+            [nn.Conv2d(channels, channels, kernel_size=1) for _ in range(n_layers)]
+        )
+        self.gates = nn.ModuleList(
+            [nn.Conv2d(channels, channels, kernel_size=1) for _ in range(n_layers)]
+        )
+
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        x_global = x
+        x_local = x
+        for i in range(self.n_layers):
+            z = x_global + x_local
+            x_hf = self.hfp(z)
+            noise = (
+                _hf_adaptive_noise(x_hf, self.hf_noise_alpha)
+                if self.training
+                else torch.zeros_like(x_hf)
+            )
+            g_in = x_global + noise
+            l_in = x_local + noise
+
+            x_g = self.fno(g_in, index=i)
+            x_l = self.local_layers[i](l_in)
+            hf_feat = self.hf_mlps[i](x_hf)
+            mix = x_g + x_l + hf_feat + self.skips[i](z)
+            gate = torch.sigmoid(self.gates[i](mix))
+            x_global = F.gelu(x_g + gate * (mix - x_g))
+            x_local = F.gelu(x_l + (1.0 - gate) * (mix - x_l))
+        return x_global, x_local
