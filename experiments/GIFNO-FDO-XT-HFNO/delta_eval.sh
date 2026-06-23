@@ -14,6 +14,11 @@
 #
 #   sbatch delta_eval.sh --limit 2000 --wandb-run-id 5wp5nyin
 #
+# Full-dataset eval (omit --limit):
+#   export SWEEP_VARIANT=hfno_ref
+#   export SWEEP_TAG=full
+#   sbatch delta_eval.sh --wandb-run-name sweep_hfno_ref_full_eval
+#
 # Or set GIFNO_MODEL_DIR / GIFNO_RESULTS_DIR explicitly and omit SWEEP_VARIANT.
 
 #SBATCH --job-name=hfno_eval
@@ -69,7 +74,13 @@ export GIFNO_H5_DIR="${GIFNO_H5_DIR:-${DATA_ROOT}/h5}"
 export GIFNO_TF_DIR="${GIFNO_TF_DIR:-${DATA_ROOT}/transfer_function}"
 
 if [[ -n "${SWEEP_VARIANT:-}" ]]; then
-    SWEEP_TAG="n${SWEEP_LIMIT:-2000}"
+    if [[ -n "${SWEEP_TAG:-}" ]]; then
+        :
+    elif [[ "${SWEEP_FULL:-0}" == "1" ]]; then
+        SWEEP_TAG="full"
+    else
+        SWEEP_TAG="n${SWEEP_LIMIT:-2000}"
+    fi
     export GIFNO_MODEL_DIR="${GIFNO_MODEL_DIR:-${GIFNO_TF_DIR}/models/fdo_xt_hfno/sweep/${SWEEP_TAG}/${SWEEP_VARIANT}}"
     export GIFNO_RESULTS_DIR="${GIFNO_RESULTS_DIR:-${GIFNO_TF_DIR}/results/fdo_xt_hfno/sweep/${SWEEP_TAG}/${SWEEP_VARIANT}}"
 fi

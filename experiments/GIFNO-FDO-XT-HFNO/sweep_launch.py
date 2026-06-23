@@ -98,7 +98,7 @@ def submit_job(
     env.update(build_export_env(variant, tf_dir, screen=screen, limit=limit))
 
     cmd = ["sbatch", f"--job-name={variant.name}", "--export=ALL"]
-    train_script = xt_dir / "delta_train.sh"
+    train_script = xt_dir / ("delta_train.sh" if screen else "delta_train_full.sh")
     main_args: list[str] = []
     if limit is not None:
         main_args.extend(["--limit", str(limit)])

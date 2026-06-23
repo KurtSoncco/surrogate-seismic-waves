@@ -4,7 +4,8 @@
 #   cd ~/surrogate-seismic-waves/experiments/GIFNO-FDO-XT-HFNO
 #   source ../GIFNO/delta_env.sh
 #   sbatch delta_train.sh
-#   bash delta_sweep.sh --variants sweep_variants_xt.tsv --limit 2000
+#   bash delta_sweep.sh --variants sweep_variants_hfno.tsv --limit 2000
+#   bash delta_sweep_rerun.sh hfno_ref --full
 
 #SBATCH --job-name=hfno_train
 #SBATCH --account=bgpu-delta-gpu
