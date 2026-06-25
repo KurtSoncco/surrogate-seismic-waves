@@ -166,16 +166,19 @@ class LocalPatchSpectralConv2d(nn.Module):
             raise ValueError(
                 f"Spatial dims ({h}, {w}) must be divisible by patch ({ph}, {pw})"
             )
+        in_dtype = x.dtype
         patches = F.unfold(x, kernel_size=(ph, pw), stride=(ph, pw))
         n_p = patches.shape[-1]
         patches = patches.view(b, c, ph, pw, n_p).permute(0, 4, 1, 2, 3)
         patches = patches.reshape(b * n_p, c, ph, pw)
-        x_ft = torch.fft.rfft2(patches, norm="ortho")
+        # FFTs require float32 (cuFFT has no half support); guard for AMP.
+        x_ft = torch.fft.rfft2(patches.float(), norm="ortho")
         out_ft = torch.einsum("bixy,ijxy->bjxy", x_ft, self.weight)
         out = torch.fft.irfft2(out_ft, s=(ph, pw), norm="ortho")
         out = out.view(b, n_p, c, ph, pw).permute(0, 2, 3, 4, 1)
         out = out.reshape(b, c * ph * pw, n_p)
-        return F.fold(out, output_size=(h, w), kernel_size=(ph, pw), stride=(ph, pw))
+        out = F.fold(out, output_size=(h, w), kernel_size=(ph, pw), stride=(ph, pw))
+        return out.to(in_dtype)
 
 
 class HighFrequencyPropagation(nn.Module):

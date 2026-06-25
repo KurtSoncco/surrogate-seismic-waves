@@ -103,6 +103,11 @@ GRAD_CLIP_NORM: float = 1.0
 NUM_WORKERS: int = 4
 USE_AMP: bool = False
 TORCH_COMPILE: bool = False
+# Preload all samples into RAM once (avoids per-epoch H5 reads from slow disk).
+CACHE_DATASET: bool = True
+# Compute expensive per-recorder tail metrics only every N epochs (logging only;
+# model selection uses val_loss every epoch).
+VAL_TAIL_EVERY: int = 10
 
 # --- Optimizer ---
 OPTIMIZER: str = "adam"

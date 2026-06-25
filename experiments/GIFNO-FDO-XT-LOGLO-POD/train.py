@@ -108,9 +108,14 @@ def train_model(train_loader, val_loader):
         val_loss /= max(n_val, 1)
         scheduler.step(val_loss)
 
-        val_tail = compute_val_tail_metrics_torch(
-            model, val_loader, config.DEVICE, freq
-        )
+        val_tail_every = int(getattr(config, "VAL_TAIL_EVERY", 1))
+        is_last_epoch = epoch == config.NUM_EPOCHS - 1
+        if val_tail_every <= 1 or epoch % val_tail_every == 0 or is_last_epoch:
+            val_tail = compute_val_tail_metrics_torch(
+                model, val_loader, config.DEVICE, freq
+            )
+        else:
+            val_tail = {}
 
         log_payload = {
             "epoch": epoch,

@@ -109,6 +109,7 @@ class GIFNODataset(Dataset):
         nz_max: int = config.NZ_MAX,
         nx: int = config.NX,
         n_freq: int = config.N_FREQ,
+        cache_in_memory: bool = False,
     ):
         self.manifest_rows = manifest_rows
         self.tf_array = tf_array
@@ -116,11 +117,33 @@ class GIFNODataset(Dataset):
         self.nz_max = nz_max
         self.nx = nx
         self.n_freq = n_freq
+        self.cache_in_memory = cache_in_memory
+        self._cache: dict[int, tuple] = {}
 
     def __len__(self) -> int:
         return len(self.manifest_rows)
 
+    def preload(self) -> None:
+        """Read every sample once into RAM so per-epoch H5 reads are eliminated.
+
+        Called in the main process before forking DataLoader workers, so the
+        cache is shared copy-on-write across workers (no per-worker duplication).
+        """
+        from tqdm import tqdm
+
+        for idx in tqdm(range(len(self)), desc="Preloading dataset", unit="sample"):
+            self._cache[idx] = self._load_sample(idx)
+
     def __getitem__(self, idx: int):
+        if self.cache_in_memory:
+            cached = self._cache.get(idx)
+            if cached is None:
+                cached = self._load_sample(idx)
+                self._cache[idx] = cached
+            return cached
+        return self._load_sample(idx)
+
+    def _load_sample(self, idx: int):
         row = self.manifest_rows[idx]
         h5_path = _resolve_h5_path(row["h5_path"])
 
@@ -192,7 +215,12 @@ def get_data_loaders(
     recorder_x_idx = np.load(recorder_x_path)
     freq = np.load(config.TF_FREQ_PATH)
 
-    dataset = GIFNODataset(manifest, tf_array, recorder_x_idx)
+    cache_in_memory = bool(getattr(config, "CACHE_DATASET", False))
+    dataset = GIFNODataset(
+        manifest, tf_array, recorder_x_idx, cache_in_memory=cache_in_memory
+    )
+    if cache_in_memory:
+        dataset.preload()
     n = len(dataset)
     gen = torch.Generator().manual_seed(seed)
     perm = torch.randperm(n, generator=gen).tolist()
