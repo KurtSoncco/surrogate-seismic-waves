@@ -8,6 +8,7 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.profiler import record_function
 from neuralop.layers.fno_block import FNOBlocks
 
 
@@ -266,23 +267,28 @@ class DualPathLOGLOStack(nn.Module):
         x_local = x
         use_noise = self.training and self.hf_noise_alpha > 0
         for i in range(self.n_layers):
-            z = x_global + x_local
-            x_hf = self.hfp(z)
-            if use_noise:
-                noise = _hf_adaptive_noise(x_hf, self.hf_noise_alpha)
-                g_in = x_global + noise
-                l_in = x_local + noise
-            else:
-                g_in = x_global
-                l_in = x_local
+            with record_function("loglo/hfp"):
+                z = x_global + x_local
+                x_hf = self.hfp(z)
+                if use_noise:
+                    noise = _hf_adaptive_noise(x_hf, self.hf_noise_alpha)
+                    g_in = x_global + noise
+                    l_in = x_local + noise
+                else:
+                    g_in = x_global
+                    l_in = x_local
 
             # FNO/patch spectral convs use FFTs (no half support) -> force fp32.
-            with torch.autocast(device_type=g_in.device.type, enabled=False):
-                x_g = self.fno(g_in.float(), index=i)
-            x_l = self.local_layers[i](l_in)
-            hf_feat = self.hf_mlps[i](x_hf)
-            mix = x_g + x_l + hf_feat + self.skips[i](z)
-            gate = torch.sigmoid(self.gates[i](mix))
-            x_global = F.gelu(x_g + gate * (mix - x_g))
-            x_local = F.gelu(x_l + (1.0 - gate) * (mix - x_l))
+            with record_function("loglo/global_fft"):
+                with torch.autocast(device_type=g_in.device.type, enabled=False):
+                    x_g = self.fno(g_in.float(), index=i)
+            with record_function("loglo/local_patch"):
+                x_l = self.local_layers[i](l_in)
+            with record_function("loglo/hf_mlp"):
+                hf_feat = self.hf_mlps[i](x_hf)
+            with record_function("loglo/fusion"):
+                mix = x_g + x_l + hf_feat + self.skips[i](z)
+                gate = torch.sigmoid(self.gates[i](mix))
+                x_global = F.gelu(x_g + gate * (mix - x_g))
+                x_local = F.gelu(x_l + (1.0 - gate) * (mix - x_l))
         return x_global, x_local
