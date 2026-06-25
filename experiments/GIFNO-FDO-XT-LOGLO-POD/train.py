@@ -37,6 +37,12 @@ def _use_amp() -> bool:
 
 
 def train_model(train_loader, val_loader):
+    # Free A100 speedups: TF32 matmuls/convs + cuDNN autotune (fixed input sizes).
+    if config.DEVICE.type == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cudnn.benchmark = True
+
     model = create_model().to(config.DEVICE)
 
     if config.TORCH_COMPILE and hasattr(torch, "compile"):
@@ -48,9 +54,17 @@ def train_model(train_loader, val_loader):
     assert model(dummy).shape == (1, config.NX, config.N_FREQ)
 
     amp_enabled = _use_amp()
-    scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
-    autocast = torch.autocast(device_type="cuda", enabled=amp_enabled)
+    # bf16 keeps fp32 dynamic range, so no GradScaler is needed and it is more
+    # accuracy-safe than fp16 for this FFT-heavy model.
+    amp_dtype = torch.bfloat16
+    autocast = torch.autocast(
+        device_type=config.DEVICE.type, dtype=amp_dtype, enabled=amp_enabled
+    )
+    use_scaler = amp_enabled and amp_dtype == torch.float16
+    scaler = torch.amp.GradScaler("cuda", enabled=use_scaler)
     non_blocking = amp_enabled
+    if amp_enabled:
+        print(f"[amp] enabled with dtype={amp_dtype}, grad_scaler={use_scaler}")
 
     criterion = build_training_loss()
     optimizer = build_optimizer(model)
@@ -83,11 +97,20 @@ def train_model(train_loader, val_loader):
             with autocast:
                 outputs = model(inputs)
                 loss = criterion(outputs, targets, masks)
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), config.GRAD_CLIP_NORM)
-            scaler.step(optimizer)
-            scaler.update()
+            if use_scaler:
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), config.GRAD_CLIP_NORM
+                )
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), config.GRAD_CLIP_NORM
+                )
+                optimizer.step()
 
             train_loss += loss.item() * inputs.size(0)
             n_train += inputs.size(0)

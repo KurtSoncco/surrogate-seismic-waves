@@ -270,7 +270,9 @@ class DualPathLOGLOStack(nn.Module):
                 g_in = x_global
                 l_in = x_local
 
-            x_g = self.fno(g_in, index=i)
+            # FNO/patch spectral convs use FFTs (no half support) -> force fp32.
+            with torch.autocast(device_type=g_in.device.type, enabled=False):
+                x_g = self.fno(g_in.float(), index=i)
             x_l = self.local_layers[i](l_in)
             hf_feat = self.hf_mlps[i](x_hf)
             mix = x_g + x_l + hf_feat + self.skips[i](z)

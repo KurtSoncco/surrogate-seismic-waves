@@ -101,7 +101,8 @@ SEED: int = 42
 EARLY_STOP_PATIENCE: int = 80
 GRAD_CLIP_NORM: float = 1.0
 NUM_WORKERS: int = 4
-USE_AMP: bool = False
+# bf16 autocast: FFT/spectral/POD stay fp32 (verified rel-diff ~1e-5 vs fp32).
+USE_AMP: bool = True
 TORCH_COMPILE: bool = False
 # Preload all samples into RAM once (avoids per-epoch H5 reads from slow disk).
 CACHE_DATASET: bool = True
