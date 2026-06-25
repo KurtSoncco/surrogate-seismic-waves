@@ -1,14 +1,25 @@
-# GIFNO-FDO-XT-LOGLO-POD sweep @ --limit 2000 (compare to xt_lat128_d128 + hfno_ref)
+# GIFNO-FDO-XT-LOGLO-POD sweep (depth-1 collapse default; encoder runs 1D-along-x).
+#
+# The encoder now collapses depth to the surface row by default
+# (LOGLO_DEPTH_STRIDE=NZ_MAX): validated to match/beat full depth at ~11x
+# throughput, ~34x throughput ceiling, and ~20x fewer params (2.88M).
+# NOTE: LOGLO_PATCH_SIZE height is clamped to the encoder depth (=1 at the
+# default), so only the patch WIDTH is active unless depth is restored.
+#
 #   bash delta_sweep.sh --variants sweep_variants_loglo_pod.tsv --limit 2000
 #   bash delta_sweep_rerun.sh loglo_pod_ref --full
 #
-# Encoder (LOGLO) fixed at default unless noted; ChannelLift + schedule fixed.
-# --- reference ---
+# --- reference (depth-1 default) ---
 loglo_pod_ref	LATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
 # --- POD head sweep (modes + radial loss) ---
 loglo_pod_pod48	LATENT_CHANNELS=128;POD_NUM_MODES=48;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
 loglo_pod_pod64	LATENT_CHANNELS=128;POD_NUM_MODES=64;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
 loglo_pod_no_radial	LATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.0;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
-# --- encoder sweep (patch size + HF noise ablation) ---
-loglo_pod_patch8x10	LATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=8,10;LOGLO_HF_NOISE_ALPHA=0.025
+# --- encoder sweep (patch width + HF noise; height is clamped to 1) ---
+loglo_pod_patchw10	LATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,10;LOGLO_HF_NOISE_ALPHA=0.025
 loglo_pod_no_hfnoise	LATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.0
+# --- depth ablation (confirm depth-1 still wins at full scale) ---
+loglo_pod_depth32	LATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_DEPTH_STRIDE=4;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
+loglo_pod_depth_full	LATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_DEPTH_STRIDE=1;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
+# --- capacity (cheap now that the model is tiny) ---
+loglo_pod_latent256	LATENT_CHANNELS=256;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
