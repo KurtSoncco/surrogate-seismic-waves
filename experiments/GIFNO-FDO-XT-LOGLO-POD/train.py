@@ -25,6 +25,7 @@ def build_optimizer(model: torch.nn.Module) -> optim.Optimizer:
         "weight_decay": config.WEIGHT_DECAY,
         "amsgrad": config.AMSGRAD,
     }
+    # NOTE: fused=True is unsupported here (model has complex64 spectral params).
     if opt_name == "adamw":
         return optim.AdamW(model.parameters(), **kwargs)
     if opt_name == "adam":

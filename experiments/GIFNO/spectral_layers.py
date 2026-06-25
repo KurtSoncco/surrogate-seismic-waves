@@ -167,17 +167,23 @@ class LocalPatchSpectralConv2d(nn.Module):
                 f"Spatial dims ({h}, {w}) must be divisible by patch ({ph}, {pw})"
             )
         in_dtype = x.dtype
-        patches = F.unfold(x, kernel_size=(ph, pw), stride=(ph, pw))
-        n_p = patches.shape[-1]
-        patches = patches.view(b, c, ph, pw, n_p).permute(0, 4, 1, 2, 3)
-        patches = patches.reshape(b * n_p, c, ph, pw)
+        n_h, n_w = h // ph, w // pw
+        n_p = n_h * n_w
+        # Non-overlapping patches: reshape/permute (avoids unfold/fold col2im copies).
+        patches = (
+            x.reshape(b, c, n_h, ph, n_w, pw)
+            .permute(0, 2, 4, 1, 3, 5)
+            .reshape(b * n_p, c, ph, pw)
+        )
         # FFTs require float32 (cuFFT has no half support); guard for AMP.
         x_ft = torch.fft.rfft2(patches.float(), norm="ortho")
         out_ft = torch.einsum("bixy,ijxy->bjxy", x_ft, self.weight)
         out = torch.fft.irfft2(out_ft, s=(ph, pw), norm="ortho")
-        out = out.view(b, n_p, c, ph, pw).permute(0, 2, 3, 4, 1)
-        out = out.reshape(b, c * ph * pw, n_p)
-        out = F.fold(out, output_size=(h, w), kernel_size=(ph, pw), stride=(ph, pw))
+        out = (
+            out.reshape(b, n_h, n_w, c, ph, pw)
+            .permute(0, 3, 1, 4, 2, 5)
+            .reshape(b, c, h, w)
+        )
         return out.to(in_dtype)
 
 
