@@ -38,6 +38,7 @@ wandb/
 !experiments/GIFNO-FDO-XT-HFNO/sweep_variants_hfno.tsv
 !experiments/GIFNO-FDO-XT-HFS/sweep_variants_hfs.tsv
 !experiments/GIFNO-FDO-XT-BOOST/sweep_variants_boost.tsv
+!experiments/GIFNO-FDO-XT-LOGLO-POD/sweep_variants_loglo_pod.tsv
 experiments/GIFNO-FDO-XT/analysis/
 *.json
 *.parquet
@@ -55,6 +56,7 @@ data/*
 # Any model checkpoints or outputs
 checkpoints/
 outputs/
+analysis/
 logs/
 *.pth 
 *.pt

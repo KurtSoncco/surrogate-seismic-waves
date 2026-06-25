@@ -18,10 +18,12 @@ class SweepVariant:
 
 
 DEFAULT_VARIANTS_LOGLO_POD_TSV = """\
-loglo_pod_ref\tLATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25
-loglo_pod_bs16\tBATCH_SIZE=16;LATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25
-loglo_pod_pod64\tLATENT_CHANNELS=128;POD_NUM_MODES=64;LOSS_RADIAL_WEIGHT=0.25
-loglo_pod_no_radial\tLATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.0
+loglo_pod_ref\tLATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
+loglo_pod_pod48\tLATENT_CHANNELS=128;POD_NUM_MODES=48;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
+loglo_pod_pod64\tLATENT_CHANNELS=128;POD_NUM_MODES=64;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
+loglo_pod_no_radial\tLATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.0;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
+loglo_pod_patch8x10\tLATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=8,10;LOGLO_HF_NOISE_ALPHA=0.025
+loglo_pod_no_hfnoise\tLATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.0
 """
 
 
@@ -134,7 +136,7 @@ def main() -> int:
         default=Path(__file__).resolve().parent / "sweep_variants_loglo_pod.tsv",
     )
     parser.add_argument("--full", action="store_true")
-    parser.add_argument("--limit", type=int, default=500)
+    parser.add_argument("--limit", type=int, default=2000)
     parser.add_argument("--name", type=str, default=None)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()

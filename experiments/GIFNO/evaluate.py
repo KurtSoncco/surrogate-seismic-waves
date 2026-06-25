@@ -1,6 +1,7 @@
 # evaluate.py
 """Evaluation: masked metrics, spatial TF heatmaps, and W&B diagnostics."""
 
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -66,22 +67,33 @@ def _plot_tf_heatmap(
     save_path: Path,
     title: str,
 ) -> None:
-    """Plot target vs prediction TF fields at recorder positions."""
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+    """Target / prediction / L1-error TF fields at recorder positions.
+
+    Heatmaps are only meaningful alongside the error field, so the absolute
+    error |target - pred| is always shown as a third panel.
+    """
     recorder_idx = recorder_x_indices_from_mask(mask)
     if len(recorder_idx) == 0:
-        plt.close(fig)
         return
 
     t_rec = np.abs(target[recorder_idx, :])
     p_rec = np.abs(pred[recorder_idx, :])
+    err_rec = np.abs(t_rec - p_rec)
+
+    extent = [freq[0], freq[-1], 0, len(recorder_idx)]
+    fig, axes = plt.subplots(1, 3, figsize=(20, 5), sharey=True)
+
+    vmin = min(_safe_log10(t_rec).min(), _safe_log10(p_rec).min())
+    vmax = max(_safe_log10(t_rec).max(), _safe_log10(p_rec).max())
 
     im0 = axes[0].imshow(
         _safe_log10(t_rec),
         aspect="auto",
         origin="lower",
-        extent=[freq[0], freq[-1], 0, len(recorder_idx)],
+        extent=extent,
         cmap="viridis",
+        vmin=vmin,
+        vmax=vmax,
     )
     axes[0].set_title("Target |TF| (log10)")
     axes[0].set_xlabel("Frequency (Hz)")
@@ -92,12 +104,25 @@ def _plot_tf_heatmap(
         _safe_log10(p_rec),
         aspect="auto",
         origin="lower",
-        extent=[freq[0], freq[-1], 0, len(recorder_idx)],
+        extent=extent,
         cmap="viridis",
+        vmin=vmin,
+        vmax=vmax,
     )
     axes[1].set_title("Prediction |TF| (log10)")
     axes[1].set_xlabel("Frequency (Hz)")
     plt.colorbar(im1, ax=axes[1])
+
+    im2 = axes[2].imshow(
+        err_rec,
+        aspect="auto",
+        origin="lower",
+        extent=extent,
+        cmap="magma",
+    )
+    axes[2].set_title("L1 error |target - pred|")
+    axes[2].set_xlabel("Frequency (Hz)")
+    plt.colorbar(im2, ax=axes[2])
 
     fig.suptitle(title)
     plt.tight_layout()
@@ -256,6 +281,257 @@ def _plot_per_sample_metric_boxplot(
     plt.close()
 
 
+def _recorder_abs_stack(
+    predictions: np.ndarray,
+    targets: np.ndarray,
+    masks: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """(N, R, F) |TF| at recorder columns for predictions and targets."""
+    recorder_idx = recorder_x_indices_from_mask(masks[0])
+    p = np.abs(predictions[:, recorder_idx, :])
+    t = np.abs(targets[:, recorder_idx, :])
+    return p, t
+
+
+def _plot_error_by_frequency(
+    predictions: np.ndarray,
+    targets: np.ndarray,
+    masks: np.ndarray,
+    freq: np.ndarray,
+    save_path: Path,
+) -> None:
+    """Per-frequency |error| and relative error (median + p10-p90 band)."""
+    p, t = _recorder_abs_stack(predictions, targets, masks)
+    abs_err = np.abs(p - t).reshape(-1, len(freq))  # (N*R, F)
+    rel_err = abs_err / (t.reshape(-1, len(freq)) + 1e-12)
+
+    fig, axes = plt.subplots(1, 2, figsize=(15, 5))
+    for ax, data, label in (
+        (axes[0], abs_err, "absolute |error|"),
+        (axes[1], rel_err, "relative |error| / |target|"),
+    ):
+        med = np.nanmedian(data, axis=0)
+        p10 = np.nanpercentile(data, 10, axis=0)
+        p90 = np.nanpercentile(data, 90, axis=0)
+        ax.fill_between(freq, p10, p90, alpha=0.25, color="steelblue", label="p10-p90")
+        ax.plot(freq, med, color="navy", linewidth=2, label="median")
+        ax.set_xscale("log")
+        ax.set_xlabel("Frequency (Hz)")
+        ax.set_ylabel(label)
+        ax.set_title(f"Per-frequency {label}")
+        ax.grid(True, which="both", alpha=0.3)
+        ax.legend()
+    fig.suptitle("Error vs frequency (pooled over recorders & test samples)")
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+
+
+def _plot_error_freq_hist2d(
+    predictions: np.ndarray,
+    targets: np.ndarray,
+    masks: np.ndarray,
+    freq: np.ndarray,
+    save_path: Path,
+) -> None:
+    """2D histogram of (frequency, |error|) over all recorder/sample bins."""
+    p, t = _recorder_abs_stack(predictions, targets, masks)
+    abs_err = np.abs(p - t)  # (N, R, F)
+    n_rep = abs_err.shape[0] * abs_err.shape[1]
+    freq_grid = np.tile(freq[None, :], (n_rep, 1)).reshape(-1)
+    err_flat = abs_err.reshape(-1)
+    good = np.isfinite(err_flat) & (err_flat > 0)
+    if not np.any(good):
+        return
+    fig, ax = plt.subplots(figsize=(9, 5))
+    h = ax.hist2d(
+        np.log10(np.maximum(freq_grid[good], 1e-6)),
+        np.log10(err_flat[good]),
+        bins=(80, 80),
+        cmap="inferno",
+    )
+    plt.colorbar(h[3], ax=ax, label="count")
+    ax.set_xlabel("log10 frequency (Hz)")
+    ax.set_ylabel("log10 |error|")
+    ax.set_title("Per-frequency error histogram (2D density)")
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+
+
+def _plot_metric_histograms(
+    per_sample: Dict[str, np.ndarray],
+    save_path: Path,
+) -> None:
+    """Grid of per-sample metric histograms."""
+    keys = [
+        "rel_l2",
+        "rel_l2_band_mid",
+        "rel_l2_band_high",
+        "pearson",
+        "peak_amp_err",
+        "peak_freq_err",
+        "logspec_rel_l2",
+        "linf_peak",
+    ]
+    keys = [k for k in keys if k in per_sample]
+    if not keys:
+        return
+    ncol = 4
+    nrow = int(np.ceil(len(keys) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(4 * ncol, 3 * nrow))
+    axes = np.atleast_1d(axes).reshape(-1)
+    for ax, key in zip(axes, keys):
+        v = per_sample[key]
+        v = v[np.isfinite(v)]
+        if v.size == 0:
+            ax.set_visible(False)
+            continue
+        ax.hist(v, bins=30, color="steelblue", alpha=0.8)
+        ax.axvline(np.median(v), color="crimson", linestyle="--", linewidth=1)
+        ax.set_title(key)
+        ax.grid(True, alpha=0.3)
+    for ax in axes[len(keys) :]:
+        ax.set_visible(False)
+    fig.suptitle("Per-sample metric distributions")
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+
+
+# Stratification variables: name -> (manifest column, human label)
+_STRAT_SPECS: List[Tuple[str, str, str]] = [
+    ("CoV", "CoV", "coefficient of variation"),
+    ("H", "H_discretized", "soil thickness H"),
+    ("rH", "rH", "correlation length rH"),
+]
+_STRAT_METRICS: Tuple[str, ...] = (
+    "rel_l2",
+    "rel_l2_band_mid",
+    "rel_l2_band_high",
+    "pearson",
+    "peak_amp_err",
+    "logspec_rel_l2",
+)
+
+
+def _extract_test_metadata(test_loader: Any) -> Dict[str, np.ndarray]:
+    """Per-test-sample stratifier values aligned to evaluation order.
+
+    Returns {} if the loader's dataset does not expose manifest rows. Only
+    columns present in the manifest are returned; missing/non-finite columns
+    (e.g. rH on an un-backfilled manifest) are dropped with a note.
+    """
+    from torch.utils.data import Subset
+
+    ds = getattr(test_loader, "dataset", None)
+    rows: Optional[List[dict]] = None
+    if isinstance(ds, Subset) and hasattr(ds.dataset, "manifest_rows"):
+        rows = [ds.dataset.manifest_rows[i] for i in ds.indices]
+    elif hasattr(ds, "manifest_rows"):
+        rows = list(ds.manifest_rows)
+    if not rows:
+        return {}
+
+    def col(key: str) -> np.ndarray:
+        out = np.full(len(rows), np.nan, dtype=np.float64)
+        for i, r in enumerate(rows):
+            try:
+                out[i] = float(r.get(key, "nan"))
+            except (TypeError, ValueError):
+                pass
+        return out
+
+    meta: Dict[str, np.ndarray] = {}
+    for name, column, _ in _STRAT_SPECS:
+        vals = col(column)
+        if (
+            np.sum(np.isfinite(vals)) >= 2
+            and np.unique(vals[np.isfinite(vals)]).size > 1
+        ):
+            meta[name] = vals
+        else:
+            print(f"[evaluate] stratifier '{name}' ({column}) unavailable — skipping")
+    return meta
+
+
+def _stratified_summary(
+    per_sample: Dict[str, np.ndarray],
+    strat_values: np.ndarray,
+    strat_name: str,
+    n_bins: int,
+) -> Tuple[Dict[str, float], List[dict]]:
+    """Metric summaries within quantile bins of a stratifier.
+
+    Returns a flat dict (for W&B/json) and a per-bin table (list of dicts).
+    """
+    finite = np.isfinite(strat_values)
+    sv = strat_values[finite]
+    if sv.size < n_bins:
+        return {}, []
+    edges = np.unique(np.quantile(sv, np.linspace(0.0, 1.0, n_bins + 1)))
+    if edges.size < 3:
+        return {}, []
+    bin_idx = np.clip(np.digitize(strat_values, edges[1:-1]), 0, len(edges) - 2)
+
+    flat: Dict[str, float] = {}
+    table: List[dict] = []
+    for b in range(len(edges) - 1):
+        sel = finite & (bin_idx == b)
+        row = {
+            "stratifier": strat_name,
+            "bin": b,
+            "lo": float(edges[b]),
+            "hi": float(edges[b + 1]),
+            "count": int(np.sum(sel)),
+        }
+        for m in _STRAT_METRICS:
+            if m not in per_sample:
+                continue
+            v = per_sample[m][sel]
+            v = v[np.isfinite(v)]
+            med = float(np.median(v)) if v.size else float("nan")
+            row[f"{m}_median"] = med
+            flat[f"test_strat_{strat_name}_q{b}_{m}_median"] = med
+        table.append(row)
+    return flat, table
+
+
+def _plot_metrics_by_stratifier(
+    per_sample: Dict[str, np.ndarray],
+    strat_values: np.ndarray,
+    strat_name: str,
+    label: str,
+    save_path: Path,
+    n_bins: int,
+) -> List[dict]:
+    """Plot median metrics across quantile bins of a stratifier; return table."""
+    _, table = _stratified_summary(per_sample, strat_values, strat_name, n_bins)
+    if not table:
+        return []
+    centers = [0.5 * (r["lo"] + r["hi"]) for r in table]
+    metrics = [m for m in _STRAT_METRICS if m in per_sample]
+    ncol = 3
+    nrow = int(np.ceil(len(metrics) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(5 * ncol, 3.2 * nrow))
+    axes = np.atleast_1d(axes).reshape(-1)
+    for ax, m in zip(axes, metrics):
+        ys = [r.get(f"{m}_median", np.nan) for r in table]
+        ax.plot(centers, ys, "o-", color="navy")
+        ax.set_xlabel(label)
+        ax.set_ylabel(f"{m} (median)")
+        ax.set_title(m)
+        ax.grid(True, alpha=0.3)
+    for ax in axes[len(metrics) :]:
+        ax.set_visible(False)
+    counts = ", ".join(f"q{r['bin']}:n={r['count']}" for r in table)
+    fig.suptitle(f"Metrics by {label} quantiles ({counts})")
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+    return table
+
+
 def _select_random_indices(n_total: int, n_pick: int, seed: int) -> np.ndarray:
     """Pick up to n_pick distinct sample indices (all if n_total < n_pick)."""
     n_pick = min(n_pick, n_total)
@@ -397,6 +673,45 @@ def evaluate_model(
     sample_box_path = save_dir / "per_sample_metrics_boxplot.png"
     _plot_per_sample_metric_boxplot(per_sample, sample_box_path)
 
+    err_freq_path = save_dir / "error_by_frequency.png"
+    _plot_error_by_frequency(predictions, targets, masks, freq, err_freq_path)
+
+    err_hist_path = save_dir / "error_freq_hist2d.png"
+    _plot_error_freq_hist2d(predictions, targets, masks, freq, err_hist_path)
+
+    metric_hist_path = save_dir / "metric_histograms.png"
+    _plot_metric_histograms(per_sample, metric_hist_path)
+
+    # Stratified breakdowns: CoV, H, rH quantile bins.
+    n_bins = int(getattr(config, "EVAL_STRAT_BINS", 4))
+    meta = _extract_test_metadata(test_loader)
+    strat_plot_paths: Dict[str, Path] = {}
+    strat_tables: Dict[str, List[dict]] = {}
+    for name, _column, label in _STRAT_SPECS:
+        if name not in meta:
+            continue
+        flat, _ = _stratified_summary(per_sample, meta[name], name, n_bins)
+        metrics.update(flat)
+        strat_path = save_dir / f"metrics_by_{name}_quantiles.png"
+        table = _plot_metrics_by_stratifier(
+            per_sample, meta[name], name, label, strat_path, n_bins
+        )
+        if table:
+            strat_plot_paths[name] = strat_path
+            strat_tables[name] = table
+
+    # Dump per-sample arrays + metadata for cross-variant aggregation.
+    npz_payload: Dict[str, np.ndarray] = {
+        k: np.asarray(v) for k, v in per_sample.items()
+    }
+    for name, vals in meta.items():
+        npz_payload[f"meta_{name}"] = vals
+    np.savez(save_dir / "per_sample_metrics.npz", **npz_payload)
+    if strat_tables:
+        (save_dir / "stratified_metrics.json").write_text(
+            json.dumps(strat_tables, indent=2)
+        )
+
     if run is not None:
         log_payload: Dict[str, Any] = {k: v for k, v in metrics.items()}
 
@@ -435,11 +750,27 @@ def evaluate_model(
                 sample_box_path,
                 "Per-sample metric boxplot",
             ),
+            ("error_by_frequency", err_freq_path, "Per-frequency error bands"),
+            ("error_freq_hist2d", err_hist_path, "Per-frequency error histogram"),
+            ("metric_histograms", metric_hist_path, "Per-sample metric histograms"),
         ]:
             if plot_path.exists():
                 log_payload[f"eval/{plot_key}"] = wandb.Image(
                     str(plot_path), caption=caption
                 )
+
+        for name, strat_path in strat_plot_paths.items():
+            if strat_path.exists():
+                log_payload[f"eval/metrics_by_{name}"] = wandb.Image(
+                    str(strat_path), caption=f"Metrics by {name} quantiles"
+                )
+
+        for name, table in strat_tables.items():
+            columns = list(table[0].keys())
+            wb_table = wandb.Table(columns=columns)
+            for row in table:
+                wb_table.add_data(*[row.get(c) for c in columns])
+            log_payload[f"eval/strat_table_{name}"] = wb_table
 
         wandb.log(log_payload)
 

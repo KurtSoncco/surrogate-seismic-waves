@@ -255,16 +255,17 @@ class DualPathLOGLOStack(nn.Module):
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         x_global = x
         x_local = x
+        use_noise = self.training and self.hf_noise_alpha > 0
         for i in range(self.n_layers):
             z = x_global + x_local
             x_hf = self.hfp(z)
-            noise = (
-                _hf_adaptive_noise(x_hf, self.hf_noise_alpha)
-                if self.training
-                else torch.zeros_like(x_hf)
-            )
-            g_in = x_global + noise
-            l_in = x_local + noise
+            if use_noise:
+                noise = _hf_adaptive_noise(x_hf, self.hf_noise_alpha)
+                g_in = x_global + noise
+                l_in = x_local + noise
+            else:
+                g_in = x_global
+                l_in = x_local
 
             x_g = self.fno(g_in, index=i)
             x_l = self.local_layers[i](l_in)

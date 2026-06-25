@@ -199,6 +199,7 @@ def main() -> int:
             h_val = float(attrs.get("H_discretized", attrs.get("H", 0.0)))
             cov_val = float(attrs.get("CoV", 0.0))
             f0_val = float(attrs.get("f0_effective", 0.0))
+            rh_val = float(attrs.get("rH", np.nan))
 
         base_2d, surf_2d = _split_base_surf(data, row_y_m, n_lateral)
         freq_i, mags_i = TTF_batch_fast(
@@ -223,6 +224,7 @@ def main() -> int:
                 "H_discretized": h_val,
                 "CoV": cov_val,
                 "f0_effective": f0_val,
+                "rH": rh_val,
                 "nz_actual": nz,
                 "n_lateral": n_lateral,
             }

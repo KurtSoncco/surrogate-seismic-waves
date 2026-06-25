@@ -296,6 +296,93 @@ def per_sample_logspec_rel_l2_numpy(
     return num / den
 
 
+def _central_recorder_index(recorder_x: np.ndarray) -> int:
+    """Recorder slot closest to the lateral domain center."""
+    center = config.NX // 2
+    return int(np.argmin(np.abs(recorder_x - center)))
+
+
+def per_recorder_lsd_numpy(
+    pred: np.ndarray,
+    target: np.ndarray,
+    recorder_x: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Log-Spectral Distance (dB) per sample at each recorder. Shape (N, R).
+
+    LSD = sqrt(mean_f (20*log10|T| - 20*log10|P|)^2), the standard spectral
+    distortion in decibels on the magnitude transfer function.
+    """
+    p = np.abs(gather_recorder_tf_numpy(pred, recorder_x)).astype(np.float64)
+    t = np.abs(gather_recorder_tf_numpy(target, recorder_x)).astype(np.float64)
+    db_p = 20.0 * np.log10(np.maximum(p, _EPS))
+    db_t = 20.0 * np.log10(np.maximum(t, _EPS))
+    return np.sqrt(np.mean((db_t - db_p) ** 2, axis=-1))
+
+
+def per_recorder_log_mae_numpy(
+    pred: np.ndarray,
+    target: np.ndarray,
+    recorder_x: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Mean absolute error on natural log|TF| per recorder. Shape (N, R)."""
+    p = np.abs(gather_recorder_tf_numpy(pred, recorder_x)).astype(np.float64)
+    t = np.abs(gather_recorder_tf_numpy(target, recorder_x)).astype(np.float64)
+    lp = np.log(np.maximum(p, _EPS))
+    lt = np.log(np.maximum(t, _EPS))
+    return np.mean(np.abs(lp - lt), axis=-1)
+
+
+def per_recorder_log_rmse_numpy(
+    pred: np.ndarray,
+    target: np.ndarray,
+    recorder_x: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Root mean squared error on natural log|TF| per recorder. Shape (N, R)."""
+    p = np.abs(gather_recorder_tf_numpy(pred, recorder_x)).astype(np.float64)
+    t = np.abs(gather_recorder_tf_numpy(target, recorder_x)).astype(np.float64)
+    lp = np.log(np.maximum(p, _EPS))
+    lt = np.log(np.maximum(t, _EPS))
+    return np.sqrt(np.mean((lp - lt) ** 2, axis=-1))
+
+
+def per_recorder_spectral_cosine_numpy(
+    pred: np.ndarray,
+    target: np.ndarray,
+    recorder_x: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Cosine similarity between |TF| spectra per recorder. Shape (N, R).
+
+    Unlike Pearson, spectra are not mean-subtracted, so this measures shape
+    agreement of the raw magnitude spectrum (1.0 == identical direction).
+    """
+    p = np.abs(gather_recorder_tf_numpy(pred, recorder_x)).astype(np.float64)
+    t = np.abs(gather_recorder_tf_numpy(target, recorder_x)).astype(np.float64)
+    dot = np.sum(p * t, axis=-1)
+    denom = np.linalg.norm(p, axis=-1) * np.linalg.norm(t, axis=-1)
+    return dot / np.maximum(denom, _EPS)
+
+
+def central_and_allrec_summary(
+    values_nr: np.ndarray,
+    recorder_x: np.ndarray,
+    prefix: str,
+) -> Dict[str, float]:
+    """Summaries for a (N, R) metric: central recorder + all-recorder mean.
+
+    Emits distribution summaries (mean/p10/p50/p90) for the central recorder
+    curve and for the per-sample mean across recorders, plus a per-recorder
+    tail summary (min/mean of per-recorder p10/p50).
+    """
+    if values_nr.size == 0:
+        return {}
+    out: Dict[str, float] = {}
+    r_center = _central_recorder_index(recorder_x)
+    out.update(distribution_summary(values_nr[:, r_center], f"{prefix}_central"))
+    out.update(distribution_summary(np.nanmean(values_nr, axis=1), f"{prefix}_allrec"))
+    out.update(per_recorder_tail_summary(values_nr, f"{prefix}_rec"))
+    return out
+
+
 def per_sample_h1_freq_numpy(
     pred: np.ndarray,
     target: np.ndarray,
@@ -539,6 +626,19 @@ def aggregate_test_metrics(
     rec_pearson = per_recorder_pearson_numpy(predictions, targets, recorder_x)
     summary.update(per_recorder_tail_summary(rec_rel_l2, "test_rec_rel_l2"))
     summary.update(per_recorder_tail_summary(rec_pearson, "test_rec_pearson"))
+
+    rec_lsd = per_recorder_lsd_numpy(predictions, targets, recorder_x)
+    rec_log_mae = per_recorder_log_mae_numpy(predictions, targets, recorder_x)
+    rec_log_rmse = per_recorder_log_rmse_numpy(predictions, targets, recorder_x)
+    rec_spec_cos = per_recorder_spectral_cosine_numpy(predictions, targets, recorder_x)
+    summary.update(central_and_allrec_summary(rec_lsd, recorder_x, "test_lsd"))
+    summary.update(central_and_allrec_summary(rec_log_mae, recorder_x, "test_log_mae"))
+    summary.update(
+        central_and_allrec_summary(rec_log_rmse, recorder_x, "test_log_rmse")
+    )
+    summary.update(
+        central_and_allrec_summary(rec_spec_cos, recorder_x, "test_spec_cos")
+    )
 
     return summary, per_sample
 

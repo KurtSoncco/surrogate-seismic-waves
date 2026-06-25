@@ -1,0 +1,14 @@
+# GIFNO-FDO-XT-LOGLO-POD sweep @ --limit 2000 (compare to xt_lat128_d128 + hfno_ref)
+#   bash delta_sweep.sh --variants sweep_variants_loglo_pod.tsv --limit 2000
+#   bash delta_sweep_rerun.sh loglo_pod_ref --full
+#
+# Encoder (LOGLO) fixed at default unless noted; ChannelLift + schedule fixed.
+# --- reference ---
+loglo_pod_ref	LATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
+# --- POD head sweep (modes + radial loss) ---
+loglo_pod_pod48	LATENT_CHANNELS=128;POD_NUM_MODES=48;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
+loglo_pod_pod64	LATENT_CHANNELS=128;POD_NUM_MODES=64;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
+loglo_pod_no_radial	LATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.0;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
+# --- encoder sweep (patch size + HF noise ablation) ---
+loglo_pod_patch8x10	LATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=8,10;LOGLO_HF_NOISE_ALPHA=0.025
+loglo_pod_no_hfnoise	LATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.0

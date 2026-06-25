@@ -111,6 +111,7 @@ WANDB_RUN_NAME: str = "gifno_grid_fno_run"
 EVAL_N_HEATMAPS: int = 3
 EVAL_N_CENTRAL_CURVES: int = 4
 EVAL_N_WORST_SAMPLES: int = 3
+EVAL_STRAT_BINS: int = 4  # quantile bins for CoV/H/rH stratified breakdowns
 
 # --- Loss (composite) ---
 LOSS_REL_WEIGHT: float = 1.0

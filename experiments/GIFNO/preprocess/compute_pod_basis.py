@@ -29,10 +29,17 @@ def train_indices(
     val_split: float,
     seed: int,
 ) -> np.ndarray:
-    gen = np.random.default_rng(seed)
-    perm = gen.permutation(n)
+    """Train indices matching data_loader.get_data_loaders exactly (torch split).
+
+    Using the same torch.Generator permutation guarantees the POD basis is
+    built only from the model's train split (no val/test leakage).
+    """
+    import torch
+
+    gen = torch.Generator().manual_seed(seed)
+    perm = torch.randperm(n, generator=gen).tolist()
     n_train = int(n * train_split)
-    return perm[:n_train]
+    return np.asarray(perm[:n_train], dtype=np.int64)
 
 
 def compute_pod_modes(

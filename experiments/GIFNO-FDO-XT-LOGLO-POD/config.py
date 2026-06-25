@@ -39,8 +39,10 @@ MANIFEST_PATH = TF_RESULTS_DIR / "manifest.csv"
 MODEL_SAVE_PATH = MODEL_SAVE_DIR / "best_model.pt"
 PREPROCESS_SCRIPT = _GIFNO_DIR / "preprocess" / "compute_transfer_function.py"
 POD_PREPROCESS_SCRIPT = _GIFNO_DIR / "preprocess" / "compute_pod_basis.py"
-POD_MODES_PATH = TF_RESULTS_DIR / "pod_modes.npy"
-POD_MEAN_PATH = TF_RESULTS_DIR / "pod_mean.npy"
+# POD basis lives under the (per-variant) model dir so sweep variants with
+# different POD_NUM_MODES / limits never share or overwrite a single cache.
+POD_MODES_PATH = MODEL_SAVE_DIR / "pod_modes.npy"
+POD_MEAN_PATH = MODEL_SAVE_DIR / "pod_mean.npy"
 
 for d in (TF_RESULTS_DIR, MODEL_SAVE_DIR, RESULTS_SAVE_DIR):
     try:
@@ -117,6 +119,7 @@ WANDB_RUN_NAME: str = "loglo_pod_run"
 EVAL_N_HEATMAPS: int = 3
 EVAL_N_CENTRAL_CURVES: int = 4
 EVAL_N_WORST_SAMPLES: int = 3
+EVAL_STRAT_BINS: int = 4  # quantile bins for CoV/H/rH stratified breakdowns
 
 # --- Loss ---
 LOSS_REL_WEIGHT: float = 1.0
