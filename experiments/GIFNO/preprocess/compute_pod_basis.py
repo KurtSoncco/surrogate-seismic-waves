@@ -79,6 +79,20 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--n-modes", type=int, default=None)
     parser.add_argument("--seed", type=int, default=config.SEED)
+    parser.add_argument(
+        "--train-split",
+        type=float,
+        default=config.TRAIN_SPLIT,
+        help="Must match the model's data_loader train split (no leakage)",
+    )
+    parser.add_argument("--val-split", type=float, default=config.VAL_SPLIT)
+    parser.add_argument(
+        "--out-modes",
+        type=Path,
+        default=None,
+        help="Explicit output path for pod_modes.npy (overrides config)",
+    )
+    parser.add_argument("--out-mean", type=Path, default=None)
     args = parser.parse_args()
 
     n_modes = args.n_modes or getattr(config, "POD_NUM_MODES", 32)
@@ -89,14 +103,16 @@ def main() -> None:
     tf_array = np.load(config.TF_PER_SAMPLE_PATH, mmap_mode="r")
     recorder_x = np.load(config.TF_RESULTS_DIR / "recorder_x_idx.npy")
     n = len(manifest)
-    train_idx = train_indices(n, config.TRAIN_SPLIT, config.VAL_SPLIT, args.seed)
+    train_idx = train_indices(n, args.train_split, args.val_split, args.seed)
 
     modes, mean = compute_pod_modes(tf_array, train_idx, recorder_x, n_modes)
 
-    out_modes = getattr(
+    out_modes = args.out_modes or getattr(
         config, "POD_MODES_PATH", config.TF_RESULTS_DIR / "pod_modes.npy"
     )
-    out_mean = getattr(config, "POD_MEAN_PATH", config.TF_RESULTS_DIR / "pod_mean.npy")
+    out_mean = args.out_mean or getattr(
+        config, "POD_MEAN_PATH", config.TF_RESULTS_DIR / "pod_mean.npy"
+    )
     out_modes = Path(out_modes)
     out_mean = Path(out_mean)
     out_modes.parent.mkdir(parents=True, exist_ok=True)

@@ -44,7 +44,24 @@ def ensure_pod_cache(limit: int | None = None):
     cmd = [sys.executable, str(config.POD_PREPROCESS_SCRIPT)]
     if limit is not None:
         cmd.extend(["--limit", str(limit)])
-    cmd.extend(["--n-modes", str(config.POD_NUM_MODES)])
+    cmd.extend(
+        [
+            "--n-modes",
+            str(config.POD_NUM_MODES),
+            "--seed",
+            str(config.SEED),
+            "--train-split",
+            str(config.TRAIN_SPLIT),
+            "--val-split",
+            str(config.VAL_SPLIT),
+            # Write to this experiment's (per-variant) paths regardless of which
+            # config the preprocess subprocess imports.
+            "--out-modes",
+            str(config.POD_MODES_PATH),
+            "--out-mean",
+            str(config.POD_MEAN_PATH),
+        ]
+    )
     subprocess.run(cmd, check=True)
 
 
