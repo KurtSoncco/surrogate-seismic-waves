@@ -1,6 +1,8 @@
 # train.py
 """Training loop for GIFNO-FDO-XT-LOGLO-POD."""
 
+import time
+
 import config
 import numpy as np
 import torch
@@ -68,6 +70,7 @@ def train_model(train_loader, val_loader):
 
     t = trange(config.NUM_EPOCHS, desc="Training")
     for epoch in t:
+        t_train_start = time.time()
         model.train()
         train_loss = 0.0
         n_train = 0
@@ -90,7 +93,9 @@ def train_model(train_loader, val_loader):
             n_train += inputs.size(0)
 
         train_loss /= max(n_train, 1)
+        t_train = time.time() - t_train_start
 
+        t_val_start = time.time()
         model.eval()
         val_loss = 0.0
         n_val = 0
@@ -106,8 +111,10 @@ def train_model(train_loader, val_loader):
                 n_val += inputs.size(0)
 
         val_loss /= max(n_val, 1)
+        t_val = time.time() - t_val_start
         scheduler.step(val_loss)
 
+        t_tail_start = time.time()
         val_tail_every = int(getattr(config, "VAL_TAIL_EVERY", 1))
         is_last_epoch = epoch == config.NUM_EPOCHS - 1
         if val_tail_every <= 1 or epoch % val_tail_every == 0 or is_last_epoch:
@@ -116,6 +123,14 @@ def train_model(train_loader, val_loader):
             )
         else:
             val_tail = {}
+        t_tail = time.time() - t_tail_start
+
+        if epoch < 3 or epoch % val_tail_every == 0:
+            print(
+                f"[timing] epoch {epoch}: train={t_train:.1f}s val={t_val:.1f}s "
+                f"val_tail={t_tail:.1f}s",
+                flush=True,
+            )
 
         log_payload = {
             "epoch": epoch,

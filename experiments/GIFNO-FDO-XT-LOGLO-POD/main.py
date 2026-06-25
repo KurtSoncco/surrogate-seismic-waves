@@ -65,8 +65,20 @@ def ensure_pod_cache(limit: int | None = None):
     subprocess.run(cmd, check=True)
 
 
+def _print_device_banner():
+    cuda_ok = torch.cuda.is_available()
+    name = torch.cuda.get_device_name(0) if cuda_ok else "n/a"
+    print("=" * 60)
+    print(f"[device] torch={torch.__version__} cuda_build={torch.version.cuda}")
+    print(f"[device] cuda_available={cuda_ok} device={config.DEVICE} gpu={name}")
+    if not cuda_ok:
+        print("[device] WARNING: running on CPU — training will be very slow!")
+    print("=" * 60)
+
+
 def run_pipeline(limit: int | None = None):
     set_seed(config.SEED)
+    _print_device_banner()
     ensure_tf_cache()
     ensure_pod_cache(limit=limit)
 
