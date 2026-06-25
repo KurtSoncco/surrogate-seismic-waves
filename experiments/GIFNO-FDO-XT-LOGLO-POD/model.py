@@ -15,6 +15,22 @@ from spectral_layers import DualPathLOGLOStack
 from xt_readout import ChannelLift
 
 
+class DepthCollapse(nn.Module):
+    """Collapse depth (B,C,H,W) -> (B,C,1,W) via a per-channel weighted sum.
+
+    Mathematically identical to a depthwise (H,1) conv, but expressed as an
+    einsum so the backward is matmul-based (the large-kernel depthwise conv
+    backward is very slow on GPU).
+    """
+
+    def __init__(self, channels: int, depth: int):
+        super().__init__()
+        self.weight = nn.Parameter(torch.randn(channels, depth) / depth**0.5)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.einsum("bchw,ch->bcw", x, self.weight).unsqueeze(2)
+
+
 class GIFNOXTLOGLOPODModel(nn.Module):
     """ChannelLift -> DualPathLOGLOStack -> RecorderPODDeepONetHeadXT."""
 
@@ -47,7 +63,11 @@ class GIFNOXTLOGLOPODModel(nn.Module):
         # 1D-along-x operator). Depthwise so the stem stays cheap.
         in_depth = config.NZ_MAX
         k = max(1, min(depth_stride, in_depth))
-        if k > 1:
+        if k >= in_depth:
+            # Full collapse to a single surface row -> 1D-along-x encoder.
+            self.depth_pool = DepthCollapse(latent_channels, in_depth)
+            enc_depth = 1
+        elif k > 1:
             self.depth_pool = nn.Conv2d(
                 latent_channels,
                 latent_channels,

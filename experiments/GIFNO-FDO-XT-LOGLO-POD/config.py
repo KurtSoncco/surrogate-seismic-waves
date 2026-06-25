@@ -78,10 +78,12 @@ LOGLO_PATCH_SIZE: Tuple[int, int] = (16, 20)
 LOGLO_HFP_KERNEL: int = 4
 LOGLO_HFP_STRIDE: int = 4
 LOGLO_HF_NOISE_ALPHA: float = 0.025
-# Depth downsampling: the POD head only reads the surface row, so the encoder
-# need not run at full NZ_MAX depth. Stride k reduces depth NZ_MAX -> NZ_MAX/k
-# before the (cost ~ H*W) LOGLO layers. 1 = no downsampling (legacy behavior).
-LOGLO_DEPTH_STRIDE: int = 4
+# Depth handling: the POD head only reads the surface row, so the encoder need
+# not run at full NZ_MAX depth. Stride k reduces depth NZ_MAX -> NZ_MAX/k before
+# the (cost ~ H*W) LOGLO layers; k >= NZ_MAX collapses depth to 1 (encoder runs
+# as a 1D-along-x operator). Default = full collapse: validated to match/beat
+# full depth at ~11x throughput and ~20x fewer params. 1 = legacy full depth.
+LOGLO_DEPTH_STRIDE: int = NZ_MAX
 
 # --- POD-DeepONet readout ---
 BRANCH_MODE: str = "surface"
