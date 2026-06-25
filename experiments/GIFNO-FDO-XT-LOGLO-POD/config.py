@@ -78,6 +78,10 @@ LOGLO_PATCH_SIZE: Tuple[int, int] = (16, 20)
 LOGLO_HFP_KERNEL: int = 4
 LOGLO_HFP_STRIDE: int = 4
 LOGLO_HF_NOISE_ALPHA: float = 0.025
+# Depth downsampling: the POD head only reads the surface row, so the encoder
+# need not run at full NZ_MAX depth. Stride k reduces depth NZ_MAX -> NZ_MAX/k
+# before the (cost ~ H*W) LOGLO layers. 1 = no downsampling (legacy behavior).
+LOGLO_DEPTH_STRIDE: int = 4
 
 # --- POD-DeepONet readout ---
 BRANCH_MODE: str = "surface"
@@ -194,6 +198,7 @@ def _parse_env_value(key: str, raw: str):
         "POD_BRANCH_HIDDEN",
         "LOGLO_HFP_KERNEL",
         "LOGLO_HFP_STRIDE",
+        "LOGLO_DEPTH_STRIDE",
         "RADIAL_I_LOW",
         "RADIAL_I_HIGH",
     ):
@@ -237,6 +242,7 @@ _OVERRIDABLE_KEYS = (
     "LOGLO_HFP_KERNEL",
     "LOGLO_HFP_STRIDE",
     "LOGLO_HF_NOISE_ALPHA",
+    "LOGLO_DEPTH_STRIDE",
     "POD_NUM_MODES",
     "POD_BRANCH_HIDDEN",
     "BRANCH_MODE",

@@ -32,6 +32,7 @@ class GIFNOXTLOGLOPODModel(nn.Module):
         hfp_kernel: int = 4,
         hfp_stride: int = 4,
         hf_noise_alpha: float = 0.025,
+        depth_stride: int = 1,
         branch_hidden: int | None = None,
         branch_mode: str = "surface",
         recorder_x: np.ndarray | None = None,
@@ -40,6 +41,19 @@ class GIFNOXTLOGLOPODModel(nn.Module):
         if recorder_x is None:
             recorder_x = config.recorder_x_indices()
         self.lift = ChannelLift(in_channels, latent_channels)
+        # Depth downsampling stem: the head only reads the surface, so run the
+        # (cost ~ H*W) LOGLO layers at reduced depth. Depthwise so it is cheap.
+        if depth_stride > 1:
+            self.depth_pool = nn.Conv2d(
+                latent_channels,
+                latent_channels,
+                kernel_size=(depth_stride, 1),
+                stride=(depth_stride, 1),
+                groups=latent_channels,
+                bias=False,
+            )
+        else:
+            self.depth_pool = nn.Identity()
         self.encoder = DualPathLOGLOStack(
             n_modes=fno_modes,
             channels=latent_channels,
@@ -62,6 +76,7 @@ class GIFNOXTLOGLOPODModel(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.lift(x)
+        x = self.depth_pool(x)
         x_global, x_local = self.encoder(x)
         return self.head(x_global, x_local)
 
@@ -95,6 +110,7 @@ def create_model(
         hfp_kernel=config.LOGLO_HFP_KERNEL,
         hfp_stride=config.LOGLO_HFP_STRIDE,
         hf_noise_alpha=config.LOGLO_HF_NOISE_ALPHA,
+        depth_stride=config.LOGLO_DEPTH_STRIDE,
         branch_hidden=config.POD_BRANCH_HIDDEN,
         branch_mode=branch_mode,
     )

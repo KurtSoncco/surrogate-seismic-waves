@@ -18,6 +18,7 @@ import sys
 import time
 
 import torch
+import torch.nn.functional as F
 from torch.profiler import ProfilerActivity, profile
 
 import config
@@ -55,32 +56,18 @@ def ensure_pod(limit: int) -> None:
     )
 
 
-def _event_device_ms(evt) -> float:
-    """Total device (CUDA) time for a profiler event, in ms (torch-version safe)."""
-    for attr in ("device_time_total", "cuda_time_total"):
-        val = getattr(evt, attr, None)
-        if val:
-            return val / 1000.0  # profiler reports microseconds
-    return 0.0
-
-
-def _device_time_by_label(prof, prefix: str = "loglo/") -> dict[str, float]:
-    """Aggregate device time (ms) of profiler ranges whose name starts with prefix."""
-    out: dict[str, float] = {}
-    for evt in prof.key_averages():
-        if evt.key.startswith(prefix):
-            out[evt.key] = out.get(evt.key, 0.0) + _event_device_ms(evt)
-    return out
-
-
-def _print_label_table(title: str, per_iter: dict[str, float], iters: int) -> None:
+def _print_breakdown(title: str, rows: dict, n_layers: int) -> None:
+    """rows: name -> (fwd_ms, fwd_bwd_ms) for a single-layer call of each block."""
     print(f"\n{title}")
-    print(f"  {'component':<20} {'ms/it':>9} {'%':>7}")
-    total = sum(per_iter.values()) or 1e-12
-    for key in sorted(per_iter, key=per_iter.get, reverse=True):
-        ms = per_iter[key] / iters
-        print(f"  {key:<20} {ms:>9.2f} {100.0 * per_iter[key] / total:>6.1f}%")
-    print(f"  {'sum(labels)':<20} {total / iters:>9.2f} {100.0:>6.1f}%")
+    print(f"  {'component':<14} {'fwd':>8} {'fwd+bwd':>9} {'bwd':>8} {'% f+b':>7}")
+    tot_f = sum(v[0] for v in rows.values()) or 1e-12
+    tot_fb = sum(v[1] for v in rows.values()) or 1e-12
+    for name in sorted(rows, key=lambda k: rows[k][1], reverse=True):
+        f, fb = rows[name]
+        print(f"  {name:<14} {f:>8.2f} {fb:>9.2f} {fb - f:>8.2f} {100 * fb / tot_fb:>6.1f}%")
+    print(f"  {'sum (1 layer)':<14} {tot_f:>8.2f} {tot_fb:>9.2f} {tot_fb - tot_f:>8.2f} "
+          f"{100.0:>6.1f}%")
+    print(f"  {f'x{n_layers} layers':<14} {tot_f * n_layers:>8.2f} {tot_fb * n_layers:>9.2f}")
 
 
 def _analytical_estimate(b: int, c: int, h: int, w: int, n_layers: int,
@@ -135,8 +122,8 @@ def main() -> None:
     parser.add_argument("--layers", type=int, default=None,
                         help="override NUM_FNO_LAYERS")
     parser.add_argument("--components", action="store_true",
-                        help="only run the per-subcomponent encoder breakdown "
-                             "(loglo/* labels) + analytical FLOP/byte estimate")
+                        help="only run the per-subcomponent encoder breakdown: "
+                             "isolated fwd & fwd+bwd ms per block + MAC estimate")
     args = parser.parse_args()
     batches = [int(b) for b in args.batches.split(",") if b.strip()]
     pool = max(batches)
@@ -204,66 +191,82 @@ def main() -> None:
         if cuda:
             torch.cuda.synchronize()
 
-    # (0) per-subcomponent encoder breakdown (loglo/* labels) + MAC estimate
+    # (0) per-subcomponent encoder breakdown: isolated fwd & fwd+bwd per block.
+    # Each block is timed on a representative latent tensor (one layer's worth);
+    # backward is attributed directly (record_function only tags forward).
     if args.components:
         comp_b = min(4, pool)
-        c = args.latent or config.LATENT_CHANNELS
-        h, w = x8.shape[-2], x8.shape[-1]
-        _analytical_estimate(
-            comp_b, c, h, w,
-            args.layers or config.NUM_FNO_LAYERS,
-            config.FNO_MODES, config.LOGLO_PATCH_SIZE,
-        )
+        n_layers = args.layers or config.NUM_FNO_LAYERS
         if not cuda:
             print("\n[components] no CUDA device; measured breakdown skipped.")
             print("\nOK")
             return
 
-        xb, yb, mb = x8[:comp_b], y8[:comp_b], m8[:comp_b]
-        opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
-
-        # forward-only: loglo/* labels capture the whole forward path cleanly.
-        model.eval()
+        enc = raw_model.encoder
+        enc.train()  # training-mode timing (the 42h concern is training)
+        # Real encoder input = lift + depth_pool of a real batch, so the
+        # breakdown reflects the actual grid the LOGLO layers run on.
         with torch.no_grad(), amp_ctx(True):
-            for _ in range(3):
-                model(xb)
-        sync()
-        iters = args.iters
-        with torch.no_grad(), amp_ctx(True):
-            with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as pf:
-                for _ in range(iters):
-                    model(xb)
-                sync()
-        fwd = _device_time_by_label(pf)
-        _print_label_table(
-            f"=== encoder components, FORWARD only (bs={comp_b}, bf16) ===",
-            fwd, iters,
-        )
+            base = raw_model.depth_pool(raw_model.lift(x8[:comp_b])).detach()
+        c, h, w = base.shape[1], base.shape[2], base.shape[3]
+        _analytical_estimate(comp_b, c, h, w, n_layers,
+                             config.FNO_MODES, config.LOGLO_PATCH_SIZE)
 
-        # fwd+bwd+opt: labels capture the forward portion; the remainder
-        # (backward + optimizer) is reported as a separate row for honesty.
-        model.train()
-        for _ in range(3):
-            opt.zero_grad()
-            with amp_ctx(True):
-                crit(model(xb), yb, mb).backward()
-            opt.step()
-        sync()
-        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as pf:
-            for _ in range(iters):
-                opt.zero_grad()
+        def global_fft(t):  # FNO path: FFT must stay fp32
+            with torch.autocast(device_type=dev.type, enabled=False):
+                return enc.fno(t.float(), index=0)
+
+        def fusion(t):  # skip+gate 1x1 convs + gated GELU mixing
+            mix = t + t + t + enc.skips[0](t)
+            gate = torch.sigmoid(enc.gates[0](mix))
+            return F.gelu(t + gate * (mix - t)) + F.gelu(t + (1.0 - gate) * (mix - t))
+
+        blocks = {
+            "global_fft": global_fft,
+            "local_patch": enc.local_layers[0],
+            "hf_mlp": enc.hf_mlps[0],
+            "hfp": enc.hfp,
+            "fusion": fusion,
+        }
+
+        def bench(call, train: bool) -> float:
+            x = base.detach().clone().requires_grad_(train)
+
+            def fwd():
+                with torch.no_grad(), amp_ctx(True):
+                    out = call(x)
+                return out[0] if isinstance(out, tuple) else out
+
+            def fwd_bwd():
+                enc.zero_grad(set_to_none=True)
+                x.grad = None
                 with amp_ctx(True):
-                    crit(model(xb), yb, mb).backward()
-                opt.step()
+                    out = call(x)
+                    out = out[0] if isinstance(out, tuple) else out
+                out.float().pow(2).mean().backward()
+
+            step = fwd_bwd if train else fwd
+            for _ in range(args.warmup + 2):
+                step()
             sync()
-        fb = _device_time_by_label(pf)
-        _print_label_table(
-            f"=== encoder components, FWD portion of FWD+BWD (bs={comp_b}, bf16) ===",
-            fb, iters,
+            t0 = time.time()
+            for _ in range(args.iters):
+                step()
+            sync()
+            return (time.time() - t0) / args.iters * 1000.0
+
+        rows = {name: (bench(call, False), bench(call, True))
+                for name, call in blocks.items()}
+        _print_breakdown(
+            f"=== encoder components, isolated single-layer (bs={comp_b}, bf16) ===",
+            rows, n_layers,
         )
-        print("\n  note: labels above are the FORWARD ranges only. Backward kernels "
-              "are not\n  tagged by record_function; compare with the op table / "
-              "batch-size scaling\n  for total fwd+bwd cost.")
+
+        # whole-encoder reference (real coupled graph, all layers)
+        enc_f = bench(lambda t: enc(t), False)
+        enc_fb = bench(lambda t: enc(t), True)
+        print(f"\n  whole encoder ({n_layers} layers): "
+              f"fwd={enc_f:.2f}ms  fwd+bwd={enc_fb:.2f}ms  (bs={comp_b})")
         print("\nOK")
         return
 
@@ -288,7 +291,7 @@ def main() -> None:
     raw_model.eval()
     xb = x8[:comp_b]
     with torch.no_grad(), amp_ctx(True):
-        lifted = raw_model.lift(xb)
+        lifted = raw_model.depth_pool(raw_model.lift(xb))
         xg, xl = raw_model.encoder(lifted)
 
     def t_fwd(fn, iters=10, warmup=3):
@@ -302,10 +305,10 @@ def main() -> None:
             sync()
         return (time.time() - t0) / iters * 1000.0
 
-    t_lift = t_fwd(lambda: raw_model.lift(xb))
+    t_lift = t_fwd(lambda: raw_model.depth_pool(raw_model.lift(xb)))
     t_enc = t_fwd(lambda: raw_model.encoder(lifted))
     t_head = t_fwd(lambda: raw_model.head(xg, xl))
-    print(f"  lift={t_lift:.1f}ms  encoder={t_enc:.1f}ms  head={t_head:.1f}ms")
+    print(f"  lift+pool={t_lift:.1f}ms  encoder={t_enc:.1f}ms  head={t_head:.1f}ms")
 
     # (3) op-level profiler
     if cuda:
