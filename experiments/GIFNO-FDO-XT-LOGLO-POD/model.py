@@ -42,23 +42,33 @@ class GIFNOXTLOGLOPODModel(nn.Module):
             recorder_x = config.recorder_x_indices()
         self.lift = ChannelLift(in_channels, latent_channels)
         # Depth downsampling stem: the head only reads the surface, so run the
-        # (cost ~ H*W) LOGLO layers at reduced depth. Depthwise so it is cheap.
-        if depth_stride > 1:
+        # (cost ~ H*W) LOGLO layers at reduced depth. depth_stride=k reduces
+        # NZ_MAX -> NZ_MAX/k; k>=NZ_MAX collapses depth to 1 (encoder is then a
+        # 1D-along-x operator). Depthwise so the stem stays cheap.
+        in_depth = config.NZ_MAX
+        k = max(1, min(depth_stride, in_depth))
+        if k > 1:
             self.depth_pool = nn.Conv2d(
                 latent_channels,
                 latent_channels,
-                kernel_size=(depth_stride, 1),
-                stride=(depth_stride, 1),
+                kernel_size=(k, 1),
+                stride=(k, 1),
                 groups=latent_channels,
                 bias=False,
             )
+            enc_depth = in_depth // k
         else:
             self.depth_pool = nn.Identity()
+            enc_depth = in_depth
+        # Clamp depth-axis hyperparameters to the (possibly tiny) encoder depth
+        # so the 2D LOGLO stack degrades gracefully to 1D when enc_depth == 1.
+        enc_patch = (max(1, min(patch_size[0], enc_depth)), patch_size[1])
+        enc_modes = (max(1, min(fno_modes[0], enc_depth)), fno_modes[1])
         self.encoder = DualPathLOGLOStack(
-            n_modes=fno_modes,
+            n_modes=enc_modes,
             channels=latent_channels,
             n_layers=num_fno_layers,
-            patch_size=patch_size,
+            patch_size=enc_patch,
             hfp_kernel=hfp_kernel,
             hfp_stride=hfp_stride,
             hf_noise_alpha=hf_noise_alpha,

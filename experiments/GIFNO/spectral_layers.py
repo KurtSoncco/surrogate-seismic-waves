@@ -197,8 +197,12 @@ class HighFrequencyPropagation(nn.Module):
         self.stride = stride
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        low = F.avg_pool2d(x, self.kernel_size, stride=self.stride)
-        up = F.interpolate(low, size=x.shape[-2:], mode="bilinear", align_corners=False)
+        h, w = x.shape[-2:]
+        # Clamp the pooling window per axis so a tiny (e.g. depth-1) grid works.
+        kh, kw = min(self.kernel_size, h), min(self.kernel_size, w)
+        sh, sw = min(self.stride, h), min(self.stride, w)
+        low = F.avg_pool2d(x, (kh, kw), stride=(sh, sw))
+        up = F.interpolate(low, size=(h, w), mode="bilinear", align_corners=False)
         return x - up
 
 
