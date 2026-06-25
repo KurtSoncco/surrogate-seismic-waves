@@ -101,8 +101,8 @@ source ../GIFNO/delta_env.sh        # Delta env + paths
 # single training run (screen, 500 samples)
 sbatch delta_train.sh --limit 500
 
-# full-dataset training (24 h walltime)
-sbatch delta_train_full.sh
+# full-dataset training (no --limit; bump walltime for the full set)
+sbatch --time=24:00:00 delta_train.sh
 
 # speed/accuracy profiling
 sbatch delta_profile.sh             # or: python profile_speed.py --limit 500 --batches 1,4,16,64

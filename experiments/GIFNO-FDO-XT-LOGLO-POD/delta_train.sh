@@ -3,7 +3,8 @@
 #
 #   cd ~/surrogate-seismic-waves/experiments/GIFNO-FDO-XT-LOGLO-POD
 #   source ../GIFNO/delta_env.sh
-#   sbatch delta_train.sh --limit 500
+#   sbatch delta_train.sh --limit 500            # screen run
+#   sbatch --time=24:00:00 delta_train.sh        # full dataset (no --limit)
 #   bash delta_sweep.sh --variants sweep_variants_loglo_pod.tsv --limit 500
 #   bash delta_sweep_rerun.sh loglo_pod_ref --full
 
