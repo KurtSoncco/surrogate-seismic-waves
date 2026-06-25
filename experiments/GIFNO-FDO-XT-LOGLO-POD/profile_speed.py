@@ -61,6 +61,11 @@ def main() -> None:
     parser.add_argument("--batches", type=str, default="1,2,4,8,16,32")
     parser.add_argument("--iters", type=int, default=10)
     parser.add_argument("--warmup", type=int, default=3)
+    parser.add_argument("--compile", action="store_true", help="torch.compile the model")
+    parser.add_argument("--latent", type=int, default=None,
+                        help="override LATENT_CHANNELS (capacity-vs-speed test)")
+    parser.add_argument("--layers", type=int, default=None,
+                        help="override NUM_FNO_LAYERS")
     args = parser.parse_args()
     batches = [int(b) for b in args.batches.split(",") if b.strip()]
     pool = max(batches)
@@ -82,12 +87,40 @@ def main() -> None:
     tr, _, _, _ = get_data_loaders(limit=args.limit, batch_size=pool, num_workers=0)
     x8, y8, m8 = next(iter(tr))
     x8, y8, m8 = x8.to(dev), y8.to(dev), m8.to(dev)
-    model = create_model().to(dev)
+
+    model_kwargs = {}
+    if args.latent is not None:
+        model_kwargs["latent_channels"] = args.latent
+    if args.layers is not None:
+        model_kwargs["num_fno_layers"] = args.layers
+    raw_model = create_model(**model_kwargs).to(dev)
+    model = raw_model
+    if args.compile:
+        # Inductor has no complex64 Triton codegen; let complex subgraphs fall
+        # back to eager while still fusing the non-complex elementwise regions.
+        torch._dynamo.config.suppress_errors = True
+        try:
+            compiled = torch.compile(raw_model)
+            with torch.no_grad(), torch.autocast(
+                device_type=dev.type, dtype=torch.bfloat16, enabled=cuda
+            ):
+                compiled(x8[:1])  # trigger compilation now to surface failures
+            if cuda:
+                torch.cuda.synchronize()
+            model = compiled
+            print("[compile] torch.compile OK")
+        except Exception as e:  # noqa: BLE001
+            print(f"[compile] FAILED ({type(e).__name__}: {e}); falling back to eager")
+            model = raw_model
     crit = build_training_loss()
-    n_params = sum(p.numel() for p in model.parameters())
+    n_params = sum(p.numel() for p in raw_model.parameters())
     print(
         f"params={n_params / 1e6:.2f}M  input={tuple(x8.shape[1:])}  "
         f"target={tuple(y8.shape[1:])}  pooled_batch={x8.shape[0]}"
+    )
+    print(
+        f"compile={args.compile}  latent={args.latent or config.LATENT_CHANNELS}  "
+        f"layers={args.layers or config.NUM_FNO_LAYERS}"
     )
     print("=" * 70)
 
@@ -117,12 +150,12 @@ def main() -> None:
 
     # (2) per-component forward timing
     comp_b = min(4, pool)
-    print(f"\n=== per-component forward timing (bs={comp_b}, bf16) ===")
-    model.eval()
+    print(f"\n=== per-component forward timing (bs={comp_b}, bf16, uncompiled) ===")
+    raw_model.eval()
     xb = x8[:comp_b]
     with torch.no_grad(), amp_ctx(True):
-        lifted = model.lift(xb)
-        xg, xl = model.encoder(lifted)
+        lifted = raw_model.lift(xb)
+        xg, xl = raw_model.encoder(lifted)
 
     def t_fwd(fn, iters=10, warmup=3):
         with torch.no_grad(), amp_ctx(True):
@@ -135,9 +168,9 @@ def main() -> None:
             sync()
         return (time.time() - t0) / iters * 1000.0
 
-    t_lift = t_fwd(lambda: model.lift(xb))
-    t_enc = t_fwd(lambda: model.encoder(lifted))
-    t_head = t_fwd(lambda: model.head(xg, xl))
+    t_lift = t_fwd(lambda: raw_model.lift(xb))
+    t_enc = t_fwd(lambda: raw_model.encoder(lifted))
+    t_head = t_fwd(lambda: raw_model.head(xg, xl))
     print(f"  lift={t_lift:.1f}ms  encoder={t_enc:.1f}ms  head={t_head:.1f}ms")
 
     # (3) op-level profiler
