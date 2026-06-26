@@ -132,14 +132,25 @@ FREQ_BAND_HIGH: Tuple[float, float] = (2.0, 10.0)
 # --- Frequency-band loss curriculum ---
 # Speed-safe schedule that reweights the relative loss across frequency bands as
 # training progresses: emphasize low log-f early, ramp mid, then high. Weights
-# are normalized to mean 1 over the freq grid so the loss scale stays stable;
-# validation always uses neutral weights so model selection is on a fixed
-# objective. Default off -> identical to the baseline.
+# are normalized to mean 1 over the freq grid so the loss scale stays stable.
+# Default off -> identical to the baseline. Schedule is retuned to start the mid
+# and high ramps earlier so they reach target weight before early-stop fires.
 BAND_CURRICULUM: bool = False
 BAND_CURRICULUM_FLOOR: float = 0.25
-BAND_CURRICULUM_MID_START: float = 0.33
-BAND_CURRICULUM_HIGH_START: float = 0.66
-BAND_CURRICULUM_RAMP: float = 0.15
+BAND_CURRICULUM_MID_START: float = 0.20
+BAND_CURRICULUM_HIGH_START: float = 0.50
+BAND_CURRICULUM_RAMP: float = 0.20
+
+# --- Model selection / LR schedule ---
+# SELECTION_METRIC drives best-checkpoint and early-stop:
+#   "val_loss"      -> neutral relative-L2 (baseline behavior)
+#   "band_balanced" -> mean of per-band rel-L2 (low/mid/high) so high-band gains
+#                      are rewarded even though the high band carries low energy.
+# The LR scheduler always tracks neutral val_loss; its patience/factor are tunable
+# so curriculum runs can train long enough for mid/high bands to see gradient.
+SELECTION_METRIC: str = "val_loss"
+LR_SCHED_PATIENCE: int = 20
+LR_SCHED_FACTOR: float = 0.5
 
 
 def _parse_env_value(key: str, raw: str):
@@ -167,6 +178,13 @@ def _parse_env_value(key: str, raw: str):
         if opt not in ("adam", "adamw"):
             raise ValueError(f"OPTIMIZER must be adam or adamw, got {raw!r}")
         return opt
+    if key == "SELECTION_METRIC":
+        metric = raw.lower()
+        if metric not in ("val_loss", "band_balanced"):
+            raise ValueError(
+                f"SELECTION_METRIC must be val_loss or band_balanced, got {raw!r}"
+            )
+        return metric
     if key in (
         "HARD_MINING",
         "NORMALIZE_VS_SURFACE",
@@ -191,6 +209,7 @@ def _parse_env_value(key: str, raw: str):
         "SEED",
         "NUM_WORKERS",
         "LOSS_P",
+        "LR_SCHED_PATIENCE",
     ):
         return int(raw)
     if key in (
@@ -211,6 +230,7 @@ def _parse_env_value(key: str, raw: str):
         "BAND_CURRICULUM_MID_START",
         "BAND_CURRICULUM_HIGH_START",
         "BAND_CURRICULUM_RAMP",
+        "LR_SCHED_FACTOR",
     ):
         return float(raw)
     if key == "WANDB_RUN_NAME":
@@ -253,6 +273,9 @@ _OVERRIDABLE_KEYS = (
     "BAND_CURRICULUM_MID_START",
     "BAND_CURRICULUM_HIGH_START",
     "BAND_CURRICULUM_RAMP",
+    "SELECTION_METRIC",
+    "LR_SCHED_PATIENCE",
+    "LR_SCHED_FACTOR",
     "USE_AMP",
     "TORCH_COMPILE",
     "OPTIMIZER",

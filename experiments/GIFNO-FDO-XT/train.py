@@ -21,6 +21,24 @@ def _band_curriculum_enabled(criterion: torch.nn.Module) -> bool:
     )
 
 
+def band_balanced_val_metric(val_tail: dict) -> float:
+    """Mean of per-band val rel-L2 (low/mid/high), equal weight.
+
+    Unlike neutral val_loss this is not energy-weighted, so high-band gains are
+    not drowned by the larger low/mid bands -- the point of band-aware selection.
+    Returns NaN if the band metrics are unavailable.
+    """
+    keys = (
+        "val_rel_l2_band_low_mean",
+        "val_rel_l2_band_mid_mean",
+        "val_rel_l2_band_high_mean",
+    )
+    vals = [val_tail[k] for k in keys if k in val_tail]
+    if not vals:
+        return float("nan")
+    return float(sum(vals) / len(vals))
+
+
 def build_optimizer(model: torch.nn.Module) -> optim.Optimizer:
     """Adam or AdamW with config-driven hyperparameters."""
     opt_name = config.OPTIMIZER.lower()
@@ -61,7 +79,10 @@ def train_model(train_loader, val_loader):
     criterion = build_training_loss()
     optimizer = build_optimizer(model)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, "min", patience=20, factor=0.5
+        optimizer,
+        "min",
+        patience=config.LR_SCHED_PATIENCE,
+        factor=config.LR_SCHED_FACTOR,
     )
 
     run = wandb.init(
@@ -70,10 +91,11 @@ def train_model(train_loader, val_loader):
         config={k: v for k, v in vars(config).items() if k.isupper()},
     )
 
-    best_val_loss = float("inf")
+    best_metric = float("inf")
     early_stop_counter = 0
     freq = np.load(config.TF_FREQ_PATH)
     band_curriculum = _band_curriculum_enabled(criterion)
+    selection_metric = getattr(config, "SELECTION_METRIC", "val_loss")
 
     t = trange(config.NUM_EPOCHS, desc="Training")
     for epoch in t:
@@ -131,16 +153,24 @@ def train_model(train_loader, val_loader):
                 n_val += inputs.size(0)
 
         val_loss /= max(n_val, 1)
+        # LR scheduler always tracks the neutral objective.
         scheduler.step(val_loss)
 
         val_tail = compute_val_tail_metrics_torch(
             model, val_loader, config.DEVICE, freq
         )
 
+        band_bal_val = band_balanced_val_metric(val_tail)
+        if selection_metric == "band_balanced" and np.isfinite(band_bal_val):
+            monitored = band_bal_val
+        else:
+            monitored = val_loss
+
         log_payload = {
             "epoch": epoch,
             "train_loss": train_loss,
             "val_loss": val_loss,
+            "band_bal_val": band_bal_val,
             "learning_rate": optimizer.param_groups[0]["lr"],
             **val_tail,
         }
@@ -151,8 +181,8 @@ def train_model(train_loader, val_loader):
         wandb.log(log_payload)
         t.set_postfix(train_loss=train_loss, val_loss=val_loss)
 
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
+        if monitored < best_metric:
+            best_metric = monitored
             torch.save(model.state_dict(), config.MODEL_SAVE_PATH)
             early_stop_counter = 0
         else:

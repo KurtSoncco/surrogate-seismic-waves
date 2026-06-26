@@ -38,3 +38,5 @@ def test_sweep_variants_xt_loads_six():
     assert wide.overrides["DEEPONET_LATENT_DIM"] == "128"
     bandcurr = next(v for v in variants if v.name == "xt_lat128_d128_bandcurr")
     assert bandcurr.overrides["BAND_CURRICULUM"] == "true"
+    assert bandcurr.overrides["SELECTION_METRIC"] == "band_balanced"
+    assert bandcurr.overrides["EARLY_STOP_PATIENCE"] == "140"
