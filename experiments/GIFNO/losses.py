@@ -120,6 +120,7 @@ class MaskedCompositeLoss(nn.Module):
         radial_weight: float = 0.0,
         radial_i_low: int = 4,
         radial_i_high: int = 12,
+        band_balanced_weight: float = 0.0,
         freq: Optional[np.ndarray] = None,
     ):
         super().__init__()
@@ -166,6 +167,75 @@ class MaskedCompositeLoss(nn.Module):
         # which reproduces the un-weighted relative loss exactly.
         self._band_freq = np.asarray(freq, dtype=np.float64)
         self._band_w: Optional[torch.Tensor] = None
+
+        # Band-balanced term (Tier 2): each band's relative L2 normalized by its
+        # OWN target energy, so the low-energy high band is not suppressed. The
+        # per-band scalar weights are curriculum-controlled via
+        # set_band_balanced_weights; None -> equal weighting.
+        self.band_balanced_weight = band_balanced_weight
+        self._bb_slices = self._compute_band_slices()
+        self._bb_weights: Optional[Tuple[float, float, float]] = None
+
+    def _compute_band_slices(self) -> list[slice]:
+        freq = self._band_freq
+        bands = (
+            getattr(config, "FREQ_BAND_LOW", (0.1, 0.5)),
+            getattr(config, "FREQ_BAND_MID", (0.5, 2.0)),
+            getattr(config, "FREQ_BAND_HIGH", (2.0, 10.0)),
+        )
+        slices: list[slice] = []
+        for lo, hi in bands:
+            i_lo = int(np.searchsorted(freq, lo, side="left"))
+            i_hi = int(np.searchsorted(freq, hi, side="right"))
+            slices.append(slice(i_lo, max(i_lo + 1, i_hi)))
+        return slices
+
+    def set_band_balanced_weights(
+        self,
+        w_low: Optional[float] = None,
+        w_mid: Optional[float] = None,
+        w_high: Optional[float] = None,
+    ) -> None:
+        """Set per-band scalar weights for the band-balanced term.
+
+        All ``None`` -> equal weighting across bands.
+        """
+        if w_low is None and w_mid is None and w_high is None:
+            self._bb_weights = None
+            return
+        self._bb_weights = (
+            float(w_low if w_low is not None else 1.0),
+            float(w_mid if w_mid is not None else 1.0),
+            float(w_high if w_high is not None else 1.0),
+        )
+
+    def _band_balanced_loss(
+        self, pred: torch.Tensor, target: torch.Tensor
+    ) -> torch.Tensor:
+        """Per-sample weighted mean of per-band self-normalized relative L2.
+
+        pred, target: (B, R, F) recorder curves. Each band is normalized by its
+        own target energy so band amplitude does not dictate its gradient share.
+        Dividing by the weight sum keeps the term's scale stable as the
+        curriculum changes the per-band weights.
+        """
+        b = pred.shape[0]
+        weights = self._bb_weights if self._bb_weights is not None else (1.0, 1.0, 1.0)
+        total = pred.new_zeros(b)
+        wsum = 0.0
+        for slc, w in zip(self._bb_slices, weights):
+            if w == 0.0:
+                wsum += w
+                continue
+            p = pred[..., slc].reshape(b, -1)
+            t = target[..., slc].reshape(b, -1)
+            num = torch.linalg.norm(p - t, dim=1)
+            den = torch.linalg.norm(t, dim=1).clamp_min(_EPS)
+            total = total + w * (num / den)
+            wsum += w
+        if wsum <= _EPS:
+            return total
+        return total / wsum
 
     def set_band_weights(
         self,
@@ -331,6 +401,10 @@ class MaskedCompositeLoss(nn.Module):
             radial = self.radial_loss(p_rec, t_rec)
             total = total + self.radial_weight * radial
 
+        if self.band_balanced_weight > 0:
+            bb = self._band_balanced_loss(p_rec, t_rec)
+            total = total + self.band_balanced_weight * bb
+
         if self.hard_mining and total.numel() > 0:
             mean = total.mean().clamp_min(_EPS)
             weights = (total / mean) ** self.hard_mining_power
@@ -344,15 +418,23 @@ def build_training_loss() -> nn.Module:
     radial_weight = getattr(config, "LOSS_RADIAL_WEIGHT", 0.0)
     radial_i_low = getattr(config, "RADIAL_I_LOW", 4)
     radial_i_high = getattr(config, "RADIAL_I_HIGH", 12)
+    band_balanced_weight = getattr(config, "LOSS_BAND_BALANCED_WEIGHT", 0.0)
+    band_curriculum = getattr(config, "BAND_CURRICULUM", False)
+    curriculum_mode = getattr(config, "BAND_CURRICULUM_MODE", "time")
+    # Convergence-mode curriculum drives the band-balanced term's per-band
+    # weights, so it needs a non-zero band-balanced weight to have a lever.
+    if band_curriculum and curriculum_mode == "convergence" and band_balanced_weight <= 0:
+        band_balanced_weight = 0.5
     use_composite = (
         config.LOSS_H1_WEIGHT != 0.0
         or config.LOSS_FREQ_WEIGHT != 0.0
         or config.LOSS_LINF_WEIGHT != 0.0
         or config.VALLEY_LOSS_WEIGHT != 0.0
         or radial_weight != 0.0
+        or band_balanced_weight != 0.0
         or config.LOG_TF_LOSS
         or config.HARD_MINING
-        or getattr(config, "BAND_CURRICULUM", False)
+        or band_curriculum
     )
     if not use_composite:
         return MaskedLpLoss(d=2, p=config.LOSS_P)
@@ -371,4 +453,5 @@ def build_training_loss() -> nn.Module:
         radial_weight=radial_weight,
         radial_i_low=radial_i_low,
         radial_i_high=radial_i_high,
+        band_balanced_weight=band_balanced_weight,
     )

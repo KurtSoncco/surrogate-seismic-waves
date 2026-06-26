@@ -10,9 +10,31 @@ from losses import MaskedCompositeLoss, band_curriculum_weights
 from train import band_balanced_val_metric
 
 
-def _make_loss(n_freq: int = 128) -> MaskedCompositeLoss:
+def _make_loss(n_freq: int = 128, band_balanced_weight: float = 0.0):
     freq = np.logspace(-1, 1, n_freq).astype(np.float32)
-    return MaskedCompositeLoss(rel_weight=1.0, h1_weight=0.0, p=1, freq=freq)
+    return MaskedCompositeLoss(
+        rel_weight=1.0,
+        h1_weight=0.0,
+        p=1,
+        band_balanced_weight=band_balanced_weight,
+        freq=freq,
+    )
+
+
+def _manual_band_balanced(loss, pred, target, weights):
+    rels = []
+    used = []
+    for slc, w in zip(loss._bb_slices, weights):
+        if w == 0.0:
+            continue
+        p = pred[..., slc].reshape(pred.shape[0], -1)
+        t = target[..., slc].reshape(target.shape[0], -1)
+        rels.append(
+            w * torch.linalg.norm(p - t, dim=1)
+            / torch.linalg.norm(t, dim=1).clamp_min(1e-8)
+        )
+        used.append(w)
+    return sum(rels) / sum(used)
 
 
 def test_schedule_phase_ordering_and_bounds():
@@ -69,6 +91,35 @@ def test_band_weights_are_mean_one_normalized():
     loss.set_band_weights(1.0, 0.25, 0.25)
     assert loss._band_w is not None
     assert np.isclose(float(loss._band_w.mean()), 1.0, atol=1e-5)
+
+
+def test_band_balanced_equals_mean_of_band_rel_l2():
+    loss = _make_loss(128)
+    torch.manual_seed(1)
+    pred = torch.randn(3, 5, 128)
+    target = torch.randn(3, 5, 128)
+    bb = loss._band_balanced_loss(pred, target)
+    manual = _manual_band_balanced(loss, pred, target, (1.0, 1.0, 1.0))
+    assert torch.allclose(bb, manual, atol=1e-6)
+
+
+def test_band_balanced_zero_weight_excludes_band():
+    loss = _make_loss(128)
+    torch.manual_seed(2)
+    pred = torch.randn(2, 5, 128)
+    target = torch.randn(2, 5, 128)
+    loss.set_band_balanced_weights(1.0, 1.0, 0.0)
+    bb = loss._band_balanced_loss(pred, target)
+    manual = _manual_band_balanced(loss, pred, target, (1.0, 1.0, 0.0))
+    assert torch.allclose(bb, manual, atol=1e-6)
+
+
+def test_band_balanced_weight_off_by_default():
+    # Baseline config: term must be off so the loss is unchanged.
+    assert config.LOSS_BAND_BALANCED_WEIGHT == 0.0
+    assert config.BAND_CURRICULUM_MODE == "time"
+    loss = _make_loss()  # default band_balanced_weight=0.0
+    assert loss.band_balanced_weight == 0.0
 
 
 def test_config_schedule_defaults_retuned():

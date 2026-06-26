@@ -9,13 +9,14 @@ from tqdm import trange
 
 import wandb
 
+from curriculum import BandCurriculumController
 from losses import band_curriculum_weights, build_training_loss
 from metrics import compute_val_tail_metrics_torch
 from model import create_model
 
 
 def _band_curriculum_enabled(criterion: torch.nn.Module) -> bool:
-    """Curriculum needs the composite loss (per-frequency reweighting hook)."""
+    """Curriculum needs the composite loss (band reweighting hooks)."""
     return getattr(config, "BAND_CURRICULUM", False) and hasattr(
         criterion, "set_band_weights"
     )
@@ -96,11 +97,28 @@ def train_model(train_loader, val_loader):
     freq = np.load(config.TF_FREQ_PATH)
     band_curriculum = _band_curriculum_enabled(criterion)
     selection_metric = getattr(config, "SELECTION_METRIC", "val_loss")
+    curriculum_mode = getattr(config, "BAND_CURRICULUM_MODE", "time")
+    convergence = band_curriculum and curriculum_mode == "convergence"
+
+    controller = None
+    if convergence:
+        controller = BandCurriculumController(
+            n_bands=3,
+            floor=config.BAND_CURRICULUM_FLOOR,
+            patience=config.BAND_CURRICULUM_PHASE_PATIENCE,
+            min_delta=config.BAND_CURRICULUM_MIN_DELTA,
+            ramp_epochs=config.BAND_CURRICULUM_RAMP_EPOCHS,
+        )
+        # Convergence mode advances on the band-balanced metric, so force it.
+        selection_metric = "band_balanced"
 
     t = trange(config.NUM_EPOCHS, desc="Training")
     for epoch in t:
         band_w = (1.0, 1.0, 1.0)
-        if band_curriculum:
+        if convergence:
+            band_w = controller.current_weights()
+            criterion.set_band_balanced_weights(*band_w)
+        elif band_curriculum:
             band_w = band_curriculum_weights(
                 epoch,
                 config.NUM_EPOCHS,
@@ -134,8 +152,11 @@ def train_model(train_loader, val_loader):
 
         train_loss /= max(n_train, 1)
 
-        # Validation/model-selection use a fixed (neutral) objective.
-        if band_curriculum:
+        # Validation uses a fixed-composition objective so the LR scheduler
+        # (on val_loss) is not chasing the moving curriculum weights.
+        if convergence:
+            criterion.set_band_balanced_weights(None)
+        elif band_curriculum:
             criterion.set_band_weights(None)
 
         model.eval()
@@ -178,6 +199,8 @@ def train_model(train_loader, val_loader):
             log_payload["w_band_low"] = band_w[0]
             log_payload["w_band_mid"] = band_w[1]
             log_payload["w_band_high"] = band_w[2]
+        if controller is not None:
+            log_payload["curriculum_phase"] = controller.phase
         wandb.log(log_payload)
         t.set_postfix(train_loss=train_loss, val_loss=val_loss)
 
@@ -188,7 +211,31 @@ def train_model(train_loader, val_loader):
         else:
             early_stop_counter += 1
 
-        if early_stop_counter >= config.EARLY_STOP_PATIENCE:
+        # Advance the convergence curriculum and warm-restart on a phase change.
+        in_final_phase = True
+        if controller is not None:
+            advanced = controller.step(band_bal_val)
+            in_final_phase = controller.is_final_phase
+            if advanced:
+                # A new phase gets a fresh early-stop budget.
+                early_stop_counter = 0
+                if config.BAND_CURRICULUM_LR_RESTART:
+                    if config.BAND_CURRICULUM_RESET_OPT_STATE:
+                        optimizer = build_optimizer(model)
+                    restart_lr = (
+                        config.LEARNING_RATE * config.BAND_CURRICULUM_LR_RESTART_SCALE
+                    )
+                    for group in optimizer.param_groups:
+                        group["lr"] = restart_lr
+                    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                        optimizer,
+                        "min",
+                        patience=config.LR_SCHED_PATIENCE,
+                        factor=config.LR_SCHED_FACTOR,
+                    )
+
+        # Early stop only once the curriculum has reached its final phase.
+        if in_final_phase and early_stop_counter >= config.EARLY_STOP_PATIENCE:
             break
 
     return run

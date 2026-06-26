@@ -9,3 +9,6 @@ xt_depth	BRANCH_MODE=depth
 # Frequency-band loss curriculum on the lat128_d128 backbone (A/B vs xt_lat128_d128_full)
 # Tier 1: retuned schedule (from config defaults) + band-aware selection + longer patience.
 xt_lat128_d128_bandcurr	LATENT_CHANNELS=128;DEEPONET_LATENT_DIM=128;BAND_CURRICULUM=true;SELECTION_METRIC=band_balanced;EARLY_STOP_PATIENCE=140;LR_SCHED_PATIENCE=40
+# Tier 2: closed-loop convergence-gated curriculum on the band-balanced loss term,
+# with LR/optimizer warm-restart per phase. Selection metric forced to band_balanced.
+xt_lat128_d128_bandcurr_cl	LATENT_CHANNELS=128;DEEPONET_LATENT_DIM=128;BAND_CURRICULUM=true;BAND_CURRICULUM_MODE=convergence;LOSS_BAND_BALANCED_WEIGHT=0.5;BAND_CURRICULUM_LR_RESTART=true;EARLY_STOP_PATIENCE=140;LR_SCHED_PATIENCE=40

@@ -32,7 +32,7 @@ def test_sweep_variants_xt_loads_six():
 
     path = Path(__file__).resolve().parents[1] / "sweep_variants_xt.tsv"
     variants = load_variants(path)
-    assert len(variants) == 7
+    assert len(variants) == 8
     wide = next(v for v in variants if v.name == "xt_lat128_d128")
     assert wide.overrides["LATENT_CHANNELS"] == "128"
     assert wide.overrides["DEEPONET_LATENT_DIM"] == "128"
@@ -40,3 +40,6 @@ def test_sweep_variants_xt_loads_six():
     assert bandcurr.overrides["BAND_CURRICULUM"] == "true"
     assert bandcurr.overrides["SELECTION_METRIC"] == "band_balanced"
     assert bandcurr.overrides["EARLY_STOP_PATIENCE"] == "140"
+    cl = next(v for v in variants if v.name == "xt_lat128_d128_bandcurr_cl")
+    assert cl.overrides["BAND_CURRICULUM_MODE"] == "convergence"
+    assert cl.overrides["LOSS_BAND_BALANCED_WEIGHT"] == "0.5"
