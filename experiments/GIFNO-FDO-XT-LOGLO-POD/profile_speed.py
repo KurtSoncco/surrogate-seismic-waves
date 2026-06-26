@@ -64,14 +64,21 @@ def _print_breakdown(title: str, rows: dict, n_layers: int) -> None:
     tot_fb = sum(v[1] for v in rows.values()) or 1e-12
     for name in sorted(rows, key=lambda k: rows[k][1], reverse=True):
         f, fb = rows[name]
-        print(f"  {name:<14} {f:>8.2f} {fb:>9.2f} {fb - f:>8.2f} {100 * fb / tot_fb:>6.1f}%")
-    print(f"  {'sum (1 layer)':<14} {tot_f:>8.2f} {tot_fb:>9.2f} {tot_fb - tot_f:>8.2f} "
-          f"{100.0:>6.1f}%")
-    print(f"  {f'x{n_layers} layers':<14} {tot_f * n_layers:>8.2f} {tot_fb * n_layers:>9.2f}")
+        print(
+            f"  {name:<14} {f:>8.2f} {fb:>9.2f} {fb - f:>8.2f} {100 * fb / tot_fb:>6.1f}%"
+        )
+    print(
+        f"  {'sum (1 layer)':<14} {tot_f:>8.2f} {tot_fb:>9.2f} {tot_fb - tot_f:>8.2f} "
+        f"{100.0:>6.1f}%"
+    )
+    print(
+        f"  {f'x{n_layers} layers':<14} {tot_f * n_layers:>8.2f} {tot_fb * n_layers:>9.2f}"
+    )
 
 
-def _analytical_estimate(b: int, c: int, h: int, w: int, n_layers: int,
-                         fno_modes, patch_size) -> None:
+def _analytical_estimate(
+    b: int, c: int, h: int, w: int, n_layers: int, fno_modes, patch_size
+) -> None:
     """Rough per-layer MAC / activation-byte budget to sanity-check measured time.
 
     Counts the dominant dense ops only (1x1 convs and spectral channel-mixing).
@@ -84,11 +91,11 @@ def _analytical_estimate(b: int, c: int, h: int, w: int, n_layers: int,
     hw = h * w
     cc = c * c
 
-    g_spec = b * cc * m1 * m2 * 4                  # FNO spectral einsum (complex)
-    g_point = b * cc * hw                          # FNO pointwise channel mix (1x1)
-    local = b * n_patches * cc * patch_modes * 4   # dense per-patch spectral (complex)
-    hf_mlp = 2 * b * cc * hw                       # two 1x1 convs on x_hf
-    fusion = 2 * b * cc * hw                       # skip + gate 1x1 convs
+    g_spec = b * cc * m1 * m2 * 4  # FNO spectral einsum (complex)
+    g_point = b * cc * hw  # FNO pointwise channel mix (1x1)
+    local = b * n_patches * cc * patch_modes * 4  # dense per-patch spectral (complex)
+    hf_mlp = 2 * b * cc * hw  # two 1x1 convs on x_hf
+    fusion = 2 * b * cc * hw  # skip + gate 1x1 convs
     per_layer = {
         "global_fft(spectral)": g_spec,
         "global_fft(pointwise~)": g_point,
@@ -96,18 +103,22 @@ def _analytical_estimate(b: int, c: int, h: int, w: int, n_layers: int,
         "hf_mlp": hf_mlp,
         "fusion(skip+gate)": fusion,
     }
-    act_bytes_fp32 = b * c * hw * 4               # one full feature map (fp32)
+    act_bytes_fp32 = b * c * hw * 4  # one full feature map (fp32)
     print("\n=== analytical per-layer MAC budget (dominant dense ops) ===")
-    print(f"  shapes: B={b} C={c} grid={h}x{w} patches={n_patches}x({ph}x{pw}) "
-          f"fno_modes={m1}x{m2}")
+    print(
+        f"  shapes: B={b} C={c} grid={h}x{w} patches={n_patches}x({ph}x{pw}) "
+        f"fno_modes={m1}x{m2}"
+    )
     total = sum(per_layer.values()) or 1e-12
     for key in sorted(per_layer, key=per_layer.get, reverse=True):
         g = per_layer[key] / 1e9
         print(f"  {key:<24} {g:>8.3f} GMAC {100.0 * per_layer[key] / total:>6.1f}%")
     print(f"  {'per-layer total':<24} {total / 1e9:>8.3f} GMAC")
     print(f"  x{n_layers} layers          {total * n_layers / 1e9:>8.3f} GMAC")
-    print(f"  one fp32 feature map: {act_bytes_fp32 / 1e6:.1f} MB "
-          f"(each .float() cast copies this; watch aten::copy_)")
+    print(
+        f"  one fp32 feature map: {act_bytes_fp32 / 1e6:.1f} MB "
+        f"(each .float() cast copies this; watch aten::copy_)"
+    )
 
 
 def main() -> None:
@@ -116,14 +127,24 @@ def main() -> None:
     parser.add_argument("--batches", type=str, default="1,2,4,8,16,32")
     parser.add_argument("--iters", type=int, default=10)
     parser.add_argument("--warmup", type=int, default=3)
-    parser.add_argument("--compile", action="store_true", help="torch.compile the model")
-    parser.add_argument("--latent", type=int, default=None,
-                        help="override LATENT_CHANNELS (capacity-vs-speed test)")
-    parser.add_argument("--layers", type=int, default=None,
-                        help="override NUM_FNO_LAYERS")
-    parser.add_argument("--components", action="store_true",
-                        help="only run the per-subcomponent encoder breakdown: "
-                             "isolated fwd & fwd+bwd ms per block + MAC estimate")
+    parser.add_argument(
+        "--compile", action="store_true", help="torch.compile the model"
+    )
+    parser.add_argument(
+        "--latent",
+        type=int,
+        default=None,
+        help="override LATENT_CHANNELS (capacity-vs-speed test)",
+    )
+    parser.add_argument(
+        "--layers", type=int, default=None, help="override NUM_FNO_LAYERS"
+    )
+    parser.add_argument(
+        "--components",
+        action="store_true",
+        help="only run the per-subcomponent encoder breakdown: "
+        "isolated fwd & fwd+bwd ms per block + MAC estimate",
+    )
     args = parser.parse_args()
     batches = [int(b) for b in args.batches.split(",") if b.strip()]
     pool = max(batches)
@@ -159,8 +180,11 @@ def main() -> None:
         torch._dynamo.config.suppress_errors = True
         try:
             compiled = torch.compile(raw_model)
-            with torch.no_grad(), torch.autocast(
-                device_type=dev.type, dtype=torch.bfloat16, enabled=cuda
+            with (
+                torch.no_grad(),
+                torch.autocast(
+                    device_type=dev.type, dtype=torch.bfloat16, enabled=cuda
+                ),
             ):
                 compiled(x8[:1])  # trigger compilation now to surface failures
             if cuda:
@@ -209,8 +233,9 @@ def main() -> None:
         with torch.no_grad(), amp_ctx(True):
             base = raw_model.depth_pool(raw_model.lift(x8[:comp_b])).detach()
         c, h, w = base.shape[1], base.shape[2], base.shape[3]
-        _analytical_estimate(comp_b, c, h, w, n_layers,
-                             config.FNO_MODES, config.LOGLO_PATCH_SIZE)
+        _analytical_estimate(
+            comp_b, c, h, w, n_layers, config.FNO_MODES, config.LOGLO_PATCH_SIZE
+        )
 
         def global_fft(t):  # FNO path: FFT must stay fp32
             with torch.autocast(device_type=dev.type, enabled=False):
@@ -255,18 +280,23 @@ def main() -> None:
             sync()
             return (time.time() - t0) / args.iters * 1000.0
 
-        rows = {name: (bench(call, False), bench(call, True))
-                for name, call in blocks.items()}
+        rows = {
+            name: (bench(call, False), bench(call, True))
+            for name, call in blocks.items()
+        }
         _print_breakdown(
             f"=== encoder components, isolated single-layer (bs={comp_b}, bf16) ===",
-            rows, n_layers,
+            rows,
+            n_layers,
         )
 
         # whole-encoder reference (real coupled graph, all layers)
         enc_f = bench(lambda t: enc(t), False)
         enc_fb = bench(lambda t: enc(t), True)
-        print(f"\n  whole encoder ({n_layers} layers): "
-              f"fwd={enc_f:.2f}ms  fwd+bwd={enc_fb:.2f}ms  (bs={comp_b})")
+        print(
+            f"\n  whole encoder ({n_layers} layers): "
+            f"fwd={enc_f:.2f}ms  fwd+bwd={enc_fb:.2f}ms  (bs={comp_b})"
+        )
         print("\nOK")
         return
 

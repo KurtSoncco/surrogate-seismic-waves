@@ -32,7 +32,9 @@ def test_sweep_variants_xt_loads_six():
 
     path = Path(__file__).resolve().parents[1] / "sweep_variants_xt.tsv"
     variants = load_variants(path)
-    assert len(variants) == 6
+    assert len(variants) == 7
     wide = next(v for v in variants if v.name == "xt_lat128_d128")
     assert wide.overrides["LATENT_CHANNELS"] == "128"
     assert wide.overrides["DEEPONET_LATENT_DIM"] == "128"
+    bandcurr = next(v for v in variants if v.name == "xt_lat128_d128_bandcurr")
+    assert bandcurr.overrides["BAND_CURRICULUM"] == "true"

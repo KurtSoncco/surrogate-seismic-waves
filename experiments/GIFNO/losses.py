@@ -17,6 +17,35 @@ from radial_spectral_loss import RadialBinnedSpectralLoss
 _EPS = 1e-8
 
 
+def band_curriculum_weights(
+    epoch: int,
+    num_epochs: int,
+    floor: float = 0.25,
+    mid_start: float = 0.33,
+    high_start: float = 0.66,
+    ramp: float = 0.15,
+) -> Tuple[float, float, float]:
+    """
+    Per-band scalar weights for the frequency-band loss curriculum.
+
+    Emphasize low log-f early; ramp mid up from ``mid_start``; ramp high up from
+    ``high_start``. Each ramp spans a fraction ``ramp`` of training. Bands never
+    drop below ``floor`` so no band starves. Returns (w_low, w_mid, w_high) in
+    [floor, 1]; the per-frequency expansion and mean-1 normalization happen in
+    ``MaskedCompositeLoss.set_band_weights``.
+    """
+    t = epoch / max(num_epochs - 1, 1)
+    span = max(ramp, _EPS)
+
+    def ramp_up(start: float) -> float:
+        return min(1.0, max(0.0, (t - start) / span))
+
+    w_low = 1.0
+    w_mid = floor + (1.0 - floor) * ramp_up(mid_start)
+    w_high = floor + (1.0 - floor) * ramp_up(high_start)
+    return w_low, w_mid, w_high
+
+
 class MaskedLpLoss(nn.Module):
     """
     Relative Lp loss on recorder positions only.
@@ -133,6 +162,57 @@ class MaskedCompositeLoss(nn.Module):
             else None
         )
 
+        # Frequency-band curriculum weights. None -> neutral (no reweighting),
+        # which reproduces the un-weighted relative loss exactly.
+        self._band_freq = np.asarray(freq, dtype=np.float64)
+        self._band_w: Optional[torch.Tensor] = None
+
+    def set_band_weights(
+        self,
+        w_low: Optional[float] = None,
+        w_mid: Optional[float] = None,
+        w_high: Optional[float] = None,
+    ) -> None:
+        """
+        Set per-frequency loss weights from per-band scalars.
+
+        Passing all ``None`` (or calling with no args) clears the weighting and
+        restores the neutral relative loss. Otherwise a piecewise-constant
+        per-frequency vector is built over the configured bands and normalized to
+        mean 1 so the overall loss scale is preserved across epochs.
+        """
+        if w_low is None and w_mid is None and w_high is None:
+            self._band_w = None
+            return
+
+        freq = self._band_freq
+        w = np.ones_like(freq, dtype=np.float64)
+        bands = {
+            "low": (getattr(config, "FREQ_BAND_LOW", (0.1, 0.5)), w_low),
+            "mid": (getattr(config, "FREQ_BAND_MID", (0.5, 2.0)), w_mid),
+            "high": (getattr(config, "FREQ_BAND_HIGH", (2.0, 10.0)), w_high),
+        }
+        for (lo, hi), weight in bands.values():
+            if weight is None:
+                continue
+            i_lo = int(np.searchsorted(freq, lo, side="left"))
+            i_hi = int(np.searchsorted(freq, hi, side="right"))
+            i_hi = max(i_lo + 1, i_hi)
+            w[i_lo:i_hi] = float(weight)
+        mean = float(w.mean())
+        if mean > _EPS:
+            w = w / mean
+        self._band_w = torch.from_numpy(w.astype(np.float32))
+
+    def _apply_band_weights(
+        self, pred: torch.Tensor, target: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Scale pred/target by per-frequency weights when set and shape-matched."""
+        if self._band_w is None or pred.shape[-1] != self._band_w.numel():
+            return pred, target
+        w = self._band_w.to(pred.device, pred.dtype)
+        return pred * w, target * w
+
     def _transform_for_rel_loss(
         self, pred: torch.Tensor, target: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -148,6 +228,7 @@ class MaskedCompositeLoss(nn.Module):
     ) -> torch.Tensor:
         """Relative Lp per batch item on gathered recorder curves (B, R, F)."""
         pred, target = self._transform_for_rel_loss(pred, target)
+        pred, target = self._apply_band_weights(pred, target)
         diff = (pred - target).reshape(pred.shape[0], -1)
         y = target.reshape(target.shape[0], -1)
         p = self.p
@@ -271,6 +352,7 @@ def build_training_loss() -> nn.Module:
         or radial_weight != 0.0
         or config.LOG_TF_LOSS
         or config.HARD_MINING
+        or getattr(config, "BAND_CURRICULUM", False)
     )
     if not use_composite:
         return MaskedLpLoss(d=2, p=config.LOSS_P)

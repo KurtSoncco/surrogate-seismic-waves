@@ -122,11 +122,35 @@ LOSS_LINF_WEIGHT: float = 0.0
 VALLEY_LOSS_WEIGHT: float = 0.0
 VALLEY_PERCENTILE: float = 20.0
 
+# --- Frequency bands (Hz) ---
+# Shared by band metrics (metrics.per_sample_bandwise_rel_l2_numpy) and the
+# frequency-band loss curriculum below.
+FREQ_BAND_LOW: Tuple[float, float] = (0.1, 0.5)
+FREQ_BAND_MID: Tuple[float, float] = (0.5, 2.0)
+FREQ_BAND_HIGH: Tuple[float, float] = (2.0, 10.0)
+
+# --- Frequency-band loss curriculum ---
+# Speed-safe schedule that reweights the relative loss across frequency bands as
+# training progresses: emphasize low log-f early, ramp mid, then high. Weights
+# are normalized to mean 1 over the freq grid so the loss scale stays stable;
+# validation always uses neutral weights so model selection is on a fixed
+# objective. Default off -> identical to the baseline.
+BAND_CURRICULUM: bool = False
+BAND_CURRICULUM_FLOOR: float = 0.25
+BAND_CURRICULUM_MID_START: float = 0.33
+BAND_CURRICULUM_HIGH_START: float = 0.66
+BAND_CURRICULUM_RAMP: float = 0.15
+
 
 def _parse_env_value(key: str, raw: str):
     raw = raw.strip()
     if key == "FNO_MODES":
         parts = [int(x.strip()) for x in raw.split(",")]
+        return tuple(parts)
+    if key in ("FREQ_BAND_LOW", "FREQ_BAND_MID", "FREQ_BAND_HIGH"):
+        parts = [float(x.strip()) for x in raw.split(",")]
+        if len(parts) != 2:
+            raise ValueError(f"{key} must be 'lo,hi', got {raw!r}")
         return tuple(parts)
     if key == "BRANCH_MODE":
         mode = raw.lower()
@@ -152,6 +176,7 @@ def _parse_env_value(key: str, raw: str):
         "USE_AMP",
         "TORCH_COMPILE",
         "AMSGRAD",
+        "BAND_CURRICULUM",
     ):
         return raw.lower() in ("1", "true", "yes", "on")
     if key in (
@@ -182,6 +207,10 @@ def _parse_env_value(key: str, raw: str):
         "ADAM_BETA1",
         "ADAM_BETA2",
         "ADAM_EPS",
+        "BAND_CURRICULUM_FLOOR",
+        "BAND_CURRICULUM_MID_START",
+        "BAND_CURRICULUM_HIGH_START",
+        "BAND_CURRICULUM_RAMP",
     ):
         return float(raw)
     if key == "WANDB_RUN_NAME":
@@ -216,6 +245,14 @@ _OVERRIDABLE_KEYS = (
     "LOG_TF_LOSS",
     "VALLEY_LOSS_WEIGHT",
     "VALLEY_PERCENTILE",
+    "FREQ_BAND_LOW",
+    "FREQ_BAND_MID",
+    "FREQ_BAND_HIGH",
+    "BAND_CURRICULUM",
+    "BAND_CURRICULUM_FLOOR",
+    "BAND_CURRICULUM_MID_START",
+    "BAND_CURRICULUM_HIGH_START",
+    "BAND_CURRICULUM_RAMP",
     "USE_AMP",
     "TORCH_COMPILE",
     "OPTIMIZER",

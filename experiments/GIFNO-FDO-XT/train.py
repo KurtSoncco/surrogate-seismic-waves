@@ -9,9 +9,16 @@ from tqdm import trange
 
 import wandb
 
-from losses import build_training_loss
+from losses import band_curriculum_weights, build_training_loss
 from metrics import compute_val_tail_metrics_torch
 from model import create_model
+
+
+def _band_curriculum_enabled(criterion: torch.nn.Module) -> bool:
+    """Curriculum needs the composite loss (per-frequency reweighting hook)."""
+    return getattr(config, "BAND_CURRICULUM", False) and hasattr(
+        criterion, "set_band_weights"
+    )
 
 
 def build_optimizer(model: torch.nn.Module) -> optim.Optimizer:
@@ -66,9 +73,22 @@ def train_model(train_loader, val_loader):
     best_val_loss = float("inf")
     early_stop_counter = 0
     freq = np.load(config.TF_FREQ_PATH)
+    band_curriculum = _band_curriculum_enabled(criterion)
 
     t = trange(config.NUM_EPOCHS, desc="Training")
     for epoch in t:
+        band_w = (1.0, 1.0, 1.0)
+        if band_curriculum:
+            band_w = band_curriculum_weights(
+                epoch,
+                config.NUM_EPOCHS,
+                floor=config.BAND_CURRICULUM_FLOOR,
+                mid_start=config.BAND_CURRICULUM_MID_START,
+                high_start=config.BAND_CURRICULUM_HIGH_START,
+                ramp=config.BAND_CURRICULUM_RAMP,
+            )
+            criterion.set_band_weights(*band_w)
+
         model.train()
         train_loss = 0.0
         n_train = 0
@@ -91,6 +111,10 @@ def train_model(train_loader, val_loader):
             n_train += inputs.size(0)
 
         train_loss /= max(n_train, 1)
+
+        # Validation/model-selection use a fixed (neutral) objective.
+        if band_curriculum:
+            criterion.set_band_weights(None)
 
         model.eval()
         val_loss = 0.0
@@ -120,6 +144,10 @@ def train_model(train_loader, val_loader):
             "learning_rate": optimizer.param_groups[0]["lr"],
             **val_tail,
         }
+        if band_curriculum:
+            log_payload["w_band_low"] = band_w[0]
+            log_payload["w_band_mid"] = band_w[1]
+            log_payload["w_band_high"] = band_w[2]
         wandb.log(log_payload)
         t.set_postfix(train_loss=train_loss, val_loss=val_loss)
 
