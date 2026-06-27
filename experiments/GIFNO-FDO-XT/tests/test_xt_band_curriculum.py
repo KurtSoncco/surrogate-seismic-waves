@@ -30,7 +30,8 @@ def _manual_band_balanced(loss, pred, target, weights):
         p = pred[..., slc].reshape(pred.shape[0], -1)
         t = target[..., slc].reshape(target.shape[0], -1)
         rels.append(
-            w * torch.linalg.norm(p - t, dim=1)
+            w
+            * torch.linalg.norm(p - t, dim=1)
             / torch.linalg.norm(t, dim=1).clamp_min(1e-8)
         )
         used.append(w)

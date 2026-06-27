@@ -23,3 +23,7 @@ loglo_pod_depth32	LATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;L
 loglo_pod_depth_full	LATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_DEPTH_STRIDE=1;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
 # --- capacity (cheap now that the model is tiny) ---
 loglo_pod_latent256	LATENT_CHANNELS=256;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025
+# --- Tier 2: closed-loop convergence-gated band curriculum on the band-balanced
+# loss term, with LR/optimizer warm-restart per phase (A/B vs loglo_pod_ref).
+# Keeps the reference POD/radial config so the curriculum is the only change.
+loglo_pod_bandcurr_cl	LATENT_CHANNELS=128;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.25;LOGLO_PATCH_SIZE=16,20;LOGLO_HF_NOISE_ALPHA=0.025;BAND_CURRICULUM=true;BAND_CURRICULUM_MODE=convergence;LOSS_BAND_BALANCED_WEIGHT=0.5;BAND_CURRICULUM_LR_RESTART=true;EARLY_STOP_PATIENCE=140;LR_SCHED_PATIENCE=40

@@ -423,7 +423,11 @@ def build_training_loss() -> nn.Module:
     curriculum_mode = getattr(config, "BAND_CURRICULUM_MODE", "time")
     # Convergence-mode curriculum drives the band-balanced term's per-band
     # weights, so it needs a non-zero band-balanced weight to have a lever.
-    if band_curriculum and curriculum_mode == "convergence" and band_balanced_weight <= 0:
+    if (
+        band_curriculum
+        and curriculum_mode == "convergence"
+        and band_balanced_weight <= 0
+    ):
         band_balanced_weight = 0.5
     use_composite = (
         config.LOSS_H1_WEIGHT != 0.0

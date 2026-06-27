@@ -149,6 +149,53 @@ LOSS_LINF_WEIGHT: float = 0.0
 VALLEY_LOSS_WEIGHT: float = 0.0
 VALLEY_PERCENTILE: float = 20.0
 
+# --- Frequency bands (Hz) ---
+# Shared by band metrics (metrics.per_sample_bandwise_rel_l2_numpy) and the
+# frequency-band loss curriculum below.
+FREQ_BAND_LOW: Tuple[float, float] = (0.1, 0.5)
+FREQ_BAND_MID: Tuple[float, float] = (0.5, 2.0)
+FREQ_BAND_HIGH: Tuple[float, float] = (2.0, 10.0)
+
+# --- Frequency-band loss curriculum ---
+# Default off -> identical to the baseline.
+#   "time"        -> Tier 1: per-frequency weight schedule on the main rel loss
+#                    (BAND_CURRICULUM_MID_START/HIGH_START/RAMP, epoch fractions).
+#   "convergence" -> Tier 2: closed-loop controller that activates bands as the
+#                    band-balanced val metric plateaus, driving the band-balanced
+#                    loss term and warm-restarting the optimizer/LR per phase.
+BAND_CURRICULUM: bool = False
+BAND_CURRICULUM_FLOOR: float = 0.25
+BAND_CURRICULUM_MODE: str = "time"
+BAND_CURRICULUM_MID_START: float = 0.20
+BAND_CURRICULUM_HIGH_START: float = 0.50
+BAND_CURRICULUM_RAMP: float = 0.20
+# Convergence-mode controls.
+BAND_CURRICULUM_PHASE_PATIENCE: int = 30
+BAND_CURRICULUM_MIN_DELTA: float = 1e-4
+BAND_CURRICULUM_RAMP_EPOCHS: int = 10
+BAND_CURRICULUM_LR_RESTART: bool = True
+BAND_CURRICULUM_LR_RESTART_SCALE: float = 1.0
+# Rebuild the optimizer on phase advance so Adam/AMSGRAD moment state resets;
+# raising LR alone is defeated by AMSGRAD's max-v denominator.
+BAND_CURRICULUM_RESET_OPT_STATE: bool = True
+
+# --- Band-balanced loss term (Tier 2) ---
+# Adds band_balanced_weight * mean_b(w_b * relL2_band_b / ||t_band_b||) to the
+# loss; each band is normalized by its OWN energy so the low-energy high band is
+# not suppressed. 0 -> off. The convergence curriculum auto-enables it.
+LOSS_BAND_BALANCED_WEIGHT: float = 0.0
+
+# --- Model selection / LR schedule ---
+# SELECTION_METRIC drives best-checkpoint and early-stop:
+#   "val_loss"      -> neutral relative-L2 (baseline behavior)
+#   "band_balanced" -> mean of per-band rel-L2 (low/mid/high) so high-band gains
+#                      are rewarded even though the high band carries low energy.
+# The LR scheduler always tracks neutral val_loss; its patience/factor are tunable
+# so curriculum runs can train long enough for mid/high bands to see gradient.
+SELECTION_METRIC: str = "val_loss"
+LR_SCHED_PATIENCE: int = 20
+LR_SCHED_FACTOR: float = 0.5
+
 
 def _parse_env_value(key: str, raw: str):
     raw = raw.strip()
@@ -158,6 +205,25 @@ def _parse_env_value(key: str, raw: str):
     if key == "LOGLO_PATCH_SIZE":
         parts = [int(x.strip()) for x in raw.split(",")]
         return tuple(parts)
+    if key in ("FREQ_BAND_LOW", "FREQ_BAND_MID", "FREQ_BAND_HIGH"):
+        parts = [float(x.strip()) for x in raw.split(",")]
+        if len(parts) != 2:
+            raise ValueError(f"{key} must be 'lo,hi', got {raw!r}")
+        return tuple(parts)
+    if key == "SELECTION_METRIC":
+        metric = raw.lower()
+        if metric not in ("val_loss", "band_balanced"):
+            raise ValueError(
+                f"SELECTION_METRIC must be val_loss or band_balanced, got {raw!r}"
+            )
+        return metric
+    if key == "BAND_CURRICULUM_MODE":
+        mode = raw.lower()
+        if mode not in ("time", "convergence"):
+            raise ValueError(
+                f"BAND_CURRICULUM_MODE must be time or convergence, got {raw!r}"
+            )
+        return mode
     if key == "BRANCH_MODE":
         mode = raw.lower()
         if mode not in ("surface", "depth"):
@@ -182,6 +248,9 @@ def _parse_env_value(key: str, raw: str):
         "USE_AMP",
         "TORCH_COMPILE",
         "AMSGRAD",
+        "BAND_CURRICULUM",
+        "BAND_CURRICULUM_LR_RESTART",
+        "BAND_CURRICULUM_RESET_OPT_STATE",
     ):
         return raw.lower() in ("1", "true", "yes", "on")
     if key in (
@@ -203,6 +272,9 @@ def _parse_env_value(key: str, raw: str):
         "LOGLO_DEPTH_STRIDE",
         "RADIAL_I_LOW",
         "RADIAL_I_HIGH",
+        "LR_SCHED_PATIENCE",
+        "BAND_CURRICULUM_PHASE_PATIENCE",
+        "BAND_CURRICULUM_RAMP_EPOCHS",
     ):
         return int(raw)
     if key in (
@@ -221,6 +293,14 @@ def _parse_env_value(key: str, raw: str):
         "ADAM_BETA2",
         "ADAM_EPS",
         "LOGLO_HF_NOISE_ALPHA",
+        "BAND_CURRICULUM_FLOOR",
+        "BAND_CURRICULUM_MID_START",
+        "BAND_CURRICULUM_HIGH_START",
+        "BAND_CURRICULUM_RAMP",
+        "BAND_CURRICULUM_MIN_DELTA",
+        "BAND_CURRICULUM_LR_RESTART_SCALE",
+        "LOSS_BAND_BALANCED_WEIGHT",
+        "LR_SCHED_FACTOR",
     ):
         return float(raw)
     if key == "WANDB_RUN_NAME":
@@ -265,6 +345,25 @@ _OVERRIDABLE_KEYS = (
     "LOG_TF_LOSS",
     "VALLEY_LOSS_WEIGHT",
     "VALLEY_PERCENTILE",
+    "FREQ_BAND_LOW",
+    "FREQ_BAND_MID",
+    "FREQ_BAND_HIGH",
+    "BAND_CURRICULUM",
+    "BAND_CURRICULUM_FLOOR",
+    "BAND_CURRICULUM_MODE",
+    "BAND_CURRICULUM_MID_START",
+    "BAND_CURRICULUM_HIGH_START",
+    "BAND_CURRICULUM_RAMP",
+    "BAND_CURRICULUM_PHASE_PATIENCE",
+    "BAND_CURRICULUM_MIN_DELTA",
+    "BAND_CURRICULUM_RAMP_EPOCHS",
+    "BAND_CURRICULUM_LR_RESTART",
+    "BAND_CURRICULUM_LR_RESTART_SCALE",
+    "BAND_CURRICULUM_RESET_OPT_STATE",
+    "LOSS_BAND_BALANCED_WEIGHT",
+    "SELECTION_METRIC",
+    "LR_SCHED_PATIENCE",
+    "LR_SCHED_FACTOR",
     "USE_AMP",
     "TORCH_COMPILE",
     "OPTIMIZER",
