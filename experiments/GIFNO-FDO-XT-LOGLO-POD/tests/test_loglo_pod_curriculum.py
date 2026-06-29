@@ -153,3 +153,54 @@ def test_sweep_variants_loglo_pod_loads_bandcurr_cl():
     assert cl.overrides["LOSS_BAND_BALANCED_WEIGHT"] == "0.5"
     assert cl.overrides["LOSS_RADIAL_WEIGHT"] == "0.25"
     assert cl.overrides["EARLY_STOP_PATIENCE"] == "140"
+
+
+def test_stability_sweep_is_all_tier2_and_factorial():
+    from sweep_launch import load_variants
+
+    path = Path(__file__).resolve().parents[1] / (
+        "sweep_variants_loglo_pod_stability.tsv"
+    )
+    variants = load_variants(path)
+    assert len(variants) == 13
+    names = {v.name for v in variants}
+    assert "tier2_base" in names
+
+    # Every variant must stay on the tier-2 convergence curriculum -- the whole
+    # point of this sweep is layering knobs on top of it.
+    for v in variants:
+        assert v.overrides["BAND_CURRICULUM"] == "true", v.name
+        assert v.overrides["BAND_CURRICULUM_MODE"] == "convergence", v.name
+        assert v.overrides["BAND_CURRICULUM_LR_RESTART"] == "true", v.name
+
+    # tier2_base is the all-default corner of the transition factorial: it must
+    # NOT pin any of the smoothness/timing knobs (they fall back to config).
+    base = next(v for v in variants if v.name == "tier2_base")
+    for knob in (
+        "BAND_CURRICULUM_LR_RESTART_SCALE",
+        "BAND_CURRICULUM_RESET_OPT_STATE",
+        "BAND_CURRICULUM_RAMP_EPOCHS",
+        "BAND_CURRICULUM_PHASE_PATIENCE",
+    ):
+        assert knob not in base.overrides, knob
+
+    # The 2^3 transition factorial corners are all present.
+    factorial = {
+        "tier2_base",
+        "tier2_gentle_restart",
+        "tier2_keep_optstate",
+        "tier2_slow_ramp",
+        "tier2_gentle_keep",
+        "tier2_gentle_slow",
+        "tier2_keep_slow",
+        "tier2_gentle_keep_slow",
+    }
+    assert factorial <= names
+
+    # Only one objective-weight lever is moved off the base (LOSS_BAND_BALANCED_WEIGHT).
+    moved_bbw = [
+        v.name
+        for v in variants
+        if v.overrides.get("LOSS_BAND_BALANCED_WEIGHT", "0.5") != "0.5"
+    ]
+    assert moved_bbw == ["tier2_bbw0.25"]

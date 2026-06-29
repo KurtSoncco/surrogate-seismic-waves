@@ -128,3 +128,25 @@ bash delta_sweep.sh --full                                                 # ful
 bash delta_sweep.sh --dry-run --limit 2000                                 # preview only
 bash delta_sweep_rerun.sh loglo_pod_ref --full                             # rerun one variant
 ```
+
+### Tier-2 stability sweep
+
+`sweep_variants_loglo_pod_stability.tsv` builds on the winning tier-2
+convergence band-curriculum config (`loglo_pod_bandcurr_cl`, the best `--limit
+2000` run at `test_rel_l2 ~0.301`) and changes one thing per variant to probe
+*model stability of the curriculum transition* plus POD/objective capacity:
+
+- **Transition factorial (8 runs):** a full 2^3 over the warm-restart smoothness
+  knobs `BAND_CURRICULUM_LR_RESTART_SCALE` x `BAND_CURRICULUM_RESET_OPT_STATE` x
+  `BAND_CURRICULUM_RAMP_EPOCHS`. `tier2_base` is the all-default corner (and
+  reproduces the prior result); analyze the cube as main effects + interactions.
+- **Timing:** `tier2_patience45` (`BAND_CURRICULUM_PHASE_PATIENCE`).
+- **POD components:** `tier2_pod48`, `tier2_pod64` (`POD_NUM_MODES`).
+- **Objective weight:** `tier2_bbw0.25` (`LOSS_BAND_BALANCED_WEIGHT`).
+- **Leading combined candidate:** `tier2_pod48_stable` (POD 48 + gentlest edges).
+
+```bash
+bash delta_sweep.sh --variants sweep_variants_loglo_pod_stability.tsv --limit 2000
+bash delta_sweep.sh --variants sweep_variants_loglo_pod_stability.tsv --limit 2000 --dry-run
+bash delta_sweep_rerun.sh tier2_pod48 --variants sweep_variants_loglo_pod_stability.tsv --limit 2000
+```
