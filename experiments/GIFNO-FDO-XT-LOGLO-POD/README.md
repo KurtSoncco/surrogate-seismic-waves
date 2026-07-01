@@ -147,6 +147,7 @@ convergence band-curriculum config (`loglo_pod_bandcurr_cl`, the best `--limit
 
 ```bash
 bash delta_sweep.sh --variants sweep_variants_loglo_pod_stability.tsv --limit 2000
+bash delta_sweep.sh --variants sweep_variants_loglo_pod_stability.tsv --limit 2000 --time 06:00:00
 bash delta_sweep.sh --variants sweep_variants_loglo_pod_stability.tsv --limit 2000 --dry-run
 bash delta_sweep_rerun.sh tier2_pod48 --variants sweep_variants_loglo_pod_stability.tsv --limit 2000
 ```

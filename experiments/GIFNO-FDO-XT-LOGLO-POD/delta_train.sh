@@ -16,7 +16,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus-per-node=1
 #SBATCH --mem=48g
-#SBATCH --time=08:00:00
+#SBATCH --time=04:00:00
 #SBATCH --output=loglo_pod_train.o%j
 #SBATCH --error=loglo_pod_train.e%j
 

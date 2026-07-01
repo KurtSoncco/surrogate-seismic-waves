@@ -96,16 +96,15 @@ def submit_job(
     *,
     screen: bool,
     limit: int | None,
+    walltime: str,
     dry_run: bool,
 ) -> str | None:
     env = os.environ.copy()
     env.update(build_export_env(variant, tf_dir, screen=screen, limit=limit))
 
     cmd = ["sbatch", f"--job-name={variant.name}", "--export=ALL"]
-    if not screen:
-        # Full-dataset runs need more than delta_train.sh's default walltime;
-        # the sbatch CLI --time overrides the script's #SBATCH directive.
-        cmd.append("--time=24:00:00")
+    # sbatch CLI --time overrides delta_train.sh's #SBATCH directive.
+    cmd.append(f"--time={walltime}")
     train_script = xt_dir / "delta_train.sh"
     main_args: list[str] = []
     if limit is not None:
@@ -144,6 +143,12 @@ def main() -> int:
     )
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--limit", type=int, default=2000)
+    parser.add_argument(
+        "--time",
+        type=str,
+        default=None,
+        help="SLURM walltime for sbatch (default: 04:00:00 screen, 24:00:00 full)",
+    )
     parser.add_argument("--name", type=str, default=None)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -165,8 +170,12 @@ def main() -> int:
             raise SystemExit(f"Unknown variant: {args.name}")
 
     limit = None if args.full else args.limit
+    walltime = args.time or ("24:00:00" if args.full else "04:00:00")
     mode = "full" if args.full else f"screen (limit={limit})"
-    print(f"=== GIFNO-FDO-XT-LOGLO-POD sweep: {len(variants)} job(s), mode={mode} ===")
+    print(
+        f"=== GIFNO-FDO-XT-LOGLO-POD sweep: {len(variants)} job(s), "
+        f"mode={mode}, walltime={walltime} ==="
+    )
 
     job_ids: list[str] = []
     for variant in variants:
@@ -176,6 +185,7 @@ def main() -> int:
             tf_dir,
             screen=not args.full,
             limit=limit,
+            walltime=walltime,
             dry_run=args.dry_run,
         )
         if jid:
