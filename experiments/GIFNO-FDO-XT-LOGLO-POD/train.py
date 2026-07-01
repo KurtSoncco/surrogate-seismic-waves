@@ -59,6 +59,20 @@ def build_optimizer(model: torch.nn.Module) -> optim.Optimizer:
     raise ValueError(f"Unsupported OPTIMIZER={config.OPTIMIZER!r}")
 
 
+def _enable_tf32() -> None:
+    """Enable TF32 matmul/conv, using the PyTorch >=2.9 API when available.
+
+    The old ``allow_tf32`` flags are deprecated (and warn) on newer torch; fall
+    back to them only when the new ``fp32_precision`` knobs are absent.
+    """
+    if hasattr(torch.backends.cuda.matmul, "fp32_precision"):
+        torch.backends.cuda.matmul.fp32_precision = "tf32"
+        torch.backends.cudnn.conv.fp32_precision = "tf32"
+    else:
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+
+
 def _use_amp() -> bool:
     return config.USE_AMP and config.DEVICE.type == "cuda"
 
@@ -66,8 +80,7 @@ def _use_amp() -> bool:
 def train_model(train_loader, val_loader):
     # Free A100 speedups: TF32 matmuls/convs + cuDNN autotune (fixed input sizes).
     if config.DEVICE.type == "cuda":
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
+        _enable_tf32()
         torch.backends.cudnn.benchmark = True
 
     model = create_model().to(config.DEVICE)

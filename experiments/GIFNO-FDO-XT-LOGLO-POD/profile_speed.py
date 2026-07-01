@@ -158,8 +158,13 @@ def main() -> None:
         f"bf16={cuda and torch.cuda.is_bf16_supported()}"
     )
     if cuda:
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
+        # PyTorch >=2.9 renamed the TF32 toggles; fall back to the old API.
+        if hasattr(torch.backends.cuda.matmul, "fp32_precision"):
+            torch.backends.cuda.matmul.fp32_precision = "tf32"
+            torch.backends.cudnn.conv.fp32_precision = "tf32"
+        else:
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
         torch.backends.cudnn.benchmark = True
 
     ensure_pod(args.limit)
