@@ -10,8 +10,6 @@ from pathlib import Path
 import pytest
 
 _GIFNO_DIR = Path(__file__).resolve().parents[1]
-_FDO_DIR = _GIFNO_DIR.parent / "GIFNO-FDO"
-_XT_DIR = _GIFNO_DIR.parent / "GIFNO-FDO-XT"
 _DUMMY_DATA_ROOT = _GIFNO_DIR / "dummy_data"
 
 _SHARED_MODULES = (
@@ -41,9 +39,8 @@ def _load_config_module(config_path: Path):
 def _activate_gifno_imports() -> None:
     for name in _SHARED_MODULES:
         sys.modules.pop(name, None)
-    for path in (str(_FDO_DIR), str(_XT_DIR), str(_GIFNO_DIR)):
-        while path in sys.path:
-            sys.path.remove(path)
+    while str(_GIFNO_DIR) in sys.path:
+        sys.path.remove(str(_GIFNO_DIR))
     sys.path.insert(0, str(_GIFNO_DIR))
     _load_config_module(_GIFNO_DIR / "config.py")
 

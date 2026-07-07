@@ -1,5 +1,5 @@
 # spectral_layers.py
-"""Shared spectral-bias modules for GIFNO-FDO-XT refinement experiments."""
+"""Shared spectral-bias modules for LOGLO-POD and related GIFNO experiments."""
 
 from __future__ import annotations
 

@@ -151,3 +151,30 @@ bash delta_sweep.sh --variants sweep_variants_loglo_pod_stability.tsv --limit 20
 bash delta_sweep.sh --variants sweep_variants_loglo_pod_stability.tsv --limit 2000 --dry-run
 bash delta_sweep_rerun.sh tier2_pod48 --variants sweep_variants_loglo_pod_stability.tsv --limit 2000
 ```
+
+### Capability checks (unseen geometries)
+
+Compare the trained surrogate against OpenSees transfer functions on hand-crafted
+seiskit experiments (`three_layer/`, `dipping/`) that probe geometries outside
+the training distribution. Ground-truth TFs are cached on disk and skipped on
+rerun unless `--force-gt` is passed.
+
+```bash
+cd experiments/GIFNO-FDO-XT-LOGLO-POD
+export GIFNO_MODEL_DIR=~/surrogate-seismic-waves/checkpoints/tier2_pod64_n2000
+export GIFNO_POD_NUM_MODES=64 GIFNO_LATENT_CHANNELS=128 GIFNO_NUM_FNO_LAYERS=5
+export GIFNO_DEEPONET_LATENT_DIM=128
+
+# All 5 cases (3 three_layer + 2 dipping) from ~/seiskit/neural-operator/experiments
+uv run python capability_check.py --all
+
+# Single case; outputs under ~/surrogate-seismic-waves/checkpoints/capability_checks/
+uv run python capability_check.py --h5 ~/seiskit/neural-operator/experiments/three_layer/h5/case_0.h5
+```
+
+Requires `seiskit` on `PYTHONPATH` (or `~/seiskit`) for the first ground-truth
+TF computation per case. Each case directory contains `tf_true.npy`, `tf_pred.npy`,
+`metrics.json`, and comparison plots.
+
+See [`checkpoints/capability_checks/README.md`](../../checkpoints/capability_checks/README.md)
+for results interpretation and generalization strategies.

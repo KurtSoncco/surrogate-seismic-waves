@@ -28,7 +28,8 @@
 surrogate-seismic-waves/
 ├── wave_surrogate/          # Core library: FNO, DAE, PCE, FLAC API, TTF utilities
 ├── experiments/             # Research experiments (see below)
-│   ├── GIFNO/               # Active: grid-direct FNO on OpenSees H5 data
+│   ├── GIFNO/               # Shared data loader, losses, Delta scripts
+│   ├── GIFNO-FDO-XT-LOGLO-POD/  # Active: LOGLO encoder + POD readout (best 2D model)
 │   ├── latent_FNO/          # Encoder → latent FNO → decoder pipeline
 │   ├── rf_seed/             # 2D Vs → transfer function FNO baseline
 │   ├── Multi-Input Operator/# DeepONet (branch + trunk)
@@ -66,7 +67,7 @@ Datasets are **not stored in this repository** due to size.
 | Source | Description | Used by |
 |--------|-------------|---------|
 | FLAC 1D profiles | Vs profiles + transfer functions (~1000 samples) | `wave_surrogate`, `latent_FNO`, `Multi-Input Operator`, `rf_seed` |
-| OpenSees H5 (Box / HPC) | 2D wavefield runs (`run_*.h5`) + derived TF cache | `GIFNO` |
+| OpenSees H5 (Box / HPC) | 2D wavefield runs (`run_*.h5`) + derived TF cache | `GIFNO`, `GIFNO-FDO-XT-LOGLO-POD` |
 | Local dummy data | Synthetic paths for unit tests (no Box mount) | `GIFNO/tests` |
 
 **Local data access (GIFNO):** mount Box at `/mnt/box_lab` or set:
@@ -81,19 +82,31 @@ On HPC (NCSA Delta, Savio), use the shell scripts in `experiments/GIFNO/` (`delt
 
 ## 🧪 Experiments
 
-### `GIFNO` — Grid-Direct FNO (active)
+### `GIFNO-FDO-XT-LOGLO-POD` — LOGLO encoder + POD readout (active)
 
-Predicts lateral transfer-function fields `(Nx × N_freq)` from 2D soil inputs `(C_in × Nz × Nx)` using a **ChannelLift → FNOBlocks → FrequencyHead** architecture (`neuraloperator`).
+Best 2D OpenSees surrogate: **dual-path LOGLO spectral encoder** (depth-collapsed to 1D-along-x) + **POD-DeepONet readout**. Publication model: `tier2_pod64` (W&B `sweep_tier2_pod64_n2000`, full run `sweep_tier2_pod64_full`).
 
-- **Input:** OpenSees H5 wavefields cropped to the 500 m variability region (Phase 1).
-- **Output:** Transfer functions at 21 lateral recorders (15 m spacing).
-- **Training:** Composite masked loss with hard mining; W&B project `gifno_fno`.
-- **HPC:** End-to-end Delta setup via `delta_run_all.sh` (Box mount → rsync → train).
+- **Input:** `(4, 128, 500)` — normalized Vs, zeta, x/z coords on the 500 m variability strip.
+- **Output:** Transfer functions at 21 lateral recorders × 1000 frequencies.
+- **Training:** Convergence band curriculum + composite loss (radial, H¹, band-balanced); W&B project `gifno_fdo_xt_loglo_pod`.
+- **OOD checks:** `capability_check.py` vs seiskit `three_layer/` and `dipping/` experiments.
+
+```bash
+cd experiments/GIFNO-FDO-XT-LOGLO-POD
+source ../GIFNO/delta_env.sh
+uv run python capability_check.py --all          # OOD capability checks
+sbatch --time=24:00:00 delta_train.sh            # full-dataset training
+```
+
+Shared infrastructure (data loader, metrics, Delta scripts) lives in `experiments/GIFNO/`.
+
+### `GIFNO` — shared OpenSees pipeline (legacy baseline)
+
+Original grid-direct FNO baseline and **shared library** for LOGLO-POD: H5 data loading, TF preprocessing, metrics, and NCSA Delta deployment scripts.
 
 ```bash
 cd experiments/GIFNO
-uv run python main.py              # full pipeline
-uv run python main.py --limit 32    # smoke test
+uv run python main.py --limit 32    # legacy baseline smoke test
 ```
 
 ### `latent_FNO` — Latent-Space FNO
@@ -169,9 +182,21 @@ Latent FNO clearly outperformed simpler baselines in the same ablation sweep (e.
 
 Multi-stage residual FNO did **not** improve predictions; residual magnitudes were ~1 order of magnitude too small and weakly correlated with inputs. A single well-tuned FNO (or latent FNO) is preferred over boosting for this dataset.
 
-### GIFNO — 2D OpenSees operator (in progress)
+### LOGLO-POD — 2D OpenSees operator (best model)
 
-Architecture and training pipeline are in place (masked composite loss, recorder-aware metrics, Delta/Savio/Lambda job scripts). Quantitative benchmarks on the full H5 corpus are tracked via W&B during HPC training runs.
+On the 2000-sample screen hold-out (`tier2_pod64`, convergence band curriculum):
+
+| Metric | Value |
+|--------|-------|
+| `test_rel_l2` | **0.302** |
+| `test_pearson` | **0.919** |
+| `test_pearson_mean` (per-recorder) | **0.939** |
+
+**OOD capability checks** (3-layer profiles, dipping interfaces) fail catastrophically
+(rel L2 ~16–26, Pearson ≈ 0) — see `experiments/GIFNO-FDO-XT-LOGLO-POD/capability_check.py`
+and docs under `checkpoints/capability_checks/` (local, gitignored).
+
+Full-dataset training (`sweep_tier2_pod64_full`) is the publication target on Delta.
 
 ### rf_seed — 2D Vs baseline
 
@@ -212,8 +237,8 @@ Point data paths via each experiment's `config.py` or environment variables, the
 # Example: latent FNO training
 cd experiments/latent_FNO && uv run python main.py train --config baseline
 
-# Example: GIFNO smoke test (uses dummy/local data if Box is unavailable)
-cd experiments/GIFNO && uv run python main.py --limit 32
+# Example: LOGLO-POD capability check or training
+cd experiments/GIFNO-FDO-XT-LOGLO-POD && uv run python capability_check.py --all
 ```
 
 ### 4. GIFNO on NCSA Delta (from WSL)
@@ -230,7 +255,7 @@ Requires Box mount (`go-lab`), Duo MFA for SSH, and W&B credentials on the clust
 
 - **Package manager:** [uv](https://github.com/astral-sh/uv) with lockfile (`uv.lock`).
 - **Linting:** Ruff (`uv run ruff check .`).
-- **Tests:** 63 tests in CI; `experiments/dae` excluded; GIFNO tests use local `dummy_data` (no Box mount required).
+- **Tests:** pytest over `wave_surrogate`, `GIFNO`, and `GIFNO-FDO-XT-LOGLO-POD`; `experiments/dae` excluded.
 - **Logging:** Weights & Biases for experiment tracking where configured.
 
 ---
