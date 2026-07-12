@@ -14,7 +14,7 @@ _SEED_DIR = _EXPERIMENT_DIR / "seed_robustness"
 if str(_EXPERIMENT_DIR) not in sys.path:
     sys.path.insert(0, str(_EXPERIMENT_DIR))
 
-import config
+import config  # noqa: E402
 
 config.setup_import_paths()
 
