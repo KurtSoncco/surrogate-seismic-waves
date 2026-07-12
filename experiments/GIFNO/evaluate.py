@@ -579,7 +579,8 @@ def evaluate_model(
     all_masks: List[np.ndarray] = []
 
     with torch.no_grad():
-        for inputs, targets, masks in tqdm(test_loader, desc="Evaluating"):
+        for batch in tqdm(test_loader, desc="Evaluating"):
+            inputs, targets, masks = batch[0], batch[1], batch[2]
             inputs = inputs.to(device)
             outputs = model(inputs)
             all_preds.append(outputs.cpu().numpy())

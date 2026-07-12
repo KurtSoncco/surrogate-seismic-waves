@@ -664,7 +664,8 @@ def compute_val_tail_metrics_torch(
     pearson_all: list[np.ndarray] = []
 
     with torch.no_grad():
-        for inputs, targets, _masks in loader:
+        for batch in loader:
+            inputs, targets = batch[0], batch[1]
             inputs = inputs.to(device)
             targets = targets.to(device)
             outputs = model(inputs)

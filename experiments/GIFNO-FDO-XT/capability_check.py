@@ -5,8 +5,7 @@ Surrogate vs OpenSees transfer functions on seiskit capability-check H5 cases.
 TF space convention (must match training/eval):
   - Ground truth: linear |TF| from seiskit ``TTF_batch_fast`` (same as
     ``tf_per_sample.npy`` / ``compute_transfer_function.py``).
-  - Model output: linear |TF| via POD reconstruction
-    ``pod_mean + coeffs @ pod_modes`` (no log/exp in the readout).
+  - Model output: linear |TF| (optional softplus/exp via OUTPUT_ACTIVATION).
   - Headline metric ``rel_l2_mean`` is relative L2 on linear |TF| (same as
     ``test_rel_l2`` in ``eval_checkpoint.py``).
   - ``logspec_rel_l2_mean`` compares log(|TF|) on both sides (same as
@@ -14,8 +13,8 @@ TF space convention (must match training/eval):
 
 Pipeline per case:
   1. Load cached ground-truth TF (or compute from accel + seiskit TTF, then cache)
-  2. Build model input from Vs / zeta grids
-  3. Forward pass with a saved LOGLO-POD checkpoint
+  2. Build model input from Vs / zeta grids (optional Vs_macro / Vs_rf split)
+  3. Forward pass with a saved GIFNO-FDO-XT checkpoint
   4. Compare prediction vs truth (metrics + plots)
 
 Default H5 sources (override with --h5):
@@ -23,9 +22,8 @@ Default H5 sources (override with --h5):
   ~/seiskit/neural-operator/experiments/dipping/h5/case_*.h5      (2 cases)
 
 Example:
-  export GIFNO_MODEL_DIR=~/surrogate-seismic-waves/checkpoints/tier2_pod64_n2000
-  export GIFNO_POD_NUM_MODES=64 GIFNO_LATENT_CHANNELS=128 GIFNO_NUM_FNO_LAYERS=5
-  export GIFNO_DEEPONET_LATENT_DIM=128
+  export GIFNO_MODEL_DIR=~/surrogate-seismic-waves/checkpoints/xt_lat128_d128
+  export GIFNO_LATENT_CHANNELS=128 GIFNO_DEEPONET_LATENT_DIM=128
 
   cd experiments/GIFNO-FDO-XT-LOGLO-POD
   uv run python capability_check.py --all
@@ -85,7 +83,7 @@ from model import create_model  # noqa: E402
 
 DEFAULT_SEISKIT_ROOT = Path.home() / "seiskit" / "neural-operator" / "experiments"
 DEFAULT_OUT_ROOT = (
-    Path.home() / "surrogate-seismic-waves" / "checkpoints" / "capability_checks"
+    Path.home() / "surrogate-seismic-waves" / "checkpoints" / "capability_checks_xt"
 )
 _EPS = 1e-12
 
@@ -210,7 +208,7 @@ def load_or_compute_ground_truth(
 
 
 def build_input_from_h5(h5_path: Path) -> np.ndarray:
-    """H5 Vs/zeta grids -> (4, NZ_MAX, NX) float32 model input."""
+    """H5 Vs/zeta grids -> (C, NZ_MAX, NX) float32 model input."""
     with h5py.File(h5_path, "r") as f:
         vs_raw = f["Vs_realization_2D"][:]
         zeta_raw = f["Damping_zeta"][:]
@@ -237,7 +235,9 @@ def build_input_from_h5(h5_path: Path) -> np.ndarray:
 
     vs = _normalize_vs_by_surface(vs, config.VS_NORM_EPS)
     zeta = _normalize_zeta_by_max(zeta, nz, config.ZETA_NORM_EPS)
-    return np.stack([vs, zeta, x_coord, z_coord], axis=0).astype(np.float32)
+    from data_loader import stack_model_input_channels
+
+    return stack_model_input_channels(vs, zeta, x_coord, z_coord).astype(np.float32)
 
 
 def load_model(checkpoint: Path, device: torch.device) -> torch.nn.Module:
@@ -274,8 +274,8 @@ def _rel_l2(pred: np.ndarray, true: np.ndarray) -> float:
 
 def _check_pod_basis_space() -> None:
     """Warn when POD mean looks inconsistent with linear-amplitude training TFs."""
-    pod_mean_path = config.POD_MEAN_PATH
-    if not pod_mean_path.is_file():
+    pod_mean_path = getattr(config, "POD_MEAN_PATH", None)
+    if pod_mean_path is None or not Path(pod_mean_path).is_file():
         return
     mean = np.load(pod_mean_path)
     if float(mean.min()) < -1.0:
@@ -457,7 +457,6 @@ def run_case(
     x = build_input_from_h5(h5_path)
 
     print(f"[capability] Loading checkpoint {checkpoint}")
-    _check_pod_basis_space()
     model = load_model(checkpoint, device)
 
     print("[capability] Forward pass ...")
@@ -476,7 +475,7 @@ def run_case(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="LOGLO-POD surrogate vs OpenSees TF on capability-check H5 cases"
+        description="GIFNO-FDO-XT surrogate vs OpenSees TF on capability-check H5 cases"
     )
     parser.add_argument(
         "--h5",

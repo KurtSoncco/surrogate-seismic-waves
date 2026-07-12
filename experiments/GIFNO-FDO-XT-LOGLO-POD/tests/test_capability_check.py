@@ -110,7 +110,10 @@ def test_compare_tfs_writes_metrics(tmp_path: Path):
         out_dir=tmp_path / "plots",
     )
     assert "rel_l2_mean" in metrics
+    assert "logspec_rel_l2_mean" in metrics
+    assert metrics["tf_space"] == "linear_amplitude"
     assert metrics["rel_l2_mean"] < 0.2
+    assert metrics["logspec_rel_l2_mean"] < 0.2
     assert (tmp_path / "plots" / "metrics.json").is_file()
     assert (tmp_path / "plots" / "comparison_central.png").is_file()
 

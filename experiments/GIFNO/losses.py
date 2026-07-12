@@ -413,6 +413,120 @@ class MaskedCompositeLoss(nn.Module):
         return total.mean()
 
 
+def seed_contrast_delta_loss(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    sample_ids: torch.Tensor,
+    mask: torch.Tensor,
+) -> torch.Tensor:
+    """Match TF differences between RF replicates that share sample_id.
+
+    pred/target: (B, Nx, F); sample_ids: (B,); mask: (B, Nx).
+    Returns a scalar (0 if no valid pairs).
+    """
+    p_rec = gather_recorder_tf_torch(pred)
+    t_rec = gather_recorder_tf_torch(target)
+    # Use log-space deltas for scale-stable contrast.
+    p_log = torch.log(p_rec.abs().clamp_min(_EPS))
+    t_log = torch.log(t_rec.abs().clamp_min(_EPS))
+    sid = sample_ids.view(-1)
+    losses: list[torch.Tensor] = []
+    unique = sid.unique()
+    for s in unique:
+        idx = torch.nonzero(sid == s, as_tuple=False).view(-1)
+        if idx.numel() < 2:
+            continue
+        # All unordered pairs within the group.
+        for a in range(idx.numel()):
+            for b in range(a + 1, idx.numel()):
+                i, j = idx[a], idx[b]
+                d_pred = p_log[i] - p_log[j]
+                d_true = t_log[i] - t_log[j]
+                num = torch.linalg.norm(d_pred - d_true)
+                den = torch.linalg.norm(d_true).clamp_min(_EPS)
+                losses.append(num / den)
+    if not losses:
+        return pred.new_zeros(())
+    return torch.stack(losses).mean()
+
+
+def seed_sigma_ln_loss(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    sample_ids: torch.Tensor,
+    mask: torch.Tensor,
+) -> torch.Tensor:
+    """Match within-group σ_ln of central-recorder AF (statistical calibration).
+
+    pred/target: (B, Nx, F). Uses the masked recorder column closest to domain
+    center when available.
+    """
+    p_rec = gather_recorder_tf_torch(pred)
+    t_rec = gather_recorder_tf_torch(target)
+    # Central recorder among gathered columns: middle index.
+    c = p_rec.shape[1] // 2
+    p_af = p_rec[:, c, :].abs().clamp_min(_EPS)
+    t_af = t_rec[:, c, :].abs().clamp_min(_EPS)
+    p_ln = torch.log(p_af)
+    t_ln = torch.log(t_af)
+    sid = sample_ids.view(-1)
+    losses: list[torch.Tensor] = []
+    for s in sid.unique():
+        idx = torch.nonzero(sid == s, as_tuple=False).view(-1)
+        if idx.numel() < 2:
+            continue
+        # σ_ln(f) then mean over frequency.
+        sig_p = p_ln.index_select(0, idx).std(dim=0, unbiased=True).mean()
+        sig_t = t_ln.index_select(0, idx).std(dim=0, unbiased=True).mean()
+        losses.append(torch.abs(sig_p - sig_t))
+    if not losses:
+        return pred.new_zeros(())
+    return torch.stack(losses).mean()
+
+
+class SeedAwareCompositeLoss(nn.Module):
+    """Wraps a base TF loss and adds seed-contrast / σ_ln auxiliary terms."""
+
+    def __init__(
+        self,
+        base: nn.Module,
+        contrast_weight: float = 0.0,
+        sigma_ln_weight: float = 0.0,
+    ):
+        super().__init__()
+        self.base = base
+        self.contrast_weight = contrast_weight
+        self.sigma_ln_weight = sigma_ln_weight
+
+    def set_band_weights(self, *args, **kwargs):
+        if hasattr(self.base, "set_band_weights"):
+            return self.base.set_band_weights(*args, **kwargs)
+
+    def set_band_balanced_weights(self, *args, **kwargs):
+        if hasattr(self.base, "set_band_balanced_weights"):
+            return self.base.set_band_balanced_weights(*args, **kwargs)
+
+    def forward(
+        self,
+        pred: torch.Tensor,
+        target: torch.Tensor,
+        mask: torch.Tensor,
+        sample_ids: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        loss = self.base(pred, target, mask)
+        if sample_ids is None:
+            return loss
+        if self.contrast_weight > 0:
+            loss = loss + self.contrast_weight * seed_contrast_delta_loss(
+                pred, target, sample_ids, mask
+            )
+        if self.sigma_ln_weight > 0:
+            loss = loss + self.sigma_ln_weight * seed_sigma_ln_loss(
+                pred, target, sample_ids, mask
+            )
+        return loss
+
+
 def build_training_loss() -> nn.Module:
     """Factory using weights from config."""
     radial_weight = getattr(config, "LOSS_RADIAL_WEIGHT", 0.0)
@@ -441,21 +555,29 @@ def build_training_loss() -> nn.Module:
         or band_curriculum
     )
     if not use_composite:
-        return MaskedLpLoss(d=2, p=config.LOSS_P)
-    return MaskedCompositeLoss(
-        rel_weight=config.LOSS_REL_WEIGHT,
-        h1_weight=config.LOSS_H1_WEIGHT,
-        freq_weight=config.LOSS_FREQ_WEIGHT,
-        linf_weight=config.LOSS_LINF_WEIGHT,
-        p=config.LOSS_P,
-        hard_mining=config.HARD_MINING,
-        hard_mining_power=config.HARD_MINING_POWER,
-        freq_loss_log_weight=config.FREQ_LOSS_LOG_WEIGHT,
-        log_tf_loss=config.LOG_TF_LOSS,
-        valley_loss_weight=config.VALLEY_LOSS_WEIGHT,
-        valley_percentile=config.VALLEY_PERCENTILE,
-        radial_weight=radial_weight,
-        radial_i_low=radial_i_low,
-        radial_i_high=radial_i_high,
-        band_balanced_weight=band_balanced_weight,
-    )
+        base: nn.Module = MaskedLpLoss(d=2, p=config.LOSS_P)
+    else:
+        base = MaskedCompositeLoss(
+            rel_weight=config.LOSS_REL_WEIGHT,
+            h1_weight=config.LOSS_H1_WEIGHT,
+            freq_weight=config.LOSS_FREQ_WEIGHT,
+            linf_weight=config.LOSS_LINF_WEIGHT,
+            p=config.LOSS_P,
+            hard_mining=config.HARD_MINING,
+            hard_mining_power=config.HARD_MINING_POWER,
+            freq_loss_log_weight=config.FREQ_LOSS_LOG_WEIGHT,
+            log_tf_loss=config.LOG_TF_LOSS,
+            valley_loss_weight=config.VALLEY_LOSS_WEIGHT,
+            valley_percentile=config.VALLEY_PERCENTILE,
+            radial_weight=radial_weight,
+            radial_i_low=radial_i_low,
+            radial_i_high=radial_i_high,
+            band_balanced_weight=band_balanced_weight,
+        )
+    contrast_w = float(getattr(config, "SEED_CONTRAST_WEIGHT", 0.0))
+    sigma_w = float(getattr(config, "SEED_SIGMA_LN_WEIGHT", 0.0))
+    if contrast_w > 0 or sigma_w > 0:
+        return SeedAwareCompositeLoss(
+            base, contrast_weight=contrast_w, sigma_ln_weight=sigma_w
+        )
+    return base
