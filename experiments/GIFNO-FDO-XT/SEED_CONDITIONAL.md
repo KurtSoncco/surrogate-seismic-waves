@@ -11,13 +11,25 @@ export GIFNO_RESULTS_DIR=~/surrogate-seismic-waves/checkpoints/xt_seed_condition
 
 cd experiments/GIFNO-FDO-XT
 uv run python main.py   # or sweep row `xt_seed_conditional`
+```
 
-# After training, gate on seed robustness (sample_id=0 and 1–2 more points):
+## Loss space (important)
+
+**Primary rel-L2 / H1 use linear |TF|**, same as baseline `xt_lat128_d128` and
+LOGLO eval (`LOG_TF_LOSS=false`). Do not enable `GIFNO_LOG_TF_LOSS=true` for
+this recipe: training in log-amplitude compresses dynamic range, yields overly
+smooth / sinusoidal-looking spectra, and hurts Pearson correlation.
+
+Seed-contrast aux also uses **linear Δ|TF|** between replicates. Only the
+σ_ln calibration term operates in log-space (by definition).
+
+## After training
+
+```bash
 uv run python seed_robustness/seed_robustness_check.py --sample-id 0 --max-seeds 30
 ```
 
-Targets vs current `xt_lat128_d128`: hold rel_l2_central ≲ 0.30; lift
+Targets vs `xt_lat128_d128`: hold rel_l2_central ≲ 0.30; lift
 σ_ln(pred)/σ_ln(truth) ≳ 0.7; hold peak |sur−OO| median.
 
-Legacy `xt_lat128_d128` eval: leave `GIFNO_SEED_CONDITIONAL_RECIPE` unset
-(SCALE_SPLIT_VS=false, single-path FNO, surface/none activation).
+Legacy `xt_lat128_d128` eval: leave `GIFNO_SEED_CONDITIONAL_RECIPE` unset.
