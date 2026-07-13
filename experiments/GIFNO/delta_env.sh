@@ -7,8 +7,9 @@ export DELTA_ALLOC="${DELTA_ALLOC:-bgpu}"
 export DELTA_ACCOUNT="${DELTA_ACCOUNT:-bgpu-delta-gpu}"
 export GIFNO_DATA_ROOT="${GIFNO_DATA_ROOT:-/work/hdd/${DELTA_ALLOC}/${USER}/gifno_data}"
 
-# Export Wandb API key
-export WANDB_API_KEY="wandb_v1_L3UbIK5d8OVWV4DfCR9ZeQGx62e" # Delta Use
+# W&B: do NOT put API keys in this file (it is tracked by git).
+# Use experiments/GIFNO/lambda_secrets.env (gitignored) or export WANDB_API_KEY
+# in your shell / Delta job env. delta_train.sh sources lambda_secrets.env if present.
 
 # Silence wandb's noisy pydantic schema warnings in job logs (third-party, not
 # actionable). Scoped to that module so our own warnings stay visible; our TF32
