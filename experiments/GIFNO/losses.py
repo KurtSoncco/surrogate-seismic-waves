@@ -418,17 +418,20 @@ def seed_contrast_delta_loss(
     target: torch.Tensor,
     sample_ids: torch.Tensor,
     mask: torch.Tensor,
+    *,
+    log_space: bool = False,
 ) -> torch.Tensor:
     """Match TF differences between RF replicates that share sample_id.
 
     pred/target: (B, Nx, F); sample_ids: (B,); mask: (B, Nx).
-    Returns a scalar (0 if no valid pairs).
+    Default is linear |TF| deltas (same space as test_rel_l2). Log-space optional
+    for scale-stable contrast but tends to smooth peak/valley structure.
     """
     p_rec = gather_recorder_tf_torch(pred)
     t_rec = gather_recorder_tf_torch(target)
-    # Use log-space deltas for scale-stable contrast.
-    p_log = torch.log(p_rec.abs().clamp_min(_EPS))
-    t_log = torch.log(t_rec.abs().clamp_min(_EPS))
+    if log_space:
+        p_rec = torch.log(p_rec.abs().clamp_min(_EPS))
+        t_rec = torch.log(t_rec.abs().clamp_min(_EPS))
     sid = sample_ids.view(-1)
     losses: list[torch.Tensor] = []
     unique = sid.unique()
@@ -436,12 +439,11 @@ def seed_contrast_delta_loss(
         idx = torch.nonzero(sid == s, as_tuple=False).view(-1)
         if idx.numel() < 2:
             continue
-        # All unordered pairs within the group.
         for a in range(idx.numel()):
             for b in range(a + 1, idx.numel()):
                 i, j = idx[a], idx[b]
-                d_pred = p_log[i] - p_log[j]
-                d_true = t_log[i] - t_log[j]
+                d_pred = p_rec[i] - p_rec[j]
+                d_true = t_rec[i] - t_rec[j]
                 num = torch.linalg.norm(d_pred - d_true)
                 den = torch.linalg.norm(d_true).clamp_min(_EPS)
                 losses.append(num / den)

@@ -7,6 +7,9 @@ export DELTA_ALLOC="${DELTA_ALLOC:-bgpu}"
 export DELTA_ACCOUNT="${DELTA_ACCOUNT:-bgpu-delta-gpu}"
 export GIFNO_DATA_ROOT="${GIFNO_DATA_ROOT:-/work/hdd/${DELTA_ALLOC}/${USER}/gifno_data}"
 
+# Export Wandb API key
+export WANDB_API_KEY="wandb_v1_L3UbIK5d8OVWV4DfCR9ZeQGx62e" # Delta Use
+
 # Silence wandb's noisy pydantic schema warnings in job logs (third-party, not
 # actionable). Scoped to that module so our own warnings stay visible; our TF32
 # deprecation is fixed in code, not hidden here. Override by pre-setting the var.

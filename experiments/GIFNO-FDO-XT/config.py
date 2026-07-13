@@ -154,7 +154,9 @@ def _apply_seed_conditional_recipe() -> None:
     g["SEED_GROUP_BATCH"] = True
     g["SEED_CONTRAST_WEIGHT"] = 0.1
     g["SEED_SIGMA_LN_WEIGHT"] = 0.05
-    g["LOG_TF_LOSS"] = False  # linear |TF| rel-L2 (log loss smooths peaks / hurts Pearson)
+    g["LOG_TF_LOSS"] = (
+        False  # linear |TF| rel-L2 (log loss smooths peaks / hurts Pearson)
+    )
     print(
         "[GIFNO-FDO-XT config] SEED_CONDITIONAL_RECIPE: "
         "depth branch, softplus, scale-split+dual-path, seed-contrast (linear TF)",
