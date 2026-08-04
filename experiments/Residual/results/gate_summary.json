@@ -1,0 +1,65 @@
+[
+  {
+    "target": "R_col",
+    "rf_test_r2": 0.4020014167453886,
+    "rf_train_r2": 0.7276175674355874,
+    "mi_top": [
+      "f_star",
+      "x_over_lambda",
+      "sin_f",
+      "cos_f",
+      "xi_3_im",
+      "xi_1_im",
+      "xi_6_re",
+      "r_H"
+    ],
+    "rf_perm_top": [
+      "f_star",
+      "cos_f",
+      "xi_4_re",
+      "sin_f",
+      "xi_8_im",
+      "x_over_lambda",
+      "xi_7_re",
+      "xi_2_re"
+    ],
+    "agreed_top": [
+      "f_star",
+      "x_over_lambda",
+      "sin_f",
+      "cos_f"
+    ],
+    "gate_pass_hint": true
+  },
+  {
+    "target": "R_nom",
+    "rf_test_r2": 0.4960381114478789,
+    "rf_train_r2": 0.7587795330862714,
+    "mi_top": [
+      "f_star",
+      "sin_f",
+      "x_over_lambda",
+      "cos_f",
+      "xi_8_re",
+      "xi_6_im",
+      "xi_7_im",
+      "xi_5_im"
+    ],
+    "rf_perm_top": [
+      "f_star",
+      "xi_4_re",
+      "cos_f",
+      "xi_2_re",
+      "xi_1_re",
+      "sin_f",
+      "xi_7_re",
+      "imp_grad"
+    ],
+    "agreed_top": [
+      "f_star",
+      "sin_f",
+      "cos_f"
+    ],
+    "gate_pass_hint": true
+  }
+]

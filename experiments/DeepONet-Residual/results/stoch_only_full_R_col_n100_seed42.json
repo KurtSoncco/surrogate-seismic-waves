@@ -1,0 +1,28 @@
+{
+  "name": "stoch_only_full_R_col_n100_seed42",
+  "target": "R_col",
+  "branch_mode": "stoch_only",
+  "trunk_set": "full",
+  "cache_tag": "n100_seed42",
+  "loss": "SmoothL1Loss",
+  "optimizer": "AdamW",
+  "adamw_betas": [
+    0.9,
+    0.999
+  ],
+  "n_samples": 100,
+  "n_train": 70,
+  "n_val": 15,
+  "n_test": 15,
+  "epochs_ran": 18,
+  "seconds": 2.1751952171325684,
+  "checkpoint": "/home/kurt-/surrogate-seismic-waves/experiments/DeepONet-Residual/checkpoints/stoch_only_full_R_col_n100_seed42.pt",
+  "test": {
+    "smooth_l1": 0.1396191120147705,
+    "r2_R": 0.02689465283101189,
+    "rel_l2_R": 0.9832970499992371,
+    "r2_TF": 0.6928885144974937,
+    "rel_l2_TF": 0.3984316289424896
+  },
+  "best_val_smooth_l1": 0.18491043150424957
+}

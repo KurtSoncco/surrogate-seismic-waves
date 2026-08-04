@@ -1,0 +1,76 @@
+[
+  {
+    "name": "single_full_R_col_n100_seed42",
+    "target": "R_col",
+    "branch_mode": "single",
+    "trunk_set": "full",
+    "cache_tag": "n100_seed42",
+    "loss": "SmoothL1Loss",
+    "optimizer": "AdamW",
+    "adamw_betas": [
+      0.9,
+      0.999
+    ],
+    "n_samples": 100,
+    "n_train": 70,
+    "n_val": 15,
+    "n_test": 15,
+    "epochs_ran": 16,
+    "seconds": 6.658711910247803,
+    "checkpoint": "/home/kurt-/surrogate-seismic-waves/experiments/DeepONet-Residual/checkpoints/single_full_R_col_n100_seed42.pt",
+    "test": {
+      "smooth_l1": 0.13956863433122635,
+      "r2_R": 0.02769762788573893,
+      "rel_l2_R": 0.982891321182251,
+      "pearson_R": 0.1698782247914264,
+      "pearson_R_freq": 0.19963082371929336,
+      "r2_R_zero": -0.0064460212500936365,
+      "smooth_l1_R_raw": 0.266980916261673,
+      "smooth_l1_R_pred": 0.2558263838291168,
+      "r2_TF": 0.6931419329609685,
+      "rel_l2_TF": 0.3982671797275543,
+      "r2_TF_1d_only": 0.6823662170150147,
+      "delta_r2_TF": 0.010775715945953834,
+      "pearson_TF_freq": 0.8757467038078406,
+      "pearson_TF_1d_only_freq": 0.8727491672743302
+    },
+    "best_val_smooth_l1": 0.18482213467359543
+  },
+  {
+    "name": "single_full_R_nom_n100_seed42",
+    "target": "R_nom",
+    "branch_mode": "single",
+    "trunk_set": "full",
+    "cache_tag": "n100_seed42",
+    "loss": "SmoothL1Loss",
+    "optimizer": "AdamW",
+    "adamw_betas": [
+      0.9,
+      0.999
+    ],
+    "n_samples": 100,
+    "n_train": 70,
+    "n_val": 15,
+    "n_test": 15,
+    "epochs_ran": 10,
+    "seconds": 2.9190406799316406,
+    "checkpoint": "/home/kurt-/surrogate-seismic-waves/experiments/DeepONet-Residual/checkpoints/single_full_R_nom_n100_seed42.pt",
+    "test": {
+      "smooth_l1": 0.16252202540636063,
+      "r2_R": 0.010516461645514785,
+      "rel_l2_R": 0.9862874746322632,
+      "pearson_R": 0.1149690687603158,
+      "pearson_R_freq": 0.16031702667793657,
+      "r2_R_zero": -0.01718889012707825,
+      "smooth_l1_R_raw": 0.3579031527042389,
+      "smooth_l1_R_pred": 0.3506997227668762,
+      "r2_TF": 0.5932611578132148,
+      "rel_l2_TF": 0.4585256576538086,
+      "r2_TF_1d_only": 0.5818725165468052,
+      "delta_r2_TF": 0.011388641266409594,
+      "pearson_TF_freq": 0.8053207820180801,
+      "pearson_TF_1d_only_freq": 0.8022851455250645
+    },
+    "best_val_smooth_l1": 0.20976622402668
+  }
+]

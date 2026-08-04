@@ -1,0 +1,38 @@
+{
+  "name": "single_resunet_full_R_nom_n1000_seed42",
+  "target": "R_nom",
+  "branch_mode": "single",
+  "trunk_set": "full",
+  "field_encoder": "resunet",
+  "cache_tag": "n1000_seed42",
+  "loss": "SmoothL1Loss",
+  "optimizer": "AdamW",
+  "adamw_betas": [
+    0.9,
+    0.999
+  ],
+  "n_samples": 1000,
+  "n_train": 700,
+  "n_val": 150,
+  "n_test": 150,
+  "epochs_ran": 88,
+  "seconds": 380.780704498291,
+  "checkpoint": "/home/kurt-/surrogate-seismic-waves/experiments/DeepONet-Residual/checkpoints/single_resunet_full_R_nom_n1000_seed42.pt",
+  "test": {
+    "smooth_l1": 0.1545001440926602,
+    "r2_R": 0.2604517182786791,
+    "rel_l2_R": 0.8552887439727783,
+    "pearson_R": 0.5152178826528956,
+    "pearson_R_freq": 0.5618593359370286,
+    "r2_R_zero": -0.010978266794919422,
+    "smooth_l1_R_raw": 0.42285406589508057,
+    "smooth_l1_R_pred": 0.2951403558254242,
+    "r2_TF": 0.615009418085954,
+    "rel_l2_TF": 0.4601711928844452,
+    "r2_TF_1d_only": 0.4737096672986446,
+    "delta_r2_TF": 0.14129975078730939,
+    "pearson_TF_freq": 0.8531390861541781,
+    "pearson_TF_1d_only_freq": 0.7542269226129983
+  },
+  "best_val_smooth_l1": 0.14782531716321645
+}

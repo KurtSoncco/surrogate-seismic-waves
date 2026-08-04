@@ -62,6 +62,8 @@ logs/
 *.pt
 *.h5
 *.ckpt
+*.npy
+**/cache/
 
 # OS files
 .DS_Store

@@ -1,0 +1,41 @@
+{
+  "set_name": "gifno_xt",
+  "target": "R_col",
+  "metrics": {
+    "train_r2": 0.5174101332869535,
+    "test_r2": 0.209542007245477,
+    "n_rows": 50000,
+    "n_features": 9
+  },
+  "mi_top": [
+    "log_f",
+    "z_mean",
+    "vs_surface",
+    "vs_norm_std",
+    "vs_norm_mean",
+    "x_grid",
+    "x_trunk",
+    "zeta_norm_std"
+  ],
+  "rf_top": [
+    "log_f",
+    "z_mean",
+    "vs_surface",
+    "vs_norm_mean",
+    "vs_norm_std",
+    "zeta_norm_std",
+    "zeta_norm_mean",
+    "x_grid"
+  ],
+  "shap_top": [
+    "log_f",
+    "z_mean",
+    "vs_surface",
+    "vs_norm_mean",
+    "vs_norm_std",
+    "x_grid",
+    "x_trunk",
+    "zeta_norm_std"
+  ],
+  "shap_error": null
+}

@@ -1,0 +1,28 @@
+{
+  "name": "multi_full_R_col_n100_seed42",
+  "target": "R_col",
+  "branch_mode": "multi",
+  "trunk_set": "full",
+  "cache_tag": "n100_seed42",
+  "loss": "SmoothL1Loss",
+  "optimizer": "AdamW",
+  "adamw_betas": [
+    0.9,
+    0.999
+  ],
+  "n_samples": 100,
+  "n_train": 70,
+  "n_val": 15,
+  "n_test": 15,
+  "epochs_ran": 31,
+  "seconds": 6.626601934432983,
+  "checkpoint": "/home/kurt-/surrogate-seismic-waves/experiments/DeepONet-Residual/checkpoints/multi_full_R_col_n100_seed42.pt",
+  "test": {
+    "smooth_l1": 0.13980399072170258,
+    "r2_R": 0.0284507715869754,
+    "rel_l2_R": 0.9825106263160706,
+    "r2_TF": 0.6933796545200878,
+    "rel_l2_TF": 0.3981129825115204
+  },
+  "best_val_smooth_l1": 0.18509633839130402
+}

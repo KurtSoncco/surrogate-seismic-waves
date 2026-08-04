@@ -1,0 +1,28 @@
+{
+  "name": "single_fstar_fourier_R_col_n100_seed42",
+  "target": "R_col",
+  "branch_mode": "single",
+  "trunk_set": "fstar_fourier",
+  "cache_tag": "n100_seed42",
+  "loss": "SmoothL1Loss",
+  "optimizer": "AdamW",
+  "adamw_betas": [
+    0.9,
+    0.999
+  ],
+  "n_samples": 100,
+  "n_train": 70,
+  "n_val": 15,
+  "n_test": 15,
+  "epochs_ran": 15,
+  "seconds": 2.281240224838257,
+  "checkpoint": "/home/kurt-/surrogate-seismic-waves/experiments/DeepONet-Residual/checkpoints/single_fstar_fourier_R_col_n100_seed42.pt",
+  "test": {
+    "smooth_l1": 0.13964338600635529,
+    "r2_R": 0.026565406582712336,
+    "rel_l2_R": 0.9834633469581604,
+    "r2_TF": 0.6927846045717025,
+    "rel_l2_TF": 0.3984990119934082
+  },
+  "best_val_smooth_l1": 0.1848626211285591
+}

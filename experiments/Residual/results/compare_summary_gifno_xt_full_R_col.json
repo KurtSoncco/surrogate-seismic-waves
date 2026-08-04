@@ -1,0 +1,32 @@
+{
+  "set_name": "gifno_xt_full",
+  "target": "R_col",
+  "metrics": {
+    "train_r2": 0.5175987133390338,
+    "test_r2": 0.1609858470106873,
+    "n_rows": 50000,
+    "n_features": 17
+  },
+  "mi_top": [
+    "log_f",
+    "CoV",
+    "z_mean",
+    "H",
+    "vs_surface",
+    "vs_macro_mean",
+    "vs_norm_std",
+    "vs_norm_mean"
+  ],
+  "rf_top": [
+    "log_f",
+    "H",
+    "z_mean",
+    "vs_surface",
+    "CoV",
+    "vs_norm_std",
+    "vs_norm_deep",
+    "vs_rf_rms"
+  ],
+  "shap_top": [],
+  "shap_error": "Additivity check failed in TreeExplainer! Please ensure the data matrix you passed to the explainer is the same shape that the model was trained on. If your data shape is correct then please report this on GitHub. This check failed because for one of the samples the sum of the SHAP values was 0.650980, while the model output was 0.684788. If this difference is acceptable you can set check_additivity=False to disable this check."
+}
