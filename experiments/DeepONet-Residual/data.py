@@ -229,7 +229,9 @@ class ResidualDeepONetDataset(Dataset):
                     "x_over_lambda": float(x_m[ri] / max(lam, _EPS)),
                 }
                 rows.append(
-                    np.array([feat[name] for name in self.trunk_names], dtype=np.float32)
+                    np.array(
+                        [feat[name] for name in self.trunk_names], dtype=np.float32
+                    )
                 )
         return {
             "fields": fields,
@@ -264,4 +266,8 @@ def make_loaders(
             drop_last=False,
         )
 
-    return _loader(splits.train, True), _loader(splits.val, False), _loader(splits.test, False)
+    return (
+        _loader(splits.train, True),
+        _loader(splits.val, False),
+        _loader(splits.test, False),
+    )

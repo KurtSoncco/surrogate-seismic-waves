@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import time
-from pathlib import Path
 from typing import Any, Dict
 
 import numpy as np
@@ -42,7 +41,9 @@ def _stack_key(ds, key: str) -> torch.Tensor:
 def fit_and_apply_norms(train_ds, *other_ds) -> Dict[str, torch.Tensor]:
     """Z-score stoch, trunk, and target using the training split only."""
     stoch = _stack_key(train_ds, "stoch")
-    trunk = _stack_key(train_ds, "trunk_y").reshape(-1, _stack_key(train_ds, "trunk_y").shape[-1])
+    trunk = _stack_key(train_ds, "trunk_y").reshape(
+        -1, _stack_key(train_ds, "trunk_y").shape[-1]
+    )
     target = _stack_key(train_ds, "target").reshape(-1)
 
     stats = {
@@ -58,9 +59,13 @@ def fit_and_apply_norms(train_ds, *other_ds) -> Dict[str, torch.Tensor]:
         for i in range(len(ds)):
             item = ds._cache[i]
             item["stoch"] = (item["stoch"] - stats["stoch_mean"]) / stats["stoch_std"]
-            item["trunk_y"] = (item["trunk_y"] - stats["trunk_mean"]) / stats["trunk_std"]
+            item["trunk_y"] = (item["trunk_y"] - stats["trunk_mean"]) / stats[
+                "trunk_std"
+            ]
             item["target_raw"] = item["target"].clone()
-            item["target"] = (item["target"] - stats["target_mean"]) / stats["target_std"]
+            item["target"] = (item["target"] - stats["target_mean"]) / stats[
+                "target_std"
+            ]
 
     _apply(train_ds)
     for ds in other_ds:
@@ -126,7 +131,9 @@ def evaluate(
         "pearson_R": _pearson(y, p),
         "pearson_R_freq": _pearson_across_freq(y, p, n_rec=n_rec, n_freq=n_freq),
         "r2_R_zero": _r2(y, zero),  # always ~0 if mean≈0; sanity
-        "smooth_l1_R_raw": float(np.mean(np.where(np.abs(y) < 1.0, 0.5 * y**2, np.abs(y) - 0.5))),
+        "smooth_l1_R_raw": float(
+            np.mean(np.where(np.abs(y) < 1.0, 0.5 * y**2, np.abs(y) - 0.5))
+        ),
         "smooth_l1_R_pred": float(
             np.mean(
                 np.where(
@@ -320,7 +327,9 @@ def train_one(
         )
         if val_m["smooth_l1"] < best_val - 1e-8:
             best_val = val_m["smooth_l1"]
-            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            best_state = {
+                k: v.detach().cpu().clone() for k, v in model.state_dict().items()
+            }
             patience_left = patience_budget
         elif not no_early_stop:
             patience_left -= 1

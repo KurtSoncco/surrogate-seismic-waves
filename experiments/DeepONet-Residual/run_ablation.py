@@ -43,7 +43,10 @@ def plot_summary(rows: list[dict], out_path: Path) -> None:
     ax.bar(x + w, delta_tf, w, label="ΔR² TF vs TF₁D-only")
     ax.set_xticks(x)
     ax.set_xticklabels(
-        [n.replace("n100_seed42", "n100").replace("n1000_seed42", "n1000") for n in names],
+        [
+            n.replace("n100_seed42", "n100").replace("n1000_seed42", "n1000")
+            for n in names
+        ],
         rotation=45,
         ha="right",
         fontsize=8,
@@ -112,7 +115,9 @@ def main() -> None:
         if r["branch_mode"] == "single" and r["trunk_set"] == "full":
             by_target[r["target"]] = r["test"]
     if len(by_target) == 2:
-        print("\nPrimary comparison (single + full trunk) — residual metrics:", flush=True)
+        print(
+            "\nPrimary comparison (single + full trunk) — residual metrics:", flush=True
+        )
         for t, m in by_target.items():
             print(
                 f"  {t}: R²_R={m['r2_R']:.3f}  pearson_R_freq={m['pearson_R_freq']:.3f}  "

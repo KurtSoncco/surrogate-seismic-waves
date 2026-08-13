@@ -54,14 +54,18 @@ def run_rf_importance(
         n_jobs=-1,
         scoring="r2",
     )
-    out = pd.DataFrame(
-        {
-            "feature": feature_names,
-            "perm_importance_mean": perm.importances_mean,
-            "perm_importance_std": perm.importances_std,
-            "rf_gini_importance": rf.feature_importances_,
-        }
-    ).sort_values("perm_importance_mean", ascending=False).reset_index(drop=True)
+    out = (
+        pd.DataFrame(
+            {
+                "feature": feature_names,
+                "perm_importance_mean": perm.importances_mean,
+                "perm_importance_std": perm.importances_std,
+                "rf_gini_importance": rf.feature_importances_,
+            }
+        )
+        .sort_values("perm_importance_mean", ascending=False)
+        .reset_index(drop=True)
+    )
 
     metrics = {"train_r2": train_r2, "test_r2": test_r2, "n_rows": int(len(y))}
     return out, metrics

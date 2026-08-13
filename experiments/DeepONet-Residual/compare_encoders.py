@@ -113,9 +113,7 @@ def per_sample_metrics(pack: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         y = pack["R_true"][i].ravel()
         p = pack["R_pred"][i].ravel()
         r2_R.append(_r2(y, p))
-        pearson_R_f.append(
-            _pearson_across_freq(y, p, n_rec=n_rec, n_freq=n_freq)
-        )
+        pearson_R_f.append(_pearson_across_freq(y, p, n_rec=n_rec, n_freq=n_freq))
         tf2d = pack["TF2D"][i].ravel()
         tf1d = pack["TF1D"][i].ravel()
         tfhat = pack["TF_hat"][i].ravel()
@@ -164,7 +162,12 @@ def plot_metric_boxes(
     out_path: Path,
 ) -> None:
     keys = ["r2_R", "pearson_R_freq", "delta_r2_TF", "pearson_TF_freq"]
-    titles = ["R² (signed R)", "Pearson R (freq)", "ΔR² TF vs TF₁D", "Pearson TF (freq)"]
+    titles = [
+        "R² (signed R)",
+        "Pearson R (freq)",
+        "ΔR² TF vs TF₁D",
+        "Pearson TF (freq)",
+    ]
     labels = list(metrics.keys())
     fig, axes = plt.subplots(1, 4, figsize=(12, 3.6))
     for ax, key, title in zip(axes, keys, titles):
@@ -243,7 +246,9 @@ def plot_tf_curves(
     axes[0].legend(fontsize=7, loc="best")
     axes[-2].set_xlabel("f [Hz]")
     axes[-1].set_xlabel("f [Hz]")
-    fig.suptitle("R_nom TF reconstruction — Conv vs ResUNet branch encoder", fontsize=11)
+    fig.suptitle(
+        "R_nom TF reconstruction — Conv vs ResUNet branch encoder", fontsize=11
+    )
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
@@ -358,10 +363,16 @@ def main() -> None:
     splits = make_splits(n, seed=args.seed)
     # Fit norms on train (must match training); evaluate on test.
     train_ds = ResidualDeepONetDataset(
-        cache_dir, splits.train, target=target, trunk_set=trunk_set  # type: ignore[arg-type]
+        cache_dir,
+        splits.train,
+        target=target,
+        trunk_set=trunk_set,  # type: ignore[arg-type]
     )
     test_ds = ResidualDeepONetDataset(
-        cache_dir, splits.test, target=target, trunk_set=trunk_set  # type: ignore[arg-type]
+        cache_dir,
+        splits.test,
+        target=target,
+        trunk_set=trunk_set,  # type: ignore[arg-type]
     )
     stats = fit_and_apply_norms(train_ds, test_ds)
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)

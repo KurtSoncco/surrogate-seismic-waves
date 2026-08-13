@@ -145,10 +145,14 @@ def log_freq_hat(
     return np.clip((np.log(np.maximum(f, _EPS)) - lo) / max(hi - lo, _EPS), 0.0, 1.0)
 
 
-def fourier_freq_features(freq: np.ndarray, *, f_min: float = 0.1, f_max: float = 10.0) -> Tuple[np.ndarray, np.ndarray]:
+def fourier_freq_features(
+    freq: np.ndarray, *, f_min: float = 0.1, f_max: float = 10.0
+) -> Tuple[np.ndarray, np.ndarray]:
     """sin(2π f̂), cos(2π f̂) with log-scaled f̂."""
     fhat = log_freq_hat(freq, f_min=f_min, f_max=f_max)
-    return np.sin(2 * np.pi * fhat).astype(np.float32), np.cos(2 * np.pi * fhat).astype(np.float32)
+    return np.sin(2 * np.pi * fhat).astype(np.float32), np.cos(2 * np.pi * fhat).astype(
+        np.float32
+    )
 
 
 def column_mean_soil_vs(
@@ -189,9 +193,7 @@ def geometric_features_at_recorders(
     """Per-recorder geometric features. Each value has shape (n_recorders,)."""
     z_bed = bedrock_interface_depth(vs_crop, vs_rock=vs_rock, dz=dz)
     dip = interface_dip(z_bed, dx=dx)
-    imp_grad = impedance_horizontal_gradient(
-        vs_crop, rho=rho, dx=dx, soil_nz=soil_nz
-    )
+    imp_grad = impedance_horizontal_gradient(vs_crop, rho=rho, dx=dx, soil_nz=soil_nz)
     nx = vs_crop.shape[1]
     x_all = (np.arange(nx, dtype=np.float64) + 0.5) * dx
     dist = distance_to_edge(imp_grad, x_coords=x_all, percentile=edge_percentile)

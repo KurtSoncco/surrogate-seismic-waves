@@ -36,7 +36,9 @@ def plot_r_central_3x3(
     axes = axes.ravel()
     for ax, i in zip(axes, picks):
         ax.semilogx(freq, r_col[i, c], label=r"$|R_{\mathrm{col}}|$", lw=1.2)
-        ax.semilogx(freq, r_nom[i, c], label=r"$|R_{\mathrm{nom}}|$", lw=1.2, alpha=0.85)
+        ax.semilogx(
+            freq, r_nom[i, c], label=r"$|R_{\mathrm{nom}}|$", lw=1.2, alpha=0.85
+        )
         ax.set_title(
             f"idx={int(meta['sample_idx'][i])}  "
             f"CoV={float(meta['CoV'][i]):.2f}  "
@@ -87,9 +89,7 @@ def plot_importance_bars(
     axes[0].barh(mi["feature"][::-1], mi["mi"][::-1], color="#2c6e49")
     axes[0].set_title(f"Mutual information → {target}")
     axes[0].set_xlabel("MI")
-    axes[1].barh(
-        rf["feature"][::-1], rf["perm_importance_mean"][::-1], color="#bc4749"
-    )
+    axes[1].barh(rf["feature"][::-1], rf["perm_importance_mean"][::-1], color="#bc4749")
     axes[1].set_title(f"RF permutation importance → {target}")
     axes[1].set_xlabel(r"$\Delta R^2$")
     fig.tight_layout()

@@ -1,0 +1,6 @@
+Building / loading XT feature table from /home/kurt-/surrogate-seismic-waves/experiments/Residual/cache/n1000_seed42
+Table shape=(1050000, 48)
+
+=== orbitall → R_col  (n_feat=25) ===
+  MI on 30000 rows × 25 features…
+  RF fit (100 trees)…

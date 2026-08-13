@@ -19,7 +19,11 @@ if str(_EXP) not in sys.path:
 import config
 from build_table import build_feature_table, feature_columns
 from plots import plot_importance_bars, plot_r_central_3x3
-from residual_target import build_residual_cache, load_manifest, stratified_sample_indices
+from residual_target import (
+    build_residual_cache,
+    load_manifest,
+    stratified_sample_indices,
+)
 from screen_mi import run_mi_by_band, save_mi
 from screen_rf import run_rf_importance, save_rf
 
@@ -59,7 +63,9 @@ def main() -> None:
 
     print(f"DATA_ROOT={config.DATA_ROOT}")
     print(f"H5_DIR={config.H5_DIR}")
-    print(f"TF={config.TF_PER_SAMPLE_PATH.exists()} manifest={config.MANIFEST_PATH.exists()}")
+    print(
+        f"TF={config.TF_PER_SAMPLE_PATH.exists()} manifest={config.MANIFEST_PATH.exists()}"
+    )
 
     manifest = load_manifest()
     indices = stratified_sample_indices(manifest, args.n_samples, seed=args.seed)
@@ -84,7 +90,9 @@ def main() -> None:
         mi = run_mi_by_band(df, target, feature_names=feats)
         mi_path = save_mi(mi, target)
         print(f"MI → {mi_path}")
-        rf_imp, metrics = run_rf_importance(df, target, feature_names=feats, seed=args.seed)
+        rf_imp, metrics = run_rf_importance(
+            df, target, feature_names=feats, seed=args.seed
+        )
         rf_path = save_rf(rf_imp, metrics, target)
         print(f"RF → {rf_path}  test_R2={metrics['test_r2']:.3f}")
         plot_importance_bars(mi_path, rf_path, target)

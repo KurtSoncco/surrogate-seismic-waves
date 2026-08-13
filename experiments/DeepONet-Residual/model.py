@@ -124,7 +124,11 @@ class ResUNetFieldEncoder(nn.Module):
         _, _, h1, w1 = e1.shape
         pad_h1 = (2 - h1 % 2) % 2
         pad_w1 = (2 - w1 % 2) % 2
-        e1_p = F.pad(e1, (0, pad_w1, 0, pad_h1), mode="replicate") if (pad_h1 or pad_w1) else e1
+        e1_p = (
+            F.pad(e1, (0, pad_w1, 0, pad_h1), mode="replicate")
+            if (pad_h1 or pad_w1)
+            else e1
+        )
         e2 = self.down2(e1_p)
         b = self.bottleneck(e2)
         d1 = self.up1(b, e1)
@@ -143,7 +147,9 @@ def build_field_encoder(
     out_dim: int,
 ) -> nn.Module:
     if kind == "resunet":
-        return ResUNetFieldEncoder(in_channels=in_channels, base=hidden, out_dim=out_dim)
+        return ResUNetFieldEncoder(
+            in_channels=in_channels, base=hidden, out_dim=out_dim
+        )
     return ConvFieldEncoder(in_channels=in_channels, hidden=hidden, out_dim=out_dim)
 
 

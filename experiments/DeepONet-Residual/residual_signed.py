@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import sys
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 
@@ -135,10 +135,7 @@ def build_signed_cache(
         "meta": out_dir / "meta.npz",
         "idx": out_dir / "sample_indices.npy",
     }
-    if (
-        not force
-        and all(p.exists() for p in paths.values())
-    ):
+    if not force and all(p.exists() for p in paths.values()):
         return out_dir
 
     sample_indices = sample_indices_from_residual(cache_tag)

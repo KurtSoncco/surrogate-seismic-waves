@@ -1,0 +1,280 @@
+
+=== single | full | R_col ===
+[dataset R_col/full] preload 1/700
+[dataset R_col/full] preload 25/700
+[dataset R_col/full] preload 50/700
+[dataset R_col/full] preload 75/700
+[dataset R_col/full] preload 100/700
+[dataset R_col/full] preload 125/700
+[dataset R_col/full] preload 150/700
+[dataset R_col/full] preload 175/700
+[dataset R_col/full] preload 200/700
+[dataset R_col/full] preload 225/700
+[dataset R_col/full] preload 250/700
+[dataset R_col/full] preload 275/700
+[dataset R_col/full] preload 300/700
+[dataset R_col/full] preload 325/700
+[dataset R_col/full] preload 350/700
+[dataset R_col/full] preload 375/700
+[dataset R_col/full] preload 400/700
+[dataset R_col/full] preload 425/700
+[dataset R_col/full] preload 450/700
+[dataset R_col/full] preload 475/700
+[dataset R_col/full] preload 500/700
+[dataset R_col/full] preload 525/700
+[dataset R_col/full] preload 550/700
+[dataset R_col/full] preload 575/700
+[dataset R_col/full] preload 600/700
+[dataset R_col/full] preload 625/700
+[dataset R_col/full] preload 650/700
+[dataset R_col/full] preload 675/700
+[dataset R_col/full] preload 700/700
+[dataset R_col/full] preload 1/150
+[dataset R_col/full] preload 25/150
+[dataset R_col/full] preload 50/150
+[dataset R_col/full] preload 75/150
+[dataset R_col/full] preload 100/150
+[dataset R_col/full] preload 125/150
+[dataset R_col/full] preload 150/150
+[dataset R_col/full] preload 1/150
+[dataset R_col/full] preload 25/150
+[dataset R_col/full] preload 50/150
+[dataset R_col/full] preload 75/150
+[dataset R_col/full] preload 100/150
+[dataset R_col/full] preload 125/150
+[dataset R_col/full] preload 150/150
+[single_full_R_col_n1000_seed42] epoch 1/300  train_sL1=1.8431e-01  val_r2_R=0.015  val_pearson_R_freq=0.157  val_Δr2_TF=0.0068
+[single_full_R_col_n1000_seed42] epoch 2/300  train_sL1=1.8361e-01  val_r2_R=0.018  val_pearson_R_freq=0.168  val_Δr2_TF=0.0078
+[single_full_R_col_n1000_seed42] epoch 3/300  train_sL1=1.8354e-01  val_r2_R=0.012  val_pearson_R_freq=0.165  val_Δr2_TF=0.0059
+[single_full_R_col_n1000_seed42] epoch 4/300  train_sL1=1.8350e-01  val_r2_R=0.019  val_pearson_R_freq=0.169  val_Δr2_TF=0.0081
+[single_full_R_col_n1000_seed42] epoch 5/300  train_sL1=1.8335e-01  val_r2_R=0.018  val_pearson_R_freq=0.174  val_Δr2_TF=0.0080
+[single_full_R_col_n1000_seed42] epoch 6/300  train_sL1=1.8331e-01  val_r2_R=0.018  val_pearson_R_freq=0.173  val_Δr2_TF=0.0080
+[single_full_R_col_n1000_seed42] epoch 7/300  train_sL1=1.8310e-01  val_r2_R=0.017  val_pearson_R_freq=0.180  val_Δr2_TF=0.0075
+[single_full_R_col_n1000_seed42] epoch 8/300  train_sL1=1.8272e-01  val_r2_R=0.013  val_pearson_R_freq=0.173  val_Δr2_TF=0.0061
+[single_full_R_col_n1000_seed42] epoch 9/300  train_sL1=1.8207e-01  val_r2_R=0.025  val_pearson_R_freq=0.210  val_Δr2_TF=0.0104
+[single_full_R_col_n1000_seed42] epoch 10/300  train_sL1=1.8129e-01  val_r2_R=0.029  val_pearson_R_freq=0.230  val_Δr2_TF=0.0119
+[single_full_R_col_n1000_seed42] epoch 11/300  train_sL1=1.8091e-01  val_r2_R=0.028  val_pearson_R_freq=0.228  val_Δr2_TF=0.0115
+[single_full_R_col_n1000_seed42] epoch 12/300  train_sL1=1.8030e-01  val_r2_R=0.033  val_pearson_R_freq=0.234  val_Δr2_TF=0.0134
+[single_full_R_col_n1000_seed42] epoch 13/300  train_sL1=1.8021e-01  val_r2_R=0.028  val_pearson_R_freq=0.238  val_Δr2_TF=0.0116
+[single_full_R_col_n1000_seed42] epoch 14/300  train_sL1=1.8019e-01  val_r2_R=0.027  val_pearson_R_freq=0.218  val_Δr2_TF=0.0113
+[single_full_R_col_n1000_seed42] epoch 15/300  train_sL1=1.7964e-01  val_r2_R=0.034  val_pearson_R_freq=0.245  val_Δr2_TF=0.0136
+[single_full_R_col_n1000_seed42] epoch 16/300  train_sL1=1.7942e-01  val_r2_R=0.032  val_pearson_R_freq=0.247  val_Δr2_TF=0.0128
+[single_full_R_col_n1000_seed42] epoch 17/300  train_sL1=1.7869e-01  val_r2_R=0.034  val_pearson_R_freq=0.250  val_Δr2_TF=0.0137
+[single_full_R_col_n1000_seed42] epoch 18/300  train_sL1=1.7862e-01  val_r2_R=0.034  val_pearson_R_freq=0.256  val_Δr2_TF=0.0136
+[single_full_R_col_n1000_seed42] epoch 19/300  train_sL1=1.7727e-01  val_r2_R=0.037  val_pearson_R_freq=0.268  val_Δr2_TF=0.0149
+[single_full_R_col_n1000_seed42] epoch 20/300  train_sL1=1.7664e-01  val_r2_R=0.040  val_pearson_R_freq=0.275  val_Δr2_TF=0.0159
+[single_full_R_col_n1000_seed42] epoch 21/300  train_sL1=1.7628e-01  val_r2_R=0.041  val_pearson_R_freq=0.282  val_Δr2_TF=0.0163
+[single_full_R_col_n1000_seed42] epoch 22/300  train_sL1=1.7580e-01  val_r2_R=0.040  val_pearson_R_freq=0.282  val_Δr2_TF=0.0158
+[single_full_R_col_n1000_seed42] epoch 23/300  train_sL1=1.7566e-01  val_r2_R=0.046  val_pearson_R_freq=0.293  val_Δr2_TF=0.0180
+[single_full_R_col_n1000_seed42] epoch 24/300  train_sL1=1.7513e-01  val_r2_R=0.051  val_pearson_R_freq=0.315  val_Δr2_TF=0.0197
+[single_full_R_col_n1000_seed42] epoch 25/300  train_sL1=1.7422e-01  val_r2_R=0.039  val_pearson_R_freq=0.279  val_Δr2_TF=0.0154
+[single_full_R_col_n1000_seed42] epoch 26/300  train_sL1=1.7379e-01  val_r2_R=0.051  val_pearson_R_freq=0.314  val_Δr2_TF=0.0196
+[single_full_R_col_n1000_seed42] epoch 27/300  train_sL1=1.7344e-01  val_r2_R=0.054  val_pearson_R_freq=0.310  val_Δr2_TF=0.0210
+[single_full_R_col_n1000_seed42] epoch 28/300  train_sL1=1.7308e-01  val_r2_R=0.062  val_pearson_R_freq=0.331  val_Δr2_TF=0.0238
+[single_full_R_col_n1000_seed42] epoch 29/300  train_sL1=1.7234e-01  val_r2_R=0.058  val_pearson_R_freq=0.329  val_Δr2_TF=0.0223
+[single_full_R_col_n1000_seed42] epoch 30/300  train_sL1=1.7189e-01  val_r2_R=0.067  val_pearson_R_freq=0.338  val_Δr2_TF=0.0253
+[single_full_R_col_n1000_seed42] epoch 31/300  train_sL1=1.7100e-01  val_r2_R=0.066  val_pearson_R_freq=0.325  val_Δr2_TF=0.0249
+[single_full_R_col_n1000_seed42] epoch 32/300  train_sL1=1.7127e-01  val_r2_R=0.066  val_pearson_R_freq=0.342  val_Δr2_TF=0.0252
+[single_full_R_col_n1000_seed42] epoch 33/300  train_sL1=1.7057e-01  val_r2_R=0.071  val_pearson_R_freq=0.344  val_Δr2_TF=0.0269
+[single_full_R_col_n1000_seed42] epoch 34/300  train_sL1=1.6953e-01  val_r2_R=0.070  val_pearson_R_freq=0.344  val_Δr2_TF=0.0265
+[single_full_R_col_n1000_seed42] epoch 35/300  train_sL1=1.6972e-01  val_r2_R=0.070  val_pearson_R_freq=0.339  val_Δr2_TF=0.0266
+[single_full_R_col_n1000_seed42] epoch 36/300  train_sL1=1.7008e-01  val_r2_R=0.056  val_pearson_R_freq=0.318  val_Δr2_TF=0.0215
+[single_full_R_col_n1000_seed42] epoch 37/300  train_sL1=1.6947e-01  val_r2_R=0.070  val_pearson_R_freq=0.335  val_Δr2_TF=0.0267
+[single_full_R_col_n1000_seed42] epoch 38/300  train_sL1=1.6845e-01  val_r2_R=0.065  val_pearson_R_freq=0.322  val_Δr2_TF=0.0248
+[single_full_R_col_n1000_seed42] epoch 39/300  train_sL1=1.6834e-01  val_r2_R=0.062  val_pearson_R_freq=0.326  val_Δr2_TF=0.0237
+[single_full_R_col_n1000_seed42] epoch 40/300  train_sL1=1.6779e-01  val_r2_R=0.070  val_pearson_R_freq=0.342  val_Δr2_TF=0.0266
+[single_full_R_col_n1000_seed42] epoch 41/300  train_sL1=1.7118e-01  val_r2_R=0.064  val_pearson_R_freq=0.334  val_Δr2_TF=0.0243
+[single_full_R_col_n1000_seed42] epoch 42/300  train_sL1=1.6821e-01  val_r2_R=0.067  val_pearson_R_freq=0.342  val_Δr2_TF=0.0254
+[single_full_R_col_n1000_seed42] epoch 43/300  train_sL1=1.6700e-01  val_r2_R=0.051  val_pearson_R_freq=0.307  val_Δr2_TF=0.0198
+[single_full_R_col_n1000_seed42] epoch 44/300  train_sL1=1.6669e-01  val_r2_R=0.062  val_pearson_R_freq=0.332  val_Δr2_TF=0.0236
+[single_full_R_col_n1000_seed42] epoch 45/300  train_sL1=1.6569e-01  val_r2_R=0.054  val_pearson_R_freq=0.307  val_Δr2_TF=0.0209
+[single_full_R_col_n1000_seed42] epoch 46/300  train_sL1=1.6564e-01  val_r2_R=0.054  val_pearson_R_freq=0.310  val_Δr2_TF=0.0209
+[single_full_R_col_n1000_seed42] epoch 47/300  train_sL1=1.6531e-01  val_r2_R=0.066  val_pearson_R_freq=0.331  val_Δr2_TF=0.0252
+[single_full_R_col_n1000_seed42] epoch 48/300  train_sL1=1.6454e-01  val_r2_R=0.047  val_pearson_R_freq=0.307  val_Δr2_TF=0.0184
+[single_full_R_col_n1000_seed42] epoch 49/300  train_sL1=1.6418e-01  val_r2_R=0.052  val_pearson_R_freq=0.316  val_Δr2_TF=0.0201
+[single_full_R_col_n1000_seed42] epoch 50/300  train_sL1=1.6616e-01  val_r2_R=0.055  val_pearson_R_freq=0.311  val_Δr2_TF=0.0211
+[single_full_R_col_n1000_seed42] epoch 51/300  train_sL1=1.6280e-01  val_r2_R=0.066  val_pearson_R_freq=0.329  val_Δr2_TF=0.0252
+[single_full_R_col_n1000_seed42] epoch 52/300  train_sL1=1.6294e-01  val_r2_R=0.045  val_pearson_R_freq=0.311  val_Δr2_TF=0.0175
+[single_full_R_col_n1000_seed42] epoch 53/300  train_sL1=1.6197e-01  val_r2_R=0.052  val_pearson_R_freq=0.308  val_Δr2_TF=0.0201
+[single_full_R_col_n1000_seed42] epoch 54/300  train_sL1=1.6237e-01  val_r2_R=0.052  val_pearson_R_freq=0.298  val_Δr2_TF=0.0202
+[single_full_R_col_n1000_seed42] epoch 55/300  train_sL1=1.6169e-01  val_r2_R=0.021  val_pearson_R_freq=0.291  val_Δr2_TF=0.0090
+[single_full_R_col_n1000_seed42] epoch 56/300  train_sL1=1.6061e-01  val_r2_R=0.054  val_pearson_R_freq=0.322  val_Δr2_TF=0.0209
+[single_full_R_col_n1000_seed42] epoch 57/300  train_sL1=1.5992e-01  val_r2_R=0.047  val_pearson_R_freq=0.313  val_Δr2_TF=0.0184
+[single_full_R_col_n1000_seed42] epoch 58/300  train_sL1=1.6083e-01  val_r2_R=0.041  val_pearson_R_freq=0.305  val_Δr2_TF=0.0160
+[single_full_R_col_n1000_seed42] epoch 59/300  train_sL1=1.5917e-01  val_r2_R=0.039  val_pearson_R_freq=0.315  val_Δr2_TF=0.0155
+[single_full_R_col_n1000_seed42] epoch 60/300  train_sL1=1.5901e-01  val_r2_R=0.012  val_pearson_R_freq=0.292  val_Δr2_TF=0.0058
+[single_full_R_col_n1000_seed42] epoch 61/300  train_sL1=1.5966e-01  val_r2_R=0.040  val_pearson_R_freq=0.303  val_Δr2_TF=0.0157
+[single_full_R_col_n1000_seed42] epoch 62/300  train_sL1=1.5772e-01  val_r2_R=0.039  val_pearson_R_freq=0.305  val_Δr2_TF=0.0156
+[single_full_R_col_n1000_seed42] epoch 63/300  train_sL1=1.5700e-01  val_r2_R=0.026  val_pearson_R_freq=0.296  val_Δr2_TF=0.0109
+[single_full_R_col_n1000_seed42] epoch 64/300  train_sL1=1.5641e-01  val_r2_R=0.035  val_pearson_R_freq=0.299  val_Δr2_TF=0.0139
+[single_full_R_col_n1000_seed42] epoch 65/300  train_sL1=1.5613e-01  val_r2_R=0.031  val_pearson_R_freq=0.282  val_Δr2_TF=0.0127
+[single_full_R_col_n1000_seed42] epoch 66/300  train_sL1=1.5554e-01  val_r2_R=0.020  val_pearson_R_freq=0.293  val_Δr2_TF=0.0085
+[single_full_R_col_n1000_seed42] epoch 67/300  train_sL1=1.5444e-01  val_r2_R=-0.026  val_pearson_R_freq=0.271  val_Δr2_TF=-0.0077
+[single_full_R_col_n1000_seed42] epoch 68/300  train_sL1=1.5645e-01  val_r2_R=0.015  val_pearson_R_freq=0.291  val_Δr2_TF=0.0067
+[single_full_R_col_n1000_seed42] epoch 69/300  train_sL1=1.5298e-01  val_r2_R=-0.025  val_pearson_R_freq=0.283  val_Δr2_TF=-0.0075
+[single_full_R_col_n1000_seed42] epoch 70/300  train_sL1=1.5341e-01  val_r2_R=0.000  val_pearson_R_freq=0.293  val_Δr2_TF=0.0016
+[single_full_R_col_n1000_seed42] epoch 71/300  train_sL1=1.5258e-01  val_r2_R=-0.027  val_pearson_R_freq=0.281  val_Δr2_TF=-0.0082
+[single_full_R_col_n1000_seed42] epoch 72/300  train_sL1=1.5234e-01  val_r2_R=-0.015  val_pearson_R_freq=0.280  val_Δr2_TF=-0.0039
+[single_full_R_col_n1000_seed42] epoch 73/300  train_sL1=1.5093e-01  val_r2_R=-0.019  val_pearson_R_freq=0.276  val_Δr2_TF=-0.0052
+[single_full_R_col_n1000_seed42] epoch 74/300  train_sL1=1.4964e-01  val_r2_R=-0.034  val_pearson_R_freq=0.261  val_Δr2_TF=-0.0107
+[single_full_R_col_n1000_seed42] epoch 75/300  train_sL1=1.4819e-01  val_r2_R=-0.035  val_pearson_R_freq=0.261  val_Δr2_TF=-0.0110
+[single_full_R_col_n1000_seed42] epoch 76/300  train_sL1=1.4769e-01  val_r2_R=-0.041  val_pearson_R_freq=0.252  val_Δr2_TF=-0.0133
+[single_full_R_col_n1000_seed42] epoch 77/300  train_sL1=1.4680e-01  val_r2_R=-0.062  val_pearson_R_freq=0.256  val_Δr2_TF=-0.0207
+[single_full_R_col_n1000_seed42] epoch 78/300  train_sL1=1.4605e-01  val_r2_R=-0.053  val_pearson_R_freq=0.257  val_Δr2_TF=-0.0173
+[single_full_R_col_n1000_seed42] epoch 79/300  train_sL1=1.4498e-01  val_r2_R=-0.093  val_pearson_R_freq=0.244  val_Δr2_TF=-0.0317
+[single_full_R_col_n1000_seed42] epoch 80/300  train_sL1=1.4559e-01  val_r2_R=-0.050  val_pearson_R_freq=0.250  val_Δr2_TF=-0.0162
+[single_full_R_col_n1000_seed42] epoch 81/300  train_sL1=1.4309e-01  val_r2_R=-0.044  val_pearson_R_freq=0.257  val_Δr2_TF=-0.0141
+[single_full_R_col_n1000_seed42] epoch 82/300  train_sL1=1.4169e-01  val_r2_R=-0.069  val_pearson_R_freq=0.250  val_Δr2_TF=-0.0231
+[single_full_R_col_n1000_seed42] epoch 83/300  train_sL1=1.4053e-01  val_r2_R=-0.080  val_pearson_R_freq=0.240  val_Δr2_TF=-0.0272
+[single_full_R_col_n1000_seed42] epoch 84/300  train_sL1=1.4077e-01  val_r2_R=-0.092  val_pearson_R_freq=0.242  val_Δr2_TF=-0.0315
+[single_full_R_col_n1000_seed42] epoch 85/300  train_sL1=1.3973e-01  val_r2_R=-0.081  val_pearson_R_freq=0.242  val_Δr2_TF=-0.0276
+[single_full_R_col_n1000_seed42] epoch 86/300  train_sL1=1.3891e-01  val_r2_R=-0.082  val_pearson_R_freq=0.229  val_Δr2_TF=-0.0278
+[single_full_R_col_n1000_seed42] epoch 87/300  train_sL1=1.3857e-01  val_r2_R=-0.069  val_pearson_R_freq=0.232  val_Δr2_TF=-0.0233
+[single_full_R_col_n1000_seed42] epoch 88/300  train_sL1=1.3654e-01  val_r2_R=-0.083  val_pearson_R_freq=0.230  val_Δr2_TF=-0.0283
+[single_full_R_col_n1000_seed42] epoch 89/300  train_sL1=1.3391e-01  val_r2_R=-0.104  val_pearson_R_freq=0.208  val_Δr2_TF=-0.0358
+[single_full_R_col_n1000_seed42] epoch 90/300  train_sL1=1.3282e-01  val_r2_R=-0.136  val_pearson_R_freq=0.217  val_Δr2_TF=-0.0472
+[single_full_R_col_n1000_seed42] epoch 91/300  train_sL1=1.3472e-01  val_r2_R=-0.111  val_pearson_R_freq=0.211  val_Δr2_TF=-0.0383
+[single_full_R_col_n1000_seed42] epoch 92/300  train_sL1=1.3134e-01  val_r2_R=-0.120  val_pearson_R_freq=0.226  val_Δr2_TF=-0.0415
+[single_full_R_col_n1000_seed42] epoch 93/300  train_sL1=1.3029e-01  val_r2_R=-0.154  val_pearson_R_freq=0.223  val_Δr2_TF=-0.0536
+[single_full_R_col_n1000_seed42] epoch 94/300  train_sL1=1.3074e-01  val_r2_R=-0.127  val_pearson_R_freq=0.206  val_Δr2_TF=-0.0437
+[single_full_R_col_n1000_seed42] early stop at epoch 94
+[single_full_R_col_n1000_seed42] test {'smooth_l1': 0.1700401721816314, 'r2_R': 0.08370631857637745, 'rel_l2_R': 0.9558243155479431, 'pearson_R': 0.29138772305039273, 'pearson_R_freq': 0.3616946207743455, 'r2_R_zero': -0.002949634917916999, 'smooth_l1_R_raw': 0.2943226099014282, 'smooth_l1_R_pred': 0.26633501052856445, 'r2_TF': 0.6526496387140006, 'rel_l2_TF': 0.43709731101989746, 'r2_TF_1d_only': 0.6197999341224985, 'delta_r2_TF': 0.03284970459150216, 'pearson_TF_freq': 0.8639971958556416, 'pearson_TF_1d_only_freq': 0.8530929174326289} → /home/kurt-/surrogate-seismic-waves/experiments/DeepONet-Residual/results/single_full_R_col_n1000_seed42.json
+
+=== single | full | R_nom ===
+[dataset R_nom/full] preload 1/700
+[dataset R_nom/full] preload 25/700
+[dataset R_nom/full] preload 50/700
+[dataset R_nom/full] preload 75/700
+[dataset R_nom/full] preload 100/700
+[dataset R_nom/full] preload 125/700
+[dataset R_nom/full] preload 150/700
+[dataset R_nom/full] preload 175/700
+[dataset R_nom/full] preload 200/700
+[dataset R_nom/full] preload 225/700
+[dataset R_nom/full] preload 250/700
+[dataset R_nom/full] preload 275/700
+[dataset R_nom/full] preload 300/700
+[dataset R_nom/full] preload 325/700
+[dataset R_nom/full] preload 350/700
+[dataset R_nom/full] preload 375/700
+[dataset R_nom/full] preload 400/700
+[dataset R_nom/full] preload 425/700
+[dataset R_nom/full] preload 450/700
+[dataset R_nom/full] preload 475/700
+[dataset R_nom/full] preload 500/700
+[dataset R_nom/full] preload 525/700
+[dataset R_nom/full] preload 550/700
+[dataset R_nom/full] preload 575/700
+[dataset R_nom/full] preload 600/700
+[dataset R_nom/full] preload 625/700
+[dataset R_nom/full] preload 650/700
+[dataset R_nom/full] preload 675/700
+[dataset R_nom/full] preload 700/700
+[dataset R_nom/full] preload 1/150
+[dataset R_nom/full] preload 25/150
+[dataset R_nom/full] preload 50/150
+[dataset R_nom/full] preload 75/150
+[dataset R_nom/full] preload 100/150
+[dataset R_nom/full] preload 125/150
+[dataset R_nom/full] preload 150/150
+[dataset R_nom/full] preload 1/150
+[dataset R_nom/full] preload 25/150
+[dataset R_nom/full] preload 50/150
+[dataset R_nom/full] preload 75/150
+[dataset R_nom/full] preload 100/150
+[dataset R_nom/full] preload 125/150
+[dataset R_nom/full] preload 150/150
+[single_full_R_nom_n1000_seed42] epoch 1/300  train_sL1=2.1630e-01  val_r2_R=0.006  val_pearson_R_freq=0.128  val_Δr2_TF=0.0088
+[single_full_R_nom_n1000_seed42] epoch 2/300  train_sL1=2.1513e-01  val_r2_R=0.009  val_pearson_R_freq=0.137  val_Δr2_TF=0.0104
+[single_full_R_nom_n1000_seed42] epoch 3/300  train_sL1=2.1431e-01  val_r2_R=0.013  val_pearson_R_freq=0.141  val_Δr2_TF=0.0121
+[single_full_R_nom_n1000_seed42] epoch 4/300  train_sL1=2.1211e-01  val_r2_R=0.017  val_pearson_R_freq=0.160  val_Δr2_TF=0.0141
+[single_full_R_nom_n1000_seed42] epoch 5/300  train_sL1=2.0954e-01  val_r2_R=0.040  val_pearson_R_freq=0.235  val_Δr2_TF=0.0247
+[single_full_R_nom_n1000_seed42] epoch 6/300  train_sL1=2.0743e-01  val_r2_R=0.043  val_pearson_R_freq=0.227  val_Δr2_TF=0.0259
+[single_full_R_nom_n1000_seed42] epoch 7/300  train_sL1=2.0535e-01  val_r2_R=0.044  val_pearson_R_freq=0.233  val_Δr2_TF=0.0267
+[single_full_R_nom_n1000_seed42] epoch 8/300  train_sL1=2.0247e-01  val_r2_R=0.069  val_pearson_R_freq=0.279  val_Δr2_TF=0.0381
+[single_full_R_nom_n1000_seed42] epoch 9/300  train_sL1=2.0022e-01  val_r2_R=0.080  val_pearson_R_freq=0.299  val_Δr2_TF=0.0432
+[single_full_R_nom_n1000_seed42] epoch 10/300  train_sL1=1.9553e-01  val_r2_R=0.057  val_pearson_R_freq=0.248  val_Δr2_TF=0.0325
+[single_full_R_nom_n1000_seed42] epoch 11/300  train_sL1=1.8953e-01  val_r2_R=0.137  val_pearson_R_freq=0.377  val_Δr2_TF=0.0695
+[single_full_R_nom_n1000_seed42] epoch 12/300  train_sL1=1.8168e-01  val_r2_R=0.155  val_pearson_R_freq=0.430  val_Δr2_TF=0.0775
+[single_full_R_nom_n1000_seed42] epoch 13/300  train_sL1=1.8072e-01  val_r2_R=0.134  val_pearson_R_freq=0.372  val_Δr2_TF=0.0677
+[single_full_R_nom_n1000_seed42] epoch 14/300  train_sL1=1.7498e-01  val_r2_R=0.170  val_pearson_R_freq=0.454  val_Δr2_TF=0.0843
+[single_full_R_nom_n1000_seed42] epoch 15/300  train_sL1=1.6852e-01  val_r2_R=0.212  val_pearson_R_freq=0.477  val_Δr2_TF=0.1037
+[single_full_R_nom_n1000_seed42] epoch 16/300  train_sL1=1.6454e-01  val_r2_R=0.156  val_pearson_R_freq=0.441  val_Δr2_TF=0.0783
+[single_full_R_nom_n1000_seed42] epoch 17/300  train_sL1=1.5946e-01  val_r2_R=0.223  val_pearson_R_freq=0.513  val_Δr2_TF=0.1087
+[single_full_R_nom_n1000_seed42] epoch 18/300  train_sL1=1.5961e-01  val_r2_R=0.201  val_pearson_R_freq=0.499  val_Δr2_TF=0.0987
+[single_full_R_nom_n1000_seed42] epoch 19/300  train_sL1=1.5488e-01  val_r2_R=0.240  val_pearson_R_freq=0.527  val_Δr2_TF=0.1168
+[single_full_R_nom_n1000_seed42] epoch 20/300  train_sL1=1.4975e-01  val_r2_R=0.157  val_pearson_R_freq=0.465  val_Δr2_TF=0.0783
+[single_full_R_nom_n1000_seed42] epoch 21/300  train_sL1=1.5022e-01  val_r2_R=0.225  val_pearson_R_freq=0.511  val_Δr2_TF=0.1099
+[single_full_R_nom_n1000_seed42] epoch 22/300  train_sL1=1.4397e-01  val_r2_R=0.196  val_pearson_R_freq=0.471  val_Δr2_TF=0.0963
+[single_full_R_nom_n1000_seed42] epoch 23/300  train_sL1=1.4776e-01  val_r2_R=0.241  val_pearson_R_freq=0.524  val_Δr2_TF=0.1173
+[single_full_R_nom_n1000_seed42] epoch 24/300  train_sL1=1.4170e-01  val_r2_R=0.250  val_pearson_R_freq=0.540  val_Δr2_TF=0.1213
+[single_full_R_nom_n1000_seed42] epoch 25/300  train_sL1=1.4241e-01  val_r2_R=0.239  val_pearson_R_freq=0.529  val_Δr2_TF=0.1162
+[single_full_R_nom_n1000_seed42] epoch 26/300  train_sL1=1.3490e-01  val_r2_R=0.253  val_pearson_R_freq=0.546  val_Δr2_TF=0.1226
+[single_full_R_nom_n1000_seed42] epoch 27/300  train_sL1=1.3607e-01  val_r2_R=0.250  val_pearson_R_freq=0.528  val_Δr2_TF=0.1215
+[single_full_R_nom_n1000_seed42] epoch 28/300  train_sL1=1.3284e-01  val_r2_R=0.228  val_pearson_R_freq=0.533  val_Δr2_TF=0.1111
+[single_full_R_nom_n1000_seed42] epoch 29/300  train_sL1=1.3257e-01  val_r2_R=0.244  val_pearson_R_freq=0.544  val_Δr2_TF=0.1183
+[single_full_R_nom_n1000_seed42] epoch 30/300  train_sL1=1.3074e-01  val_r2_R=0.229  val_pearson_R_freq=0.516  val_Δr2_TF=0.1117
+[single_full_R_nom_n1000_seed42] epoch 31/300  train_sL1=1.2971e-01  val_r2_R=0.226  val_pearson_R_freq=0.522  val_Δr2_TF=0.1103
+[single_full_R_nom_n1000_seed42] epoch 32/300  train_sL1=1.2521e-01  val_r2_R=0.220  val_pearson_R_freq=0.522  val_Δr2_TF=0.1076
+[single_full_R_nom_n1000_seed42] epoch 33/300  train_sL1=1.2505e-01  val_r2_R=0.231  val_pearson_R_freq=0.529  val_Δr2_TF=0.1125
+[single_full_R_nom_n1000_seed42] epoch 34/300  train_sL1=1.2692e-01  val_r2_R=0.247  val_pearson_R_freq=0.538  val_Δr2_TF=0.1201
+[single_full_R_nom_n1000_seed42] epoch 35/300  train_sL1=1.2306e-01  val_r2_R=0.232  val_pearson_R_freq=0.538  val_Δr2_TF=0.1130
+[single_full_R_nom_n1000_seed42] epoch 36/300  train_sL1=1.2155e-01  val_r2_R=0.210  val_pearson_R_freq=0.518  val_Δr2_TF=0.1028
+[single_full_R_nom_n1000_seed42] epoch 37/300  train_sL1=1.2137e-01  val_r2_R=0.213  val_pearson_R_freq=0.517  val_Δr2_TF=0.1043
+[single_full_R_nom_n1000_seed42] epoch 38/300  train_sL1=1.2079e-01  val_r2_R=0.229  val_pearson_R_freq=0.544  val_Δr2_TF=0.1119
+[single_full_R_nom_n1000_seed42] epoch 39/300  train_sL1=1.1723e-01  val_r2_R=0.233  val_pearson_R_freq=0.523  val_Δr2_TF=0.1133
+[single_full_R_nom_n1000_seed42] epoch 40/300  train_sL1=1.1740e-01  val_r2_R=0.230  val_pearson_R_freq=0.529  val_Δr2_TF=0.1120
+[single_full_R_nom_n1000_seed42] epoch 41/300  train_sL1=1.1323e-01  val_r2_R=0.213  val_pearson_R_freq=0.508  val_Δr2_TF=0.1042
+[single_full_R_nom_n1000_seed42] epoch 42/300  train_sL1=1.1683e-01  val_r2_R=0.202  val_pearson_R_freq=0.507  val_Δr2_TF=0.0994
+[single_full_R_nom_n1000_seed42] epoch 43/300  train_sL1=1.1779e-01  val_r2_R=0.228  val_pearson_R_freq=0.526  val_Δr2_TF=0.1111
+[single_full_R_nom_n1000_seed42] epoch 44/300  train_sL1=1.1448e-01  val_r2_R=0.217  val_pearson_R_freq=0.499  val_Δr2_TF=0.1063
+[single_full_R_nom_n1000_seed42] epoch 45/300  train_sL1=1.1390e-01  val_r2_R=0.242  val_pearson_R_freq=0.543  val_Δr2_TF=0.1177
+[single_full_R_nom_n1000_seed42] epoch 46/300  train_sL1=1.1144e-01  val_r2_R=0.177  val_pearson_R_freq=0.503  val_Δr2_TF=0.0878
+[single_full_R_nom_n1000_seed42] epoch 47/300  train_sL1=1.0943e-01  val_r2_R=0.199  val_pearson_R_freq=0.510  val_Δr2_TF=0.0978
+[single_full_R_nom_n1000_seed42] epoch 48/300  train_sL1=1.0782e-01  val_r2_R=0.205  val_pearson_R_freq=0.507  val_Δr2_TF=0.1008
+[single_full_R_nom_n1000_seed42] epoch 49/300  train_sL1=1.0775e-01  val_r2_R=0.223  val_pearson_R_freq=0.525  val_Δr2_TF=0.1089
+[single_full_R_nom_n1000_seed42] epoch 50/300  train_sL1=1.0723e-01  val_r2_R=0.206  val_pearson_R_freq=0.494  val_Δr2_TF=0.1013
+[single_full_R_nom_n1000_seed42] epoch 51/300  train_sL1=1.0813e-01  val_r2_R=0.181  val_pearson_R_freq=0.511  val_Δr2_TF=0.0898
+[single_full_R_nom_n1000_seed42] epoch 52/300  train_sL1=1.0818e-01  val_r2_R=0.207  val_pearson_R_freq=0.517  val_Δr2_TF=0.1017
+[single_full_R_nom_n1000_seed42] epoch 53/300  train_sL1=1.0385e-01  val_r2_R=0.215  val_pearson_R_freq=0.522  val_Δr2_TF=0.1054
+[single_full_R_nom_n1000_seed42] epoch 54/300  train_sL1=1.0435e-01  val_r2_R=0.177  val_pearson_R_freq=0.502  val_Δr2_TF=0.0879
+[single_full_R_nom_n1000_seed42] epoch 55/300  train_sL1=1.0559e-01  val_r2_R=0.210  val_pearson_R_freq=0.514  val_Δr2_TF=0.1029
+[single_full_R_nom_n1000_seed42] epoch 56/300  train_sL1=1.0275e-01  val_r2_R=0.208  val_pearson_R_freq=0.513  val_Δr2_TF=0.1020
+[single_full_R_nom_n1000_seed42] epoch 57/300  train_sL1=1.0129e-01  val_r2_R=0.185  val_pearson_R_freq=0.510  val_Δr2_TF=0.0915
+[single_full_R_nom_n1000_seed42] epoch 58/300  train_sL1=1.0081e-01  val_r2_R=0.170  val_pearson_R_freq=0.490  val_Δr2_TF=0.0847
+[single_full_R_nom_n1000_seed42] epoch 59/300  train_sL1=1.0109e-01  val_r2_R=0.189  val_pearson_R_freq=0.508  val_Δr2_TF=0.0934
+[single_full_R_nom_n1000_seed42] epoch 60/300  train_sL1=1.0160e-01  val_r2_R=0.206  val_pearson_R_freq=0.510  val_Δr2_TF=0.1013
+[single_full_R_nom_n1000_seed42] epoch 61/300  train_sL1=9.8283e-02  val_r2_R=0.188  val_pearson_R_freq=0.500  val_Δr2_TF=0.0929
+[single_full_R_nom_n1000_seed42] epoch 62/300  train_sL1=1.0123e-01  val_r2_R=0.180  val_pearson_R_freq=0.497  val_Δr2_TF=0.0890
+[single_full_R_nom_n1000_seed42] epoch 63/300  train_sL1=9.7664e-02  val_r2_R=0.139  val_pearson_R_freq=0.478  val_Δr2_TF=0.0700
+[single_full_R_nom_n1000_seed42] epoch 64/300  train_sL1=9.4341e-02  val_r2_R=0.193  val_pearson_R_freq=0.499  val_Δr2_TF=0.0951
+[single_full_R_nom_n1000_seed42] epoch 65/300  train_sL1=9.5244e-02  val_r2_R=0.170  val_pearson_R_freq=0.499  val_Δr2_TF=0.0847
+[single_full_R_nom_n1000_seed42] epoch 66/300  train_sL1=9.4633e-02  val_r2_R=0.186  val_pearson_R_freq=0.502  val_Δr2_TF=0.0918
+[single_full_R_nom_n1000_seed42] epoch 67/300  train_sL1=9.6572e-02  val_r2_R=0.199  val_pearson_R_freq=0.501  val_Δr2_TF=0.0980
+[single_full_R_nom_n1000_seed42] epoch 68/300  train_sL1=9.4611e-02  val_r2_R=0.174  val_pearson_R_freq=0.491  val_Δr2_TF=0.0863
+[single_full_R_nom_n1000_seed42] epoch 69/300  train_sL1=9.2162e-02  val_r2_R=0.163  val_pearson_R_freq=0.486  val_Δr2_TF=0.0814
+[single_full_R_nom_n1000_seed42] epoch 70/300  train_sL1=9.1766e-02  val_r2_R=0.159  val_pearson_R_freq=0.480  val_Δr2_TF=0.0796
+[single_full_R_nom_n1000_seed42] epoch 71/300  train_sL1=9.0877e-02  val_r2_R=0.152  val_pearson_R_freq=0.487  val_Δr2_TF=0.0762
+[single_full_R_nom_n1000_seed42] epoch 72/300  train_sL1=8.9599e-02  val_r2_R=0.149  val_pearson_R_freq=0.492  val_Δr2_TF=0.0750
+[single_full_R_nom_n1000_seed42] epoch 73/300  train_sL1=9.1474e-02  val_r2_R=0.166  val_pearson_R_freq=0.489  val_Δr2_TF=0.0828
+[single_full_R_nom_n1000_seed42] epoch 74/300  train_sL1=8.9546e-02  val_r2_R=0.165  val_pearson_R_freq=0.490  val_Δr2_TF=0.0821
+[single_full_R_nom_n1000_seed42] epoch 75/300  train_sL1=8.9576e-02  val_r2_R=0.150  val_pearson_R_freq=0.469  val_Δr2_TF=0.0753
+[single_full_R_nom_n1000_seed42] epoch 76/300  train_sL1=8.6826e-02  val_r2_R=0.182  val_pearson_R_freq=0.497  val_Δr2_TF=0.0900
+[single_full_R_nom_n1000_seed42] epoch 77/300  train_sL1=8.6771e-02  val_r2_R=0.140  val_pearson_R_freq=0.481  val_Δr2_TF=0.0705
+[single_full_R_nom_n1000_seed42] epoch 78/300  train_sL1=8.7249e-02  val_r2_R=0.148  val_pearson_R_freq=0.482  val_Δr2_TF=0.0744
+[single_full_R_nom_n1000_seed42] epoch 79/300  train_sL1=8.8451e-02  val_r2_R=0.158  val_pearson_R_freq=0.471  val_Δr2_TF=0.0790
+[single_full_R_nom_n1000_seed42] epoch 80/300  train_sL1=8.9662e-02  val_r2_R=0.147  val_pearson_R_freq=0.471  val_Δr2_TF=0.0741
+[single_full_R_nom_n1000_seed42] epoch 81/300  train_sL1=8.7801e-02  val_r2_R=0.151  val_pearson_R_freq=0.477  val_Δr2_TF=0.0757
+[single_full_R_nom_n1000_seed42] epoch 82/300  train_sL1=8.8191e-02  val_r2_R=0.153  val_pearson_R_freq=0.484  val_Δr2_TF=0.0767
+[single_full_R_nom_n1000_seed42] epoch 83/300  train_sL1=8.4116e-02  val_r2_R=0.154  val_pearson_R_freq=0.469  val_Δr2_TF=0.0771
+[single_full_R_nom_n1000_seed42] epoch 84/300  train_sL1=8.2813e-02  val_r2_R=0.160  val_pearson_R_freq=0.464  val_Δr2_TF=0.0798
+[single_full_R_nom_n1000_seed42] epoch 85/300  train_sL1=8.1813e-02  val_r2_R=0.145  val_pearson_R_freq=0.482  val_Δr2_TF=0.0731
+[single_full_R_nom_n1000_seed42] epoch 86/300  train_sL1=8.0494e-02  val_r2_R=0.124  val_pearson_R_freq=0.460  val_Δr2_TF=0.0633
+[single_full_R_nom_n1000_seed42] early stop at epoch 86
+[single_full_R_nom_n1000_seed42] test {'smooth_l1': 0.15875444404388728, 'r2_R': 0.2416169879298694, 'rel_l2_R': 0.8661112189292908, 'pearson_R': 0.49425054541494645, 'pearson_R_freq': 0.5424609022436603, 'r2_R_zero': -0.010978266794919422, 'smooth_l1_R_raw': 0.42285406589508057, 'smooth_l1_R_pred': 0.3037412762641907, 'r2_TF': 0.6052045223456718, 'rel_l2_TF': 0.4659940004348755, 'r2_TF_1d_only': 0.4737096672986446, 'delta_r2_TF': 0.13149485504702718, 'pearson_TF_freq': 0.8446093673690659, 'pearson_TF_1d_only_freq': 0.7542269226129983} → /home/kurt-/surrogate-seismic-waves/experiments/DeepONet-Residual/results/single_full_R_nom_n1000_seed42.json
+
+Ablation summary → /home/kurt-/surrogate-seismic-waves/experiments/DeepONet-Residual/results/ablation_n1000_seed42.json
+
+Primary comparison (single + full trunk) — residual metrics:
+  R_col: R²_R=0.084  pearson_R_freq=0.362  Δr2_TF=0.0328  (TF₁D-only R²=0.620)
+  R_nom: R²_R=0.242  pearson_R_freq=0.542  Δr2_TF=0.1315  (TF₁D-only R²=0.474)

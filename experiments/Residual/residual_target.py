@@ -116,7 +116,9 @@ def compute_residuals_for_index(
     vs_crop = vs[:, config.X_SLICE_START : config.X_SLICE_END]
     zeta_crop = zeta[:, config.X_SLICE_START : config.X_SLICE_END]
     vs2 = float(params["Vs2"])
-    soil_nz = int(params.get("soil_layer_count", params.get("H_discretized", vs_crop.shape[0])))
+    soil_nz = int(
+        params.get("soil_layer_count", params.get("H_discretized", vs_crop.shape[0]))
+    )
 
     # Recorders are indexed on the cropped NX=500 strip
     tf1d_col = haskell_at_columns(
