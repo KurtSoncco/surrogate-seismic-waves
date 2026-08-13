@@ -16,6 +16,7 @@ _EXP = Path(__file__).resolve().parent
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
+# ruff: noqa: E402
 import config
 from build_table import build_feature_table, feature_columns
 from plots import plot_importance_bars, plot_r_central_3x3
