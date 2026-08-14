@@ -149,6 +149,7 @@ uv run python experiments/DeepONet-Residual/compare_encoders.py \
 ## 7. Next steps
 
 1. Keep **ResUNet + \(R_{\mathrm{nom}}\)** as the default encoder/target pair.
-2. Close the gap to residual R² **0.4–0.5** (full-frequency eval, longer / no early stop, peak-band emphasis).
-3. Optional: deeper ResUNet base width or attention at the bottleneck; still Single-branch fusion per Park et al.
-4. GNO only if residual lateral coupling still needs message passing beyond a global branch vector.
+2. Scale to **n=2000 / n=3000** via `run_scale.py` (50-freq train, 1000-freq eval).
+3. **E0 OOD Haskell floor** on Box `ood_dipping` / `ood_three_layer` (`eval_ood.py`).
+4. Optional: peak-band loss or `TREND_FREQ_SCALE` only if IID `r2_R` stays ~0.26.
+5. GNO only if residual lateral coupling still needs message passing beyond a global branch vector.

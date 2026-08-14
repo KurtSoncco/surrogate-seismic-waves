@@ -109,13 +109,10 @@ def compute_signed_for_index(
 
 
 def sample_indices_from_residual(cache_tag: str) -> np.ndarray:
-    """Reuse Residual experiment sample indices for apples-to-apples splits."""
-    path = config.RESIDUAL_CACHE_DIR / cache_tag / "sample_indices.npy"
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Missing Residual cache indices: {path}. Run Residual screen first."
-        )
-    return np.load(path)
+    """Reuse Residual indices when present; else a nested stratified draw."""
+    from select_indices import resolve_sample_indices
+
+    return resolve_sample_indices(cache_tag, write=True)
 
 
 def build_signed_cache(
