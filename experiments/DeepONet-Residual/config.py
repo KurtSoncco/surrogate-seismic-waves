@@ -54,9 +54,19 @@ N_FREQ: int = 1000
 FREQ_START_HZ: float = 0.1
 FREQ_END_HZ: float = 10.0
 N_FREQ_TRAIN: int = 50  # log-spaced subset for trunk queries during training
+N_FREQ_EVAL: int = 1000  # full frequency grid for val/test / OOD scoring
 K_XI: int = 8
 SEED: int = 42
 DEFAULT_XI_TREND: float = 0.05  # xi_damp scalar + nominal Haskell damping
+SCREEN_N_MAX: int = 3000  # parent stratified draw; n=1000/2000 are prefixes
+
+# OOD corpora live next to IID h5/ and transfer_function/ on Box
+OOD_DIPPING_DIR = Path(
+    os.environ.get("GIFNO_OOD_DIPPING", str(DATA_ROOT / "ood_dipping"))
+)
+OOD_THREE_LAYER_DIR = Path(
+    os.environ.get("GIFNO_OOD_THREE_LAYER", str(DATA_ROOT / "ood_three_layer"))
+)
 
 # Model
 LATENT_DIM: int = 128

@@ -12,7 +12,12 @@ _SEISKIT_ROOT = Path.home() / "seiskit"
 if _SEISKIT_ROOT.is_dir() and str(_SEISKIT_ROOT) not in sys.path:
     sys.path.insert(0, str(_SEISKIT_ROOT))
 
-from seiskit.theory import Layer, RockHalfspace  # noqa: E402
+# ruff: noqa: E402
+try:
+    from seiskit.theory import Layer, RockHalfspace
+except ImportError:  # pragma: no cover - optional; AF_within is self-contained
+    Layer = None  # type: ignore[misc, assignment]
+    RockHalfspace = None  # type: ignore[misc, assignment]
 
 _EPS = 1e-12
 DEFAULT_RHO = 2000.0
@@ -28,6 +33,8 @@ def column_to_layers(
     rho: float = DEFAULT_RHO,
 ) -> tuple[list[Layer], RockHalfspace]:
     """Discretize a vertical Vs/zeta column into soil layers + rock halfspace."""
+    if Layer is None or RockHalfspace is None:
+        raise ImportError("seiskit is required for column_to_layers")
     vs_col = np.asarray(vs_col, dtype=float).ravel()
     zeta_col = np.asarray(zeta_col, dtype=float).ravel()
     if vs_col.shape != zeta_col.shape:

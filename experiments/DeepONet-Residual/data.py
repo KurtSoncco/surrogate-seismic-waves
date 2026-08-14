@@ -253,10 +253,20 @@ def make_loaders(
     target: TargetName,
     trunk_set: TrunkSet = "full",
     batch_size: int = config.BATCH_SIZE,
+    n_freq_train: int = config.N_FREQ_TRAIN,
+    n_freq_eval: int | None = None,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
-    def _loader(idxs: np.ndarray, shuffle: bool) -> DataLoader:
+    n_eval = int(n_freq_eval if n_freq_eval is not None else n_freq_train)
+
+    def _loader(
+        idxs: np.ndarray, shuffle: bool, n_freq: int
+    ) -> DataLoader:
         ds = ResidualDeepONetDataset(
-            cache_dir, idxs, target=target, trunk_set=trunk_set
+            cache_dir,
+            idxs,
+            target=target,
+            trunk_set=trunk_set,
+            n_freq_train=n_freq,
         )
         return DataLoader(
             ds,
@@ -267,7 +277,7 @@ def make_loaders(
         )
 
     return (
-        _loader(splits.train, True),
-        _loader(splits.val, False),
-        _loader(splits.test, False),
+        _loader(splits.train, True, n_freq_train),
+        _loader(splits.val, False, n_eval),
+        _loader(splits.test, False, n_eval),
     )

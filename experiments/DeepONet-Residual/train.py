@@ -230,6 +230,8 @@ def train_one(
     patience: int | None = None,
     no_early_stop: bool = False,
     field_encoder: FieldEncoderKind = "conv",
+    n_freq_train: int = config.N_FREQ_TRAIN,
+    n_freq_eval: int | None = None,
 ) -> Dict[str, Any]:
     device = _device()
     cache_dir = _build_signed_cache(cache_tag)
@@ -238,14 +240,27 @@ def train_one(
     splits = make_splits(n, seed=seed)
     from torch.utils.data import DataLoader as _DL
 
+    n_eval = int(n_freq_eval if n_freq_eval is not None else config.N_FREQ_EVAL)
     train_ds = ResidualDeepONetDataset(
-        cache_dir, splits.train, target=target, trunk_set=trunk_set
+        cache_dir,
+        splits.train,
+        target=target,
+        trunk_set=trunk_set,
+        n_freq_train=n_freq_train,
     )
     val_ds = ResidualDeepONetDataset(
-        cache_dir, splits.val, target=target, trunk_set=trunk_set
+        cache_dir,
+        splits.val,
+        target=target,
+        trunk_set=trunk_set,
+        n_freq_train=n_eval,
     )
     test_ds = ResidualDeepONetDataset(
-        cache_dir, splits.test, target=target, trunk_set=trunk_set
+        cache_dir,
+        splits.test,
+        target=target,
+        trunk_set=trunk_set,
+        n_freq_train=n_eval,
     )
     stats = fit_and_apply_norms(train_ds, val_ds, test_ds)
     train_loader = _DL(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
@@ -253,7 +268,8 @@ def train_one(
     test_loader = _DL(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
 
     n_rec = train_ds.n_rec
-    n_freq = len(train_ds.f_idx)
+    n_freq_tr = len(train_ds.f_idx)
+    n_freq_ev = len(val_ds.f_idx)
 
     trunk_dim = len(trunk_feature_names(trunk_set))
     model = build_model(
@@ -309,7 +325,7 @@ def train_one(
             branch_mode,
             stats,
             n_rec=n_rec,
-            n_freq=n_freq,
+            n_freq=n_freq_ev,
         )
         row = {
             "epoch": epoch,
@@ -346,7 +362,7 @@ def train_one(
         branch_mode,
         stats,
         n_rec=n_rec,
-        n_freq=n_freq,
+        n_freq=n_freq_ev,
     )
     torch.save(
         {
@@ -356,6 +372,9 @@ def train_one(
             "trunk_set": trunk_set,
             "cache_tag": cache_tag,
             "field_encoder": field_encoder,
+            "n_freq_train": n_freq_train,
+            "n_freq_eval": n_freq_ev,
+            "n_freq_train_actual": n_freq_tr,
             "loss": "SmoothL1Loss",
             "optimizer": "AdamW",
             "adamw_betas": list(config.ADAMW_BETAS),
@@ -379,6 +398,8 @@ def train_one(
         "n_train": len(splits.train),
         "n_val": len(splits.val),
         "n_test": len(splits.test),
+        "n_freq_train": n_freq_train,
+        "n_freq_eval": n_eval,
         "epochs_ran": len(history),
         "seconds": time.time() - t0,
         "checkpoint": str(ckpt_path),
@@ -416,6 +437,8 @@ def main() -> None:
         choices=["conv", "resunet"],
         default="conv",
     )
+    p.add_argument("--n-freq-train", type=int, default=config.N_FREQ_TRAIN)
+    p.add_argument("--n-freq-eval", type=int, default=config.N_FREQ_EVAL)
     args = p.parse_args()
     train_one(
         cache_tag=args.cache_tag,
@@ -429,6 +452,8 @@ def main() -> None:
         patience=args.patience,
         no_early_stop=args.no_early_stop,
         field_encoder=args.field_encoder,  # type: ignore[arg-type]
+        n_freq_train=args.n_freq_train,
+        n_freq_eval=args.n_freq_eval,
     )
 
 
