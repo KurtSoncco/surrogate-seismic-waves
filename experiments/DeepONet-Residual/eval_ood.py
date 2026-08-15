@@ -377,6 +377,28 @@ def eval_one_h5(
     return row
 
 
+def _select_split(name: str, h5s: list[Path], split: str | None) -> list[Path]:
+    if not split or split == "all":
+        return h5s
+    from domain_splits import SPLIT_DIR, load_split
+
+    path = SPLIT_DIR / f"{name}_seed{config.SEED}.npz"
+    if not path.is_file():
+        raise FileNotFoundError(f"missing split file {path}; run domain_splits.ensure_splits()")
+    blob = load_split(path)
+    if split not in blob:
+        raise KeyError(f"split {split!r} not in {path}")
+    idx = np.asarray(blob[split], dtype=int)
+    names = blob.get("names")
+    if names is not None:
+        wanted = {str(names[int(i)]) for i in idx}
+        out = [p for p in h5s if p.name in wanted]
+        if len(out) != len(idx):
+            raise RuntimeError(f"{name} {split}: matched {len(out)}/{len(idx)} files")
+        return out
+    return [h5s[int(i)] for i in idx]
+
+
 def eval_corpus(
     name: str,
     root: Path,
@@ -387,8 +409,10 @@ def eval_corpus(
     device: Any,
     limit: int | None,
     force_tf: bool,
+    split: str | None = None,
 ) -> dict[str, Any]:
     h5s = discover_h5_files(root)
+    h5s = _select_split(name, h5s, split)
     if limit is not None:
         h5s = h5s[: int(limit)]
     rec = recorder_x_indices(root)
@@ -494,6 +518,12 @@ def main() -> None:
     )
     p.add_argument("--clamp", choices=["none", "tanh", "zero"], default="none")
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument(
+        "--split",
+        choices=["all", "train", "val", "test"],
+        default="test",
+        help="Held-out split (default: test). Use all to score the full 960-file corpora.",
+    )
     p.add_argument("--force-tf", action="store_true")
     p.add_argument(
         "--corpus",
@@ -521,6 +551,7 @@ def main() -> None:
         "GIFNO_DATA_ROOT": str(config.data_root()),
         "checkpoint": str(args.checkpoint) if args.checkpoint else None,
         "clamp": args.clamp,
+        "split": args.split,
         "corpora": {},
     }
     roots = default_ood_roots()
@@ -543,6 +574,7 @@ def main() -> None:
             device=device,
             limit=args.limit,
             force_tf=args.force_tf,
+            split=args.split,
         )
         report["corpora"][name] = pack
         s = pack["summary"]
