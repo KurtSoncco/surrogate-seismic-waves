@@ -5,23 +5,23 @@ from __future__ import annotations
 import argparse
 import json
 import time
-from typing import Any, Dict
-
-import numpy as np
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
+from pathlib import Path
+from typing import Any
 
 import config
+import numpy as np
+import torch
+from model import BranchMode, FieldEncoderKind, build_model
+from torch import nn
+from torch.utils.data import DataLoader
+
 from data import (
     ResidualDeepONetDataset,
     TargetName,
     TrunkSet,
     make_splits,
     stoch_dim,
-    trunk_feature_names,
 )
-from model import BranchMode, FieldEncoderKind, build_model
 
 
 def _build_signed_cache(*args, **kwargs):
@@ -38,15 +38,14 @@ def _stack_key(ds, key: str) -> torch.Tensor:
     return torch.stack([ds._cache[i][key] for i in range(len(ds))], dim=0)
 
 
-def fit_and_apply_norms(train_ds, *other_ds) -> Dict[str, torch.Tensor]:
-    """Z-score stoch, trunk, and target using the training split only."""
+def fit_norms(train_ds) -> dict[str, torch.Tensor]:
+    """Z-score stats from the training split only."""
     stoch = _stack_key(train_ds, "stoch")
     trunk = _stack_key(train_ds, "trunk_y").reshape(
         -1, _stack_key(train_ds, "trunk_y").shape[-1]
     )
     target = _stack_key(train_ds, "target").reshape(-1)
-
-    stats = {
+    return {
         "stoch_mean": stoch.mean(0),
         "stoch_std": stoch.std(0).clamp_min(1e-6),
         "trunk_mean": trunk.mean(0),
@@ -55,21 +54,22 @@ def fit_and_apply_norms(train_ds, *other_ds) -> Dict[str, torch.Tensor]:
         "target_std": target.std().clamp_min(1e-6),
     }
 
-    def _apply(ds) -> None:
-        for i in range(len(ds)):
-            item = ds._cache[i]
-            item["stoch"] = (item["stoch"] - stats["stoch_mean"]) / stats["stoch_std"]
-            item["trunk_y"] = (item["trunk_y"] - stats["trunk_mean"]) / stats[
-                "trunk_std"
-            ]
-            item["target_raw"] = item["target"].clone()
-            item["target"] = (item["target"] - stats["target_mean"]) / stats[
-                "target_std"
-            ]
 
-    _apply(train_ds)
+def apply_norms(ds, stats: dict[str, torch.Tensor]) -> None:
+    for i in range(len(ds)):
+        item = ds._cache[i]
+        item["stoch"] = (item["stoch"] - stats["stoch_mean"]) / stats["stoch_std"]
+        item["trunk_y"] = (item["trunk_y"] - stats["trunk_mean"]) / stats["trunk_std"]
+        item["target_raw"] = item["target"].clone()
+        item["target"] = (item["target"] - stats["target_mean"]) / stats["target_std"]
+
+
+def fit_and_apply_norms(train_ds, *other_ds) -> dict[str, torch.Tensor]:
+    """Z-score stoch, trunk, and target using the training split only."""
+    stats = fit_norms(train_ds)
+    apply_norms(train_ds, stats)
     for ds in other_ds:
-        _apply(ds)
+        apply_norms(ds, stats)
     return stats
 
 
@@ -79,11 +79,11 @@ def evaluate(
     loader: DataLoader,
     device: torch.device,
     mode: BranchMode,
-    stats: Dict[str, torch.Tensor],
+    stats: dict[str, torch.Tensor],
     *,
     n_rec: int,
     n_freq: int,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Primary metrics are on signed R (what TF_1D cannot explain).
 
     TF reconstruction R² is reported only as a secondary diagnostic, together with
@@ -146,6 +146,7 @@ def evaluate(
         # --- secondary: TF recon (must beat TF_1D-only) ---
         "r2_TF": r2_tf,
         "rel_l2_TF": _rel_l2(tf2d, tf_hat),
+        "rel_l2_TF_1d_only": _rel_l2(tf2d, tf1d),
         "r2_TF_1d_only": r2_tf_1d_only,
         "delta_r2_TF": r2_tf - r2_tf_1d_only,
         "pearson_TF_freq": _pearson_across_freq(
@@ -216,6 +217,186 @@ def _forward(
     return model(fields, stoch, trunk_y)
 
 
+def _trunk_dim(ds) -> int:
+    return int(ds._cache[0]["trunk_y"].shape[-1])
+
+
+def train_from_datasets(
+    *,
+    train_ds,
+    val_ds,
+    extra_tests: dict[str, Any],
+    target: TargetName,
+    branch_mode: BranchMode,
+    trunk_set: TrunkSet,
+    epochs: int,
+    batch_size: int,
+    lr: float,
+    seed: int,
+    run_name: str,
+    patience: int | None = None,
+    no_early_stop: bool = False,
+    field_encoder: FieldEncoderKind = "conv",
+    n_freq_train: int = config.N_FREQ_TRAIN,
+    n_freq_eval: int = config.N_FREQ_EVAL,
+    init_ckpt: Path | None = None,
+    serial_tf1d: bool = False,
+) -> dict[str, Any]:
+    """Train on already-built datasets; evaluate extra_tests with train-split norms."""
+    from torch.utils.data import DataLoader as _DL
+
+    device = _device()
+    stats = fit_and_apply_norms(train_ds, val_ds, *extra_tests.values())
+    train_loader = _DL(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
+    val_loader = _DL(val_ds, batch_size=batch_size, shuffle=False, num_workers=0)
+    n_rec = train_ds.n_rec
+    n_freq = len(train_ds.f_idx) if hasattr(train_ds, "f_idx") else n_freq_train
+    trunk_dim = _trunk_dim(train_ds)
+    model = build_model(
+        branch_mode,
+        field_channels=config.FIELD_CHANNELS,
+        stoch_dim=stoch_dim(),
+        trunk_dim=trunk_dim,
+        latent_dim=config.LATENT_DIM,
+        field_hidden=config.FIELD_HIDDEN,
+        branch_hidden=config.BRANCH_HIDDEN,
+        trunk_hidden=config.TRUNK_HIDDEN,
+        trunk_layers=config.TRUNK_LAYERS,
+        field_encoder=field_encoder,
+    ).to(device)
+    if init_ckpt is not None:
+        blob = torch.load(init_ckpt, map_location="cpu", weights_only=False)
+        model.load_state_dict(blob["model"])
+        print(f"[train] loaded weights from {init_ckpt}", flush=True)
+
+    opt = torch.optim.AdamW(
+        model.parameters(),
+        lr=lr,
+        betas=config.ADAMW_BETAS,
+        weight_decay=config.WEIGHT_DECAY,
+    )
+    crit = nn.SmoothL1Loss(beta=config.SMOOTH_L1_BETA)
+    best_val = float("inf")
+    best_state = None
+    patience_budget = int(patience if patience is not None else config.PATIENCE)
+    patience_left = patience_budget
+    history: list[dict] = []
+    ckpt_path = config.CHECKPOINT_DIR / f"{run_name}.pt"
+    t0 = time.time()
+    for epoch in range(1, epochs + 1):
+        model.train()
+        tr_loss, tr_n = 0.0, 0
+        for batch in train_loader:
+            fields = batch["fields"].to(device)
+            stoch = batch["stoch"].to(device)
+            trunk_y = batch["trunk_y"].to(device)
+            target_t = batch["target"].to(device)
+            pred = _forward(model, fields, stoch, trunk_y, branch_mode)
+            loss = crit(pred, target_t)
+            opt.zero_grad(set_to_none=True)
+            loss.backward()
+            opt.step()
+            tr_loss += float(loss.item()) * target_t.shape[0]
+            tr_n += target_t.shape[0]
+        val_m = evaluate(
+            model,
+            val_loader,
+            device,
+            branch_mode,
+            stats,
+            n_rec=n_rec,
+            n_freq=n_freq,
+        )
+        history.append(
+            {
+                "epoch": epoch,
+                "train_smooth_l1": tr_loss / max(tr_n, 1),
+                **{f"val_{k}": v for k, v in val_m.items()},
+            }
+        )
+        print(
+            f"[{run_name}] epoch {epoch}/{epochs}  "
+            f"train_sL1={history[-1]['train_smooth_l1']:.4e}  "
+            f"val_r2_R={val_m['r2_R']:.3f}  "
+            f"val_pearson_R_freq={val_m['pearson_R_freq']:.3f}  "
+            f"val_Δr2_TF={val_m['delta_r2_TF']:.4f}",
+            flush=True,
+        )
+        if val_m["smooth_l1"] < best_val - 1e-8:
+            best_val = val_m["smooth_l1"]
+            best_state = {
+                k: v.detach().cpu().clone() for k, v in model.state_dict().items()
+            }
+            patience_left = patience_budget
+        elif not no_early_stop:
+            patience_left -= 1
+            if patience_left <= 0:
+                print(f"[{run_name}] early stop at epoch {epoch}", flush=True)
+                break
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+
+    per_domain: dict[str, Any] = {}
+    for dname, ds in extra_tests.items():
+        loader = _DL(ds, batch_size=batch_size, shuffle=False, num_workers=0)
+        per_domain[dname] = evaluate(
+            model,
+            loader,
+            device,
+            branch_mode,
+            stats,
+            n_rec=ds.n_rec,
+            n_freq=len(ds.f_idx),
+        )
+        print(
+            f"[{run_name}] test[{dname}] r2_R={per_domain[dname]['r2_R']:.3f} "
+            f"Δr2_TF={per_domain[dname]['delta_r2_TF']:+.3f} "
+            f"rel_l2_TF={per_domain[dname]['rel_l2_TF']:.3f}",
+            flush=True,
+        )
+
+    stats_cpu = {k: v.detach().cpu() for k, v in stats.items()}
+    torch.save(
+        {
+            "model": best_state or model.state_dict(),
+            "target": target,
+            "branch_mode": branch_mode,
+            "trunk_set": trunk_set,
+            "field_encoder": field_encoder,
+            "n_freq_train": int(n_freq_train),
+            "n_freq_eval": int(n_freq_eval),
+            "serial_tf1d": bool(serial_tf1d),
+            "stats": stats_cpu,
+            "test_by_domain": per_domain,
+            "history": history,
+        },
+        ckpt_path,
+    )
+    result = {
+        "name": run_name,
+        "target": target,
+        "branch_mode": branch_mode,
+        "trunk_set": trunk_set,
+        "field_encoder": field_encoder,
+        "serial_tf1d": bool(serial_tf1d),
+        "n_freq_train": int(n_freq_train),
+        "n_train": len(train_ds),
+        "n_val": len(val_ds),
+        "epochs_ran": len(history),
+        "seconds": time.time() - t0,
+        "checkpoint": str(ckpt_path),
+        "init_ckpt": str(init_ckpt) if init_ckpt else None,
+        "test_by_domain": per_domain,
+        "best_val_smooth_l1": best_val,
+        "seed": seed,
+    }
+    out_json = config.RESULTS_DIR / f"{run_name}.json"
+    out_json.write_text(json.dumps(result, indent=2, default=str))
+    print(f"[{run_name}] wrote {out_json}", flush=True)
+    return result
+
+
 def train_one(
     *,
     cache_tag: str,
@@ -230,7 +411,10 @@ def train_one(
     patience: int | None = None,
     no_early_stop: bool = False,
     field_encoder: FieldEncoderKind = "conv",
-) -> Dict[str, Any]:
+    n_freq_train: int = config.N_FREQ_TRAIN,
+    n_freq_eval: int = config.N_FREQ_EVAL,
+    serial_tf1d: bool = False,
+) -> dict[str, Any]:
     device = _device()
     cache_dir = _build_signed_cache(cache_tag)
     meta = np.load(cache_dir / "meta.npz", allow_pickle=True)
@@ -239,13 +423,28 @@ def train_one(
     from torch.utils.data import DataLoader as _DL
 
     train_ds = ResidualDeepONetDataset(
-        cache_dir, splits.train, target=target, trunk_set=trunk_set
+        cache_dir,
+        splits.train,
+        target=target,
+        trunk_set=trunk_set,
+        n_freq=n_freq_train,
+        serial_tf1d=serial_tf1d,
     )
     val_ds = ResidualDeepONetDataset(
-        cache_dir, splits.val, target=target, trunk_set=trunk_set
+        cache_dir,
+        splits.val,
+        target=target,
+        trunk_set=trunk_set,
+        n_freq=n_freq_train,
+        serial_tf1d=serial_tf1d,
     )
     test_ds = ResidualDeepONetDataset(
-        cache_dir, splits.test, target=target, trunk_set=trunk_set
+        cache_dir,
+        splits.test,
+        target=target,
+        trunk_set=trunk_set,
+        n_freq=n_freq_train,
+        serial_tf1d=serial_tf1d,
     )
     stats = fit_and_apply_norms(train_ds, val_ds, test_ds)
     train_loader = _DL(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
@@ -255,7 +454,7 @@ def train_one(
     n_rec = train_ds.n_rec
     n_freq = len(train_ds.f_idx)
 
-    trunk_dim = len(trunk_feature_names(trunk_set))
+    trunk_dim = _trunk_dim(train_ds)
     model = build_model(
         branch_mode,
         field_channels=config.FIELD_CHANNELS,
@@ -348,6 +547,35 @@ def train_one(
         n_rec=n_rec,
         n_freq=n_freq,
     )
+    test_m_full = test_m
+    if int(n_freq_eval) != int(n_freq_train):
+        print(
+            f"[{name}] full-frequency eval n_freq={n_freq_eval} "
+            f"(trained at {n_freq_train})",
+            flush=True,
+        )
+        test_full = ResidualDeepONetDataset(
+            cache_dir,
+            splits.test,
+            target=target,
+            trunk_set=trunk_set,
+            n_freq=n_freq_eval,
+            serial_tf1d=serial_tf1d,
+        )
+        apply_norms(test_full, stats)
+        test_full_loader = _DL(
+            test_full, batch_size=batch_size, shuffle=False, num_workers=0
+        )
+        test_m_full = evaluate(
+            model,
+            test_full_loader,
+            device,
+            branch_mode,
+            stats,
+            n_rec=test_full.n_rec,
+            n_freq=len(test_full.f_idx),
+        )
+    stats_cpu = {k: v.detach().cpu() for k, v in stats.items()}
     torch.save(
         {
             "model": best_state or model.state_dict(),
@@ -356,11 +584,16 @@ def train_one(
             "trunk_set": trunk_set,
             "cache_tag": cache_tag,
             "field_encoder": field_encoder,
+            "n_freq_train": int(n_freq_train),
+            "n_freq_eval": int(n_freq_eval),
+            "serial_tf1d": bool(serial_tf1d),
+            "stats": stats_cpu,
             "loss": "SmoothL1Loss",
             "optimizer": "AdamW",
             "adamw_betas": list(config.ADAMW_BETAS),
             "smooth_l1_beta": config.SMOOTH_L1_BETA,
-            "test": test_m,
+            "test": test_m_full,
+            "test_train_freq": test_m,
             "history": history,
         },
         ckpt_path,
@@ -371,7 +604,10 @@ def train_one(
         "branch_mode": branch_mode,
         "trunk_set": trunk_set,
         "field_encoder": field_encoder,
+        "serial_tf1d": bool(serial_tf1d),
         "cache_tag": cache_tag,
+        "n_freq_train": int(n_freq_train),
+        "n_freq_eval": int(n_freq_eval),
         "loss": "SmoothL1Loss",
         "optimizer": "AdamW",
         "adamw_betas": list(config.ADAMW_BETAS),
@@ -382,7 +618,8 @@ def train_one(
         "epochs_ran": len(history),
         "seconds": time.time() - t0,
         "checkpoint": str(ckpt_path),
-        "test": test_m,
+        "test": test_m_full,
+        "test_train_freq": test_m,
         "best_val_smooth_l1": best_val,
     }
     out_json = config.RESULTS_DIR / f"{name}.json"
@@ -393,8 +630,8 @@ def train_one(
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--cache-tag", default="n100_seed42")
-    p.add_argument("--target", choices=["R_col", "R_nom"], default="R_col")
+    p.add_argument("--cache-tag", default="n1000_seed42")
+    p.add_argument("--target", choices=["R_col", "R_nom"], default=config.DEFAULT_TARGET)
     p.add_argument(
         "--branch-mode",
         choices=["single", "multi", "stoch_only", "fields_only"],
@@ -414,7 +651,25 @@ def main() -> None:
     p.add_argument(
         "--field-encoder",
         choices=["conv", "resunet"],
-        default="conv",
+        default=config.DEFAULT_FIELD_ENCODER,
+    )
+    p.add_argument(
+        "--serial-tf1d",
+        action=argparse.BooleanOptionalAction,
+        default=config.DEFAULT_SERIAL_TF1D,
+        help="Condition R-hat on log(TF_1D) in the trunk (shipped serial operator).",
+    )
+    p.add_argument(
+        "--n-freq-train",
+        type=int,
+        default=config.N_FREQ_TRAIN,
+        help="Log-spaced trunk queries during training (eval is always full grid).",
+    )
+    p.add_argument(
+        "--n-freq-eval",
+        type=int,
+        default=config.N_FREQ_EVAL,
+        help="Frequency bins for reported test metrics (default: full 1000).",
     )
     args = p.parse_args()
     train_one(
@@ -429,6 +684,9 @@ def main() -> None:
         patience=args.patience,
         no_early_stop=args.no_early_stop,
         field_encoder=args.field_encoder,  # type: ignore[arg-type]
+        n_freq_train=args.n_freq_train,
+        n_freq_eval=args.n_freq_eval,
+        serial_tf1d=args.serial_tf1d,
     )
 
 

@@ -22,9 +22,28 @@ def _resolve_data_root() -> Path:
     return EXPERIMENT_DIR / "dummy_data"
 
 
+def data_root() -> Path:
+    """Re-resolve so tests / late env changes are honored."""
+    return _resolve_data_root()
+
+
+def ood_dipping_root() -> Path:
+    if env := os.environ.get("GIFNO_OOD_DIPPING"):
+        return Path(env)
+    return data_root() / "ood_dipping"
+
+
+def ood_three_layer_root() -> Path:
+    if env := os.environ.get("GIFNO_OOD_THREE_LAYER"):
+        return Path(env)
+    return data_root() / "ood_three_layer"
+
+
 DATA_ROOT = _resolve_data_root()
 H5_DIR = Path(os.environ.get("GIFNO_H5_DIR", DATA_ROOT / "h5"))
 TF_RESULTS_DIR = Path(os.environ.get("GIFNO_TF_DIR", DATA_ROOT / "transfer_function"))
+OOD_DIPPING = ood_dipping_root()
+OOD_THREE_LAYER = ood_three_layer_root()
 
 TF_PER_SAMPLE_PATH = TF_RESULTS_DIR / "tf_per_sample.npy"
 TF_FREQ_PATH = TF_RESULTS_DIR / "freq.npy"
@@ -53,7 +72,9 @@ N_LATERAL: int = 21
 N_FREQ: int = 1000
 FREQ_START_HZ: float = 0.1
 FREQ_END_HZ: float = 10.0
-N_FREQ_TRAIN: int = 50  # log-spaced subset for trunk queries during training
+N_FREQ_TRAIN: int = 200  # log-spaced trunk queries (P3/serial recipe)
+N_FREQ_EVAL: int = 1000  # always score on the full frequency grid
+SMOOTH_COEFF: float = 500.0  # Konno–Ohmachi; match GIFNO TF cache
 K_XI: int = 8
 SEED: int = 42
 DEFAULT_XI_TREND: float = 0.05  # xi_damp scalar + nominal Haskell damping
@@ -66,17 +87,21 @@ BRANCH_HIDDEN: int = 256
 TRUNK_HIDDEN: int = 256
 TRUNK_LAYERS: int = 5
 
-# Train defaults
+# Train defaults (ship: geometry-aware R_nom, ResUNet, serial TF1D, mix ckpt)
 BATCH_SIZE: int = 8
 LR: float = 1e-3
 WEIGHT_DECAY: float = 1e-5
 ADAMW_BETAS: tuple[float, float] = (0.9, 0.999)
 SMOOTH_L1_BETA: float = 1.0  # Huber transition (PyTorch SmoothL1Loss beta)
 EPOCHS: int = 300
-PATIENCE: int = 50
+PATIENCE: int = 60
 TRAIN_FRAC: float = 0.70
 VAL_FRAC: float = 0.15
 NUM_WORKERS: int = 0
+DEFAULT_TARGET: str = "R_nom"
+DEFAULT_FIELD_ENCODER: str = "resunet"
+DEFAULT_SERIAL_TF1D: bool = True
+DEFAULT_CHECKPOINT: Path = CHECKPOINT_DIR / "arch_serial_P3_mix.pt"
 
 for d in (CACHE_DIR, RESULTS_DIR, CHECKPOINT_DIR):
     d.mkdir(parents=True, exist_ok=True)

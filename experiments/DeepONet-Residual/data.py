@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Literal, Sequence, Tuple
+from typing import Literal
 
 import numpy as np
 import torch
@@ -16,9 +17,8 @@ try:
 except ImportError:
     pass
 
-import h5py
-
 import config
+import h5py
 
 _RES = config.RESIDUAL_DIR
 if str(_RES) not in sys.path:
@@ -71,7 +71,13 @@ def stoch_dim(k_xi: int = config.K_XI) -> int:
     return 2 * k_xi + 4  # xi re/im + r_H, aHV, CoV, xi_damp
 
 
-def trunk_feature_names(trunk_set: TrunkSet) -> List[str]:
+def append_serial_tf1d(trunk: np.ndarray, tf1d: np.ndarray) -> np.ndarray:
+    """Concatenate log(TF_1D) onto trunk queries (serial / discrepancy operator)."""
+    extra = np.log(np.maximum(np.asarray(tf1d).reshape(-1, 1), _EPS)).astype(np.float32)
+    return np.concatenate([np.asarray(trunk, dtype=np.float32), extra], axis=-1)
+
+
+def trunk_feature_names(trunk_set: TrunkSet) -> list[str]:
     if trunk_set == "fstar":
         return ["f_star"]
     if trunk_set == "fstar_fourier":
@@ -106,8 +112,45 @@ def make_splits(
     )
 
 
+def build_trunk_queries(
+    *,
+    vs_col: np.ndarray,
+    H: float,
+    recorder_x: np.ndarray,
+    freq_s: np.ndarray,
+    sin_f: np.ndarray,
+    cos_f: np.ndarray,
+    trunk_names: Sequence[str],
+) -> np.ndarray:
+    """Vectorized trunk features, shape (n_rec * n_freq, n_feat)."""
+    vs_c = np.maximum(np.asarray(vs_col, dtype=np.float64).ravel(), _EPS)
+    f = np.asarray(freq_s, dtype=np.float64).ravel()
+    cols = np.asarray(recorder_x, dtype=np.float64).ravel()
+    x_m = (cols + 0.5) * config.DX
+    n_rec = vs_c.size
+    n_f = f.size
+    f_star = (f[None, :] * float(H) / vs_c[:, None]).astype(np.float32)
+    lam = vs_c[:, None] / np.maximum(f[None, :], _EPS)
+    x_over_lambda = (x_m[:, None] / np.maximum(lam, _EPS)).astype(np.float32)
+    x_over_L = np.broadcast_to(
+        (x_m / float(config.LX_VARIABILITY)).astype(np.float32)[:, None],
+        (n_rec, n_f),
+    )
+    sin_b = np.broadcast_to(np.asarray(sin_f, dtype=np.float32)[None, :], (n_rec, n_f))
+    cos_b = np.broadcast_to(np.asarray(cos_f, dtype=np.float32)[None, :], (n_rec, n_f))
+    feat_map = {
+        "f_star": f_star,
+        "sin_f": sin_b,
+        "cos_f": cos_b,
+        "x_over_L": x_over_L,
+        "x_over_lambda": x_over_lambda,
+    }
+    stacked = np.stack([feat_map[name] for name in trunk_names], axis=-1)
+    return stacked.reshape(n_rec * n_f, -1).astype(np.float32)
+
+
 class ResidualDeepONetDataset(Dataset):
-    """One item = one realization; queries all recorders × freq_screen."""
+    """One item = one realization; queries all recorders × selected freqs."""
 
     def __init__(
         self,
@@ -116,24 +159,54 @@ class ResidualDeepONetDataset(Dataset):
         *,
         target: TargetName = "R_col",
         trunk_set: TrunkSet = "full",
-        n_freq_train: int = config.N_FREQ_TRAIN,
+        n_freq: int = config.N_FREQ_TRAIN,
+        n_freq_train: int | None = None,
+        serial_tf1d: bool = False,
     ):
+        if n_freq_train is not None:
+            n_freq = n_freq_train
         self.cache_dir = Path(cache_dir)
         self.indices = np.asarray(indices, dtype=int)
         self.target = target
         self.trunk_set = trunk_set
+        self.n_freq_requested = int(n_freq)
+        self.serial_tf1d = bool(serial_tf1d)
 
         self.meta = dict(np.load(self.cache_dir / "meta.npz", allow_pickle=True))
         key = "r_col_signed.npy" if target == "R_col" else "r_nom_signed.npy"
         self.r = np.load(self.cache_dir / key, mmap_mode="r")
         tf_key = "tf1d_col.npy" if target == "R_col" else "tf1d_nom.npy"
         self.tf1d = np.load(self.cache_dir / tf_key, mmap_mode="r")
-        self.tf_all = np.load(config.TF_PER_SAMPLE_PATH, mmap_mode="r")
+        tf2d_path = self.cache_dir / "tf2d.npy"
+        self.tf2d_local = (
+            np.load(tf2d_path, mmap_mode="r") if tf2d_path.is_file() else None
+        )
+        self.tf_all = None
+        if self.tf2d_local is None:
+            self.tf_all = np.load(config.TF_PER_SAMPLE_PATH, mmap_mode="r")
         self.sample_indices = np.load(self.cache_dir / "sample_indices.npy")
+        fields_path = self.cache_dir / "fields.npy"
+        vs_col_path = self.cache_dir / "vs_col.npy"
+        self._fields_all = (
+            np.load(fields_path, mmap_mode="r") if fields_path.is_file() else None
+        )
+        self._vs_col_all = (
+            np.load(vs_col_path, mmap_mode="r") if vs_col_path.is_file() else None
+        )
 
-        self.freq = np.load(config.TF_FREQ_PATH)
-        self.recorder_x = np.load(config.RECORDER_X_IDX_PATH)
-        self.f_idx = freq_screen_indices(self.freq, n_freq_train)
+        self.freq = np.load(
+            self.cache_dir / "freq.npy"
+            if (self.cache_dir / "freq.npy").is_file()
+            else config.TF_FREQ_PATH
+        )
+        rec_path = self.cache_dir / "recorder_x.npy"
+        if rec_path.is_file():
+            self.recorder_x = np.load(rec_path)
+        elif config.RECORDER_X_IDX_PATH.is_file():
+            self.recorder_x = np.load(config.RECORDER_X_IDX_PATH)
+        else:
+            self.recorder_x = np.arange(self.r.shape[1])
+        self.f_idx = freq_screen_indices(self.freq, n_freq)
         self.freq_s = self.freq[self.f_idx]
         self.sin_f, self.cos_f = fourier_freq_features(
             self.freq_s,
@@ -145,11 +218,12 @@ class ResidualDeepONetDataset(Dataset):
         self.trunk_names = trunk_feature_names(trunk_set)
         self.stoch_dim = stoch_dim()
         # Preload tensors for this split (n=100 ablation is H5-bound otherwise).
-        self._cache: list[Dict[str, torch.Tensor]] = []
+        self._cache: list[dict[str, torch.Tensor]] = []
         for j, local_i in enumerate(self.indices):
             if (j + 1) % 25 == 0 or j == 0:
                 print(
-                    f"[dataset {target}/{trunk_set}] preload {j + 1}/{len(self.indices)}",
+                    f"[dataset {target}/{trunk_set}/nf={len(self.f_idx)}] "
+                    f"preload {j + 1}/{len(self.indices)}",
                     flush=True,
                 )
             item = self._load_item(int(local_i))
@@ -183,66 +257,62 @@ class ResidualDeepONetDataset(Dataset):
             [xi_vals, np.array([rH, aHV, CoV, xi_damp], dtype=np.float32)]
         ).astype(np.float32)
 
-    def _load_item(self, local_i: int) -> Dict[str, np.ndarray]:
+    def _load_item(self, local_i: int) -> dict[str, np.ndarray]:
         h5_path = Path(str(self.meta["h5_path"][local_i]))
         nz = int(self.meta["nz"][local_i])
         H = float(self.meta["H"][local_i])
         soil_nz = int(self.meta["soil_nz"][local_i])
-        with h5py.File(h5_path, "r") as f:
-            vs = np.asarray(f["Vs_realization_2D"][:], dtype=np.float64)
-            zeta = np.asarray(f["Damping_zeta"][:], dtype=np.float64)
-        vs = vs[:, config.X_SLICE_START : config.X_SLICE_END]
-        zeta = zeta[:, config.X_SLICE_START : config.X_SLICE_END]
-
-        vs_pad = pad_depth(vs, config.NZ_MAX)
-        zeta_pad = pad_depth(zeta, config.NZ_MAX)
-        vs_n = normalize_vs_surface(vs_pad)
-        zeta_n = normalize_zeta_max(zeta_pad, nz)
-        z_imp = (config.RHO * vs_pad).astype(np.float32)
-        z_imp = z_imp / max(float(z_imp.max()), _EPS)
-        cols = self.recorder_x.astype(int)
-        fields = np.stack(
-            [vs_n[:, cols], zeta_n[:, cols], z_imp[:, cols]], axis=0
-        ).astype(np.float32)
-
-        n = max(1, min(soil_nz, vs.shape[0]))
-        vs_col = vs[:n, cols].mean(axis=0)
-        x_m = (cols.astype(np.float64) + 0.5) * config.DX
-        x_over_L = (x_m / float(config.LX_VARIABILITY)).astype(np.float32)
+        if self._fields_all is not None and self._vs_col_all is not None:
+            fields = np.asarray(self._fields_all[local_i], dtype=np.float32)
+            vs_col = np.asarray(self._vs_col_all[local_i], dtype=np.float64)
+        else:
+            with h5py.File(h5_path, "r") as f:
+                vs = np.asarray(f["Vs_realization_2D"][:], dtype=np.float64)
+                zeta = np.asarray(f["Damping_zeta"][:], dtype=np.float64)
+            vs = vs[:, config.X_SLICE_START : config.X_SLICE_END]
+            zeta = zeta[:, config.X_SLICE_START : config.X_SLICE_END]
+            vs_pad = pad_depth(vs, config.NZ_MAX)
+            zeta_pad = pad_depth(zeta, config.NZ_MAX)
+            vs_n = normalize_vs_surface(vs_pad)
+            zeta_n = normalize_zeta_max(zeta_pad, nz)
+            z_imp = (config.RHO * vs_pad).astype(np.float32)
+            z_imp = z_imp / max(float(z_imp.max()), _EPS)
+            cols = self.recorder_x.astype(int)
+            fields = np.stack(
+                [vs_n[:, cols], zeta_n[:, cols], z_imp[:, cols]], axis=0
+            ).astype(np.float32)
+            n = max(1, min(soil_nz, vs.shape[0]))
+            vs_col = vs[:n, cols].mean(axis=0)
 
         r = np.asarray(self.r[local_i][:, self.f_idx], dtype=np.float32)
         tf1d = np.asarray(self.tf1d[local_i][:, self.f_idx], dtype=np.float32)
-        sidx = int(self.sample_indices[local_i])
-        tf2d = np.asarray(self.tf_all[sidx][:, self.f_idx], dtype=np.float32)
-
-        rows: list[np.ndarray] = []
-        for ri in range(self.n_rec):
-            vs_c = float(max(vs_col[ri], _EPS))
-            for j, f in enumerate(self.freq_s):
-                f = float(f)
-                lam = vs_c / max(f, _EPS)
-                feat = {
-                    "f_star": f * H / vs_c,
-                    "sin_f": float(self.sin_f[j]),
-                    "cos_f": float(self.cos_f[j]),
-                    "x_over_L": float(x_over_L[ri]),
-                    "x_over_lambda": float(x_m[ri] / max(lam, _EPS)),
-                }
-                rows.append(
-                    np.array(
-                        [feat[name] for name in self.trunk_names], dtype=np.float32
-                    )
-                )
+        if self.tf2d_local is not None:
+            tf2d = np.asarray(self.tf2d_local[local_i][:, self.f_idx], dtype=np.float32)
+        else:
+            sidx = int(self.sample_indices[local_i])
+            assert self.tf_all is not None
+            tf2d = np.asarray(self.tf_all[sidx][:, self.f_idx], dtype=np.float32)
+        trunk_y = build_trunk_queries(
+            vs_col=vs_col,
+            H=H,
+            recorder_x=self.recorder_x,
+            freq_s=self.freq_s,
+            sin_f=self.sin_f,
+            cos_f=self.cos_f,
+            trunk_names=self.trunk_names,
+        )
+        if self.serial_tf1d:
+            trunk_y = append_serial_tf1d(trunk_y, tf1d)
         return {
             "fields": fields,
             "stoch": self._stoch(local_i),
-            "trunk_y": np.stack(rows, axis=0),
+            "trunk_y": trunk_y,
             "target": r.reshape(-1),
             "tf1d": tf1d.reshape(-1),
             "tf2d": tf2d.reshape(-1),
         }
 
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         return self._cache[idx]
 
 
@@ -253,10 +323,11 @@ def make_loaders(
     target: TargetName,
     trunk_set: TrunkSet = "full",
     batch_size: int = config.BATCH_SIZE,
-) -> Tuple[DataLoader, DataLoader, DataLoader]:
+    n_freq: int = config.N_FREQ_TRAIN,
+) -> tuple[DataLoader, DataLoader, DataLoader]:
     def _loader(idxs: np.ndarray, shuffle: bool) -> DataLoader:
         ds = ResidualDeepONetDataset(
-            cache_dir, idxs, target=target, trunk_set=trunk_set
+            cache_dir, idxs, target=target, trunk_set=trunk_set, n_freq=n_freq
         )
         return DataLoader(
             ds,
@@ -271,3 +342,25 @@ def make_loaders(
         _loader(splits.val, False),
         _loader(splits.test, False),
     )
+
+
+class CombinedResidualDataset(Dataset):
+    """Concat of preloaded ResidualDeepONetDataset caches (for multi-domain train)."""
+
+    def __init__(self, datasets: Sequence[ResidualDeepONetDataset]):
+        if not datasets:
+            raise ValueError("need at least one dataset")
+        self._parts = list(datasets)
+        self._cache: list[dict[str, torch.Tensor]] = []
+        for ds in self._parts:
+            self._cache.extend(ds._cache)
+        self.n_rec = self._parts[0].n_rec
+        self.f_idx = self._parts[0].f_idx
+        self.trunk_names = self._parts[0].trunk_names
+        self.serial_tf1d = self._parts[0].serial_tf1d
+
+    def __len__(self) -> int:
+        return len(self._cache)
+
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
+        return self._cache[idx]

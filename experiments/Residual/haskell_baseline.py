@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 import numpy as np
 
@@ -12,7 +12,11 @@ _SEISKIT_ROOT = Path.home() / "seiskit"
 if _SEISKIT_ROOT.is_dir() and str(_SEISKIT_ROOT) not in sys.path:
     sys.path.insert(0, str(_SEISKIT_ROOT))
 
-from seiskit.theory import Layer, RockHalfspace  # noqa: E402
+try:
+    from seiskit.theory import Layer, RockHalfspace
+except ImportError:  # AF helpers below do not need seiskit types
+    Layer = None  # type: ignore[misc, assignment]
+    RockHalfspace = None  # type: ignore[misc, assignment]
 
 _EPS = 1e-12
 DEFAULT_RHO = 2000.0
@@ -26,8 +30,10 @@ def column_to_layers(
     vs_rock: float,
     soil_nz: int | None = None,
     rho: float = DEFAULT_RHO,
-) -> tuple[list[Layer], RockHalfspace]:
+) -> tuple[list, object]:
     """Discretize a vertical Vs/zeta column into soil layers + rock halfspace."""
+    if Layer is None or RockHalfspace is None:
+        raise ImportError("seiskit is required for column_to_layers")
     vs_col = np.asarray(vs_col, dtype=float).ravel()
     zeta_col = np.asarray(zeta_col, dtype=float).ravel()
     if vs_col.shape != zeta_col.shape:
@@ -125,6 +131,30 @@ def haskell_af_within(
     )
 
 
+def haskell_nominal_layered_af_within(
+    freq: np.ndarray,
+    *,
+    H: Sequence[float] | np.ndarray,
+    Vs: Sequence[float] | np.ndarray,
+    vs_rock: float,
+    xi: float | Sequence[float] | np.ndarray = 0.05,
+    rho: float = DEFAULT_RHO,
+) -> np.ndarray:
+    """Layered nominal H_1D (no lateral variability). ``H``/``Vs`` are soil layers."""
+    H = np.asarray(H, dtype=np.float64).ravel()
+    Vs = np.asarray(Vs, dtype=np.float64).ravel()
+    if H.size != Vs.size:
+        raise ValueError("H and Vs must have the same number of soil layers")
+    xi_arr = np.asarray(xi, dtype=np.float64).ravel()
+    if xi_arr.size == 1:
+        xi_arr = np.full(H.size, float(xi_arr[0]))
+    if xi_arr.size != H.size:
+        raise ValueError("xi must be a scalar or match the number of soil layers")
+    return _af_within_vectorized(
+        freq, H, Vs, xi_arr, vs_rock=float(vs_rock), rho=float(rho)
+    )
+
+
 def haskell_nominal_af_within(
     freq: np.ndarray,
     *,
@@ -135,13 +165,8 @@ def haskell_nominal_af_within(
     rho: float = DEFAULT_RHO,
 ) -> np.ndarray:
     """Single-layer nominal H_1D(Vs1, H, Vs2) — no spatial variability."""
-    return _af_within_vectorized(
-        freq,
-        np.array([float(H)]),
-        np.array([float(vs1)]),
-        np.array([float(xi)]),
-        vs_rock=float(vs2),
-        rho=float(rho),
+    return haskell_nominal_layered_af_within(
+        freq, H=[float(H)], Vs=[float(vs1)], vs_rock=float(vs2), xi=xi, rho=rho
     )
 
 
