@@ -39,8 +39,10 @@ wandb/
 !experiments/GIFNO-FDO-XT-HFS/sweep_variants_hfs.tsv
 !experiments/GIFNO-FDO-XT-BOOST/sweep_variants_boost.tsv
 !experiments/GIFNO-FDO-XT-LOGLO-POD/sweep_variants_loglo_pod.tsv
+!experiments/DeepONet-Residual/results/response_variability/**/*.csv
 experiments/GIFNO-FDO-XT/analysis/
 *.json
+!experiments/DeepONet-Residual/results/response_variability/**/*.json
 *.parquet
 *.pkl
 # Ignore all files inside the data folder...

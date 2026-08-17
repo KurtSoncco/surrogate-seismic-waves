@@ -1,0 +1,39 @@
+{
+  "n_test": 150,
+  "GINO": {
+    "rel_l2_central_mean": 0.2980100084851146,
+    "rel_l2_central_median": 0.28174512372471106,
+    "rel_l2_spatial_mean": 0.3155889631780456,
+    "pearson_central_mean": 0.9148470470232456,
+    "gof_af_mean": 0.12891104540553683,
+    "delta_f_peak_median": -0.0006369352340698242,
+    "delta_ln_A_peak_median": -0.03794647597327995,
+    "rel_l2_low_mean": 0.11293150026025292,
+    "rel_l2_mid_mean": 0.27321460221752525,
+    "rel_l2_high_mean": 0.4067690114403783
+  },
+  "1D Base Case": {
+    "rel_l2_central_mean": 0.5011586228362158,
+    "rel_l2_central_median": 0.5195104086043524,
+    "rel_l2_spatial_mean": 0.5177434341314087,
+    "pearson_central_mean": 0.7464957276114912,
+    "gof_af_mean": 0.1843503181440662,
+    "delta_f_peak_median": 0.04975727200508118,
+    "delta_ln_A_peak_median": -0.08578240343875537,
+    "rel_l2_low_mean": 0.10889790451189058,
+    "rel_l2_mid_mean": 0.4841794110536935,
+    "rel_l2_high_mean": 0.5754796844943066
+  },
+  "Pretell's approach": {
+    "rel_l2_central_mean": 0.42879741015852024,
+    "rel_l2_central_median": 0.3929345499348247,
+    "rel_l2_spatial_mean": 0.4410312765757698,
+    "pearson_central_mean": 0.8376529065724057,
+    "gof_af_mean": 0.12084353095955673,
+    "delta_f_peak_median": 0.0,
+    "delta_ln_A_peak_median": 0.14569075663662662,
+    "rel_l2_low_mean": 0.08503710144445725,
+    "rel_l2_mid_mean": 0.42482542671576123,
+    "rel_l2_high_mean": 0.44447663411216665
+  }
+}
