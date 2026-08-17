@@ -251,7 +251,9 @@ def _peak_band_mask(freq_s: np.ndarray, n_rec: int) -> torch.Tensor | None:
     return torch.from_numpy(np.ascontiguousarray(mask))
 
 
-def _batch_rel_l2(pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
+def _batch_rel_l2(
+    pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor | None
+) -> torch.Tensor:
     if mask is not None:
         m = mask.to(pred.device)
         pred = pred[:, m]
@@ -261,7 +263,9 @@ def _batch_rel_l2(pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor |
     return (diff / den).mean()
 
 
-def _flatten_domain_metrics(per_domain: dict[str, dict[str, float]], prefix: str = "test") -> dict[str, float]:
+def _flatten_domain_metrics(
+    per_domain: dict[str, dict[str, float]], prefix: str = "test"
+) -> dict[str, float]:
     out: dict[str, float] = {}
     for dname, mets in per_domain.items():
         for key, val in mets.items():
@@ -703,7 +707,9 @@ def train_one(
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--cache-tag", default="n1000_seed42")
-    p.add_argument("--target", choices=["R_col", "R_nom"], default=config.DEFAULT_TARGET)
+    p.add_argument(
+        "--target", choices=["R_col", "R_nom"], default=config.DEFAULT_TARGET
+    )
     p.add_argument(
         "--branch-mode",
         choices=["single", "multi", "stoch_only", "fields_only"],

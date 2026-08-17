@@ -101,9 +101,9 @@ def _fields_vs_col(
     z_imp = z_imp / max(float(z_imp.max()), 1e-12)
     cols = recorder_x.astype(int)
     cols = np.clip(cols, 0, vs_c.shape[1] - 1)
-    fields = np.stack(
-        [vs_n[:, cols], zeta_n[:, cols], z_imp[:, cols]], axis=0
-    ).astype(np.float32)
+    fields = np.stack([vs_n[:, cols], zeta_n[:, cols], z_imp[:, cols]], axis=0).astype(
+        np.float32
+    )
     n = max(1, min(int(soil_nz), vs_c.shape[0]))
     vs_col = vs_c[:n, cols].mean(axis=0).astype(np.float32)
     return fields, vs_col
@@ -213,9 +213,7 @@ def build_ood_signed_cache(name: str, *, force: bool = False) -> Path:
         r_col[i] = tf - col
         r_nom[i] = tf - nom_g
         r_nom1[i] = tf - nom1
-        fld, vc = _fields_vs_col(
-            vs, zeta, rec_i, int(vs_c.shape[0]), soil_nz
-        )
+        fld, vc = _fields_vs_col(vs, zeta, rec_i, int(vs_c.shape[0]), soil_nz)
         fields[i], vs_col[i] = fld, vc
         sm = _stoch_meta(params, int(vs_c.shape[0]))
         metas.append(

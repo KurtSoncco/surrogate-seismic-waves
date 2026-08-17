@@ -29,7 +29,9 @@ def _set_local_ood_env() -> None:
         os.environ.setdefault("GIFNO_OOD_THREE_LAYER", str(local / "ood_three_layer"))
 
 
-def _ds(cache: Path, idx: np.ndarray, *, n_freq: int, serial: bool) -> ResidualDeepONetDataset:
+def _ds(
+    cache: Path, idx: np.ndarray, *, n_freq: int, serial: bool
+) -> ResidualDeepONetDataset:
     return ResidualDeepONetDataset(
         cache,
         idx,
@@ -240,13 +242,21 @@ def dump_m700_baseline() -> dict[str, Any]:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--mix", choices=["M700", "M1400", "M2100", "M7680"], default="M1400")
+    p.add_argument(
+        "--mix", choices=["M700", "M1400", "M2100", "M7680"], default="M1400"
+    )
     p.add_argument("--run-name", type=str, default=None)
-    p.add_argument("--encoder", choices=["conv", "resunet", "gno", "attn", "gat"], default="resunet")
+    p.add_argument(
+        "--encoder",
+        choices=["conv", "resunet", "gno", "attn", "gat"],
+        default="resunet",
+    )
     p.add_argument("--serial", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--fno", action="store_true")
     p.add_argument("--fno-width", type=int, default=config.FNO_WIDTH)
-    p.add_argument("--fno-modes", type=str, default=",".join(str(x) for x in config.FNO_N_MODES))
+    p.add_argument(
+        "--fno-modes", type=str, default=",".join(str(x) for x in config.FNO_N_MODES)
+    )
     p.add_argument("--fno-layers", type=int, default=config.FNO_N_LAYERS)
     p.add_argument(
         "--fno-kind",

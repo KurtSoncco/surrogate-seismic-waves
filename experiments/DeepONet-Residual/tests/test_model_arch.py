@@ -70,7 +70,11 @@ def test_ufno_forward():
         n_gno_layers=2,
         fno_kind="ufno",
     )
-    out = model(torch.randn(2, 3, 32, n_rec), torch.randn(2, 20), torch.randn(2, n_rec * n_freq, trunk_dim))
+    out = model(
+        torch.randn(2, 3, 32, n_rec),
+        torch.randn(2, 20),
+        torch.randn(2, n_rec * n_freq, trunk_dim),
+    )
     assert out.shape == (2, n_rec * n_freq)
     out.sum().backward()
 
@@ -96,7 +100,11 @@ def test_ffno_forward():
         n_gno_layers=2,
         fno_kind="ffno",
     )
-    out = model(torch.randn(2, 3, 32, n_rec), torch.randn(2, 20), torch.randn(2, n_rec * n_freq, trunk_dim))
+    out = model(
+        torch.randn(2, 3, 32, n_rec),
+        torch.randn(2, 20),
+        torch.randn(2, n_rec * n_freq, trunk_dim),
+    )
     assert out.shape == (2, n_rec * n_freq)
     out.sum().backward()
 

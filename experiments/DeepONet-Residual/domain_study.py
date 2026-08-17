@@ -20,13 +20,19 @@ from ood_signed_cache import (
     cache_dir_for,
     materialize_n1000_from_n2000,
 )
-from train import apply_norms, evaluate, train_from_datasets, _r2, _rel_l2, _pearson_across_freq
+from train import (
+    apply_norms,
+    evaluate,
+    train_from_datasets,
+    _r2,
+    _rel_l2,
+    _pearson_across_freq,
+)
 
 RESULTS = config.RESULTS_DIR / "domain_study"
 IID_CACHE = config.CACHE_DIR / "n1000_seed42"
 E2_CKPT = (
-    config.CHECKPOINT_DIR
-    / "single_resunet_full_R_nom_n2000_seed42_nf200_seed42.pt"
+    config.CHECKPOINT_DIR / "single_resunet_full_R_nom_n2000_seed42_nf200_seed42.pt"
 )
 
 
@@ -102,7 +108,11 @@ def _eval_frozen_rhat(splits: dict[str, Path]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     specs = [
         ("iid", IID_CACHE, load_split(splits["iid"])["test"]),
-        ("ood_dipping", cache_dir_for("ood_dipping"), load_split(splits["ood_dipping"])["test"]),
+        (
+            "ood_dipping",
+            cache_dir_for("ood_dipping"),
+            load_split(splits["ood_dipping"])["test"],
+        ),
         (
             "ood_three_layer",
             cache_dir_for("ood_three_layer"),
@@ -202,8 +212,10 @@ def run_protocols(splits: dict[str, Path]) -> dict[str, Any]:
     iid = load_split(splits["iid"])
     dip = load_split(splits["ood_dipping"])
     tl = load_split(splits["ood_three_layer"])
-    iid_c, dip_c, tl_c = IID_CACHE, cache_dir_for("ood_dipping"), cache_dir_for(
-        "ood_three_layer"
+    iid_c, dip_c, tl_c = (
+        IID_CACHE,
+        cache_dir_for("ood_dipping"),
+        cache_dir_for("ood_three_layer"),
     )
     tests = {
         "iid": (iid_c, iid["test"]),
@@ -290,8 +302,10 @@ def run_arch(splits: dict[str, Path], protocol_key: str) -> dict[str, Any]:
     iid = load_split(splits["iid"])
     dip = load_split(splits["ood_dipping"])
     tl = load_split(splits["ood_three_layer"])
-    iid_c, dip_c, tl_c = IID_CACHE, cache_dir_for("ood_dipping"), cache_dir_for(
-        "ood_three_layer"
+    iid_c, dip_c, tl_c = (
+        IID_CACHE,
+        cache_dir_for("ood_dipping"),
+        cache_dir_for("ood_three_layer"),
     )
     tests = {
         "iid": (iid_c, iid["test"]),
@@ -353,7 +367,12 @@ def run_arch(splits: dict[str, Path], protocol_key: str) -> dict[str, Any]:
                 encoder=encoder,
                 branch_mode=branch,
                 serial=serial,
-                **{**kw, "lr": 1e-4, "patience": 30, "init_ckpt": Path(stage1["checkpoint"])},
+                **{
+                    **kw,
+                    "lr": 1e-4,
+                    "patience": 30,
+                    "init_ckpt": Path(stage1["checkpoint"]),
+                },
             )
             out[tag]["stage1"] = {
                 "checkpoint": stage1.get("checkpoint"),

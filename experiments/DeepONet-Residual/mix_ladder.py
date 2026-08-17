@@ -38,7 +38,9 @@ def extra_local_indices(
     """Local indices into ``child_global`` for samples not in ``parent_global``."""
     parent = {int(x) for x in np.asarray(parent_global).ravel()}
     extra_local = [
-        i for i, g in enumerate(np.asarray(child_global).ravel()) if int(g) not in parent
+        i
+        for i, g in enumerate(np.asarray(child_global).ravel())
+        if int(g) not in parent
     ]
     if n_extra > len(extra_local):
         raise ValueError(
@@ -95,8 +97,12 @@ def mix_train_parts(
                 parts.append(("iid_extra", n3000_cache, extra))
     dip = load_split(config.CACHE_DIR / "splits" / f"ood_dipping_seed{seed}.npz")
     tl = load_split(config.CACHE_DIR / "splits" / f"ood_three_layer_seed{seed}.npz")
-    parts.append(("ood_dipping", cache_dir_for("ood_dipping"), np.asarray(dip["train"])))
-    parts.append(("ood_three_layer", cache_dir_for("ood_three_layer"), np.asarray(tl["train"])))
+    parts.append(
+        ("ood_dipping", cache_dir_for("ood_dipping"), np.asarray(dip["train"]))
+    )
+    parts.append(
+        ("ood_three_layer", cache_dir_for("ood_three_layer"), np.asarray(tl["train"]))
+    )
     return parts
 
 

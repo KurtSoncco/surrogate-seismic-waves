@@ -261,7 +261,9 @@ def build_signed_cache(
         sample_indices = sample_indices[: int(max_samples)]
     np.save(paths["idx"], np.asarray(sample_indices, dtype=int))
     if indices_only:
-        print(f"Wrote indices only → {paths['idx']}  n={len(sample_indices)}", flush=True)
+        print(
+            f"Wrote indices only → {paths['idx']}  n={len(sample_indices)}", flush=True
+        )
         return out_dir
 
     core = ("r_col", "r_nom", "tf1d_col", "tf1d_nom", "meta", "idx")

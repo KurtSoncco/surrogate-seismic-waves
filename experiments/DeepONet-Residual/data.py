@@ -351,7 +351,11 @@ class CombinedResidualDataset(Dataset):
         if not datasets:
             raise ValueError("need at least one dataset")
         self._parts = list(datasets)
-        names = list(domain_names) if domain_names is not None else ["unk"] * len(self._parts)
+        names = (
+            list(domain_names)
+            if domain_names is not None
+            else ["unk"] * len(self._parts)
+        )
         if len(names) != len(self._parts):
             raise ValueError("domain_names must match datasets")
         self._cache: list[dict[str, torch.Tensor]] = []

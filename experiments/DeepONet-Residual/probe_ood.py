@@ -58,7 +58,9 @@ def main() -> int:
         if sample:
             print(f"sample={sample['path']}")
             print(f"  Vs_realization_2D={sample['Vs_realization_2D']}")
-            print(f"  accel_n_channels={sample['accel_n_channels']}  shape={sample['accel_shape']}")
+            print(
+                f"  accel_n_channels={sample['accel_n_channels']}  shape={sample['accel_shape']}"
+            )
             print(f"  param_keys={sample['param_keys']}")
             print(f"  soil_nz={sample['soil_nz']}")
             print(f"  nominal={sample['nominal']}")

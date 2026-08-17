@@ -454,7 +454,9 @@ class RecorderGNODeepONet(nn.Module):
         super().__init__()
         self.latent_dim = latent_dim
         self.field_encoder_kind = (
-            "attn" if node_mixer == "attn" else ("gat" if node_mixer == "gat" else "gno")
+            "attn"
+            if node_mixer == "attn"
+            else ("gat" if node_mixer == "gat" else "gno")
         )
         self.col_enc = _ColumnEncoder(field_channels, field_hidden, latent_dim)
         if node_mixer == "attn":
@@ -712,8 +714,14 @@ def build_model(
 ) -> nn.Module:
     if field_encoder in ("gno", "attn", "gat"):
         if mode != "single":
-            raise ValueError("GNO/attn/gat encoder is only implemented for single-branch DeepONet")
-        mixer = "attn" if field_encoder == "attn" else ("gat" if field_encoder == "gat" else "gno")
+            raise ValueError(
+                "GNO/attn/gat encoder is only implemented for single-branch DeepONet"
+            )
+        mixer = (
+            "attn"
+            if field_encoder == "attn"
+            else ("gat" if field_encoder == "gat" else "gno")
+        )
         net: nn.Module = RecorderGNODeepONet(
             field_channels=field_channels,
             stoch_dim=stoch_dim,

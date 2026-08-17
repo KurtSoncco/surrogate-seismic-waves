@@ -42,7 +42,9 @@ from ood_io import (  # noqa: E402
 _EPS = 1e-12
 
 
-def _metrics(y: np.ndarray, p: np.ndarray, *, n_rec: int, n_freq: int) -> dict[str, float]:
+def _metrics(
+    y: np.ndarray, p: np.ndarray, *, n_rec: int, n_freq: int
+) -> dict[str, float]:
     y = np.asarray(y, dtype=np.float64).ravel()
     p = np.asarray(p, dtype=np.float64).ravel()
     return {
@@ -155,9 +157,9 @@ def _ood_fields(
     z_imp = (config.RHO * vs_pad).astype(np.float32)
     z_imp = z_imp / max(float(z_imp.max()), _EPS)
     cols = recorder_x.astype(int)
-    fields = np.stack(
-        [vs_n[:, cols], zeta_n[:, cols], z_imp[:, cols]], axis=0
-    ).astype(np.float32)
+    fields = np.stack([vs_n[:, cols], zeta_n[:, cols], z_imp[:, cols]], axis=0).astype(
+        np.float32
+    )
     n = max(1, min(int(soil_nz), vs_c.shape[0]))
     vs_col = vs_c[:n, cols].mean(axis=0).astype(np.float32)
     return fields, vs_col
@@ -359,7 +361,9 @@ def eval_one_h5(
             freq=np.asarray(freq, dtype=np.float64),
             recorder_x=rec,
             device=device,
-            tf1d=tf1d_nom3 if (blob.get("serial_tf1d") and tf1d_nom3 is not None) else tf1d_nom,
+            tf1d=tf1d_nom3
+            if (blob.get("serial_tf1d") and tf1d_nom3 is not None)
+            else tf1d_nom,
         )
         r_hat = clamp_residual(r_hat, clamp_mode)
         prior = (
@@ -393,7 +397,9 @@ def _select_split(name: str, h5s: list[Path], split: str | None) -> list[Path]:
 
     path = SPLIT_DIR / f"{name}_seed{config.SEED}.npz"
     if not path.is_file():
-        raise FileNotFoundError(f"missing split file {path}; run domain_splits.ensure_splits()")
+        raise FileNotFoundError(
+            f"missing split file {path}; run domain_splits.ensure_splits()"
+        )
     blob = load_split(path)
     if split not in blob:
         raise KeyError(f"split {split!r} not in {path}")
@@ -441,11 +447,19 @@ def eval_corpus(
             )
         )
     nom_rows = [
-        {k.replace("haskell_nom_", ""): v for k, v in r.items() if k.startswith("haskell_nom_")}
+        {
+            k.replace("haskell_nom_", ""): v
+            for k, v in r.items()
+            if k.startswith("haskell_nom_")
+        }
         for r in rows
     ]
     col_rows = [
-        {k.replace("haskell_col_", ""): v for k, v in r.items() if k.startswith("haskell_col_")}
+        {
+            k.replace("haskell_col_", ""): v
+            for k, v in r.items()
+            if k.startswith("haskell_col_")
+        }
         for r in rows
     ]
     summary: dict[str, Any] = {
@@ -506,8 +520,12 @@ def eval_corpus(
         summary["frac_nom3R_beats_col_rel_l2"] = float(
             np.mean([r["delta_rel_l2_nom3R_vs_col"] > 0 for r in rows])
         )
-    summary["mean_abs_R_nom"] = float(np.mean([r["mean_abs_R_nom"] for r in rows])) if rows else None
-    summary["mean_abs_R_col"] = float(np.mean([r["mean_abs_R_col"] for r in rows])) if rows else None
+    summary["mean_abs_R_nom"] = (
+        float(np.mean([r["mean_abs_R_nom"] for r in rows])) if rows else None
+    )
+    summary["mean_abs_R_col"] = (
+        float(np.mean([r["mean_abs_R_col"] for r in rows])) if rows else None
+    )
     return {"summary": summary, "per_file": rows}
 
 
@@ -516,7 +534,9 @@ def main() -> None:
     p.add_argument(
         "--checkpoint",
         type=Path,
-        default=config.DEFAULT_CHECKPOINT if config.DEFAULT_CHECKPOINT.is_file() else None,
+        default=config.DEFAULT_CHECKPOINT
+        if config.DEFAULT_CHECKPOINT.is_file()
+        else None,
         help="Residual checkpoint (default: shipped GINO). Pass empty via --haskell-only.",
     )
     p.add_argument(

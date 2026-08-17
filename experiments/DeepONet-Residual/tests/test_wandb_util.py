@@ -13,7 +13,9 @@ def test_run_tags_order():
 
 
 def test_run_tags_skips_empty():
-    assert wandb_util._run_tags({"mix": "M700", "encoder": "", "host": None}) == ["M700"]
+    assert wandb_util._run_tags({"mix": "M700", "encoder": "", "host": None}) == [
+        "M700"
+    ]
 
 
 def test_init_wandb_tags_group_and_epoch_metrics():
@@ -26,7 +28,11 @@ def test_init_wandb_tags_group_and_epoch_metrics():
         "host": "lambda",
         "lr": 1e-3,
     }
-    with patch.dict("os.environ", {"WANDB_PROJECT": "deeponet-nscale", "WANDB_API_KEY": "k"}, clear=False):
+    with patch.dict(
+        "os.environ",
+        {"WANDB_PROJECT": "deeponet-nscale", "WANDB_API_KEY": "k"},
+        clear=False,
+    ):
         with patch.dict("sys.modules", {"wandb": fake}):
             run = wandb_util.init_wandb("M2100_gino_wide_lambda", cfg)
     assert run is fake.init.return_value

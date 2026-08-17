@@ -120,7 +120,9 @@ def recorder_x_indices(root: Path | None = None) -> np.ndarray:
     return np.arange(lo, hi + 1, step, dtype=np.int64)
 
 
-def _attr_float(attrs: dict[str, Any], *keys: str, default: float | None = None) -> float:
+def _attr_float(
+    attrs: dict[str, Any], *keys: str, default: float | None = None
+) -> float:
     for k in keys:
         if k in attrs and attrs[k] is not None:
             try:
@@ -144,7 +146,9 @@ def _attr_int(attrs: dict[str, Any], *keys: str, default: int | None = None) -> 
     raise KeyError(f"none of {keys} in attrs")
 
 
-def read_h5_sample(h5_path: Path) -> tuple[np.ndarray, np.ndarray, dict[str, Any], dict[str, Any]]:
+def read_h5_sample(
+    h5_path: Path,
+) -> tuple[np.ndarray, np.ndarray, dict[str, Any], dict[str, Any]]:
     """Return Vs, zeta, params attrs, extra (grid, accel shape)."""
     extra: dict[str, Any] = {}
     with h5py.File(h5_path, "r") as f:
@@ -206,9 +210,7 @@ def nominal_layer_params(params: dict[str, Any]) -> dict[str, Any]:
         h1 = _attr_float(params, "H1_discretized", "H1", "H1_requested", default=0.0)
         h2 = _attr_float(params, "H2_discretized", "H2", "H2_requested", default=0.0)
         vs2 = _attr_float(params, "Vs_bedrock", "Vs2")
-        vs_mid = (
-            _attr_float(params, "Vs_mid") if "Vs_mid" in params else None
-        )
+        vs_mid = _attr_float(params, "Vs_mid") if "Vs_mid" in params else None
         out = {
             "vs1": vs1,
             "H": float(h1 + h2),
@@ -348,10 +350,16 @@ def _ttf_batch_local(
     fas_s = np.abs(rfft(np.asarray(surf_2d, dtype=np.float64), axis=1)) * scale
     fas_b = np.abs(rfft(np.asarray(base_2d, dtype=np.float64), axis=1)) * scale
     fas_s_i = np.vstack(
-        [np.interp(freq_out, freq_fft, fas_s[i], left=0.0, right=0.0) for i in range(n_lat)]
+        [
+            np.interp(freq_out, freq_fft, fas_s[i], left=0.0, right=0.0)
+            for i in range(n_lat)
+        ]
     )
     fas_b_i = np.vstack(
-        [np.interp(freq_out, freq_fft, fas_b[i], left=0.0, right=0.0) for i in range(n_lat)]
+        [
+            np.interp(freq_out, freq_fft, fas_b[i], left=0.0, right=0.0)
+            for i in range(n_lat)
+        ]
     )
     if _KO_WEIGHTS is None or _KO_WEIGHTS[0].shape != freq_out.shape:
         _KO_WEIGHTS = (freq_out, _kohmachi_weights(freq_out, config.SMOOTH_COEFF))
@@ -497,7 +505,9 @@ def probe_corpus(root: Path) -> dict[str, Any]:
             "Damping_zeta": tuple(int(x) for x in zeta.shape),
             "params": {k: _jsonable(v) for k, v in params.items()},
             "param_keys": extra["param_keys"],
-            "grid_attrs": {k: _jsonable(v) for k, v in extra.get("grid_attrs", {}).items()},
+            "grid_attrs": {
+                k: _jsonable(v) for k, v in extra.get("grid_attrs", {}).items()
+            },
             "accel_n_channels": extra.get("accel_n_channels"),
             "accel_shape": extra.get("accel_shape"),
             "nominal": nom,

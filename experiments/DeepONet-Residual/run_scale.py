@@ -13,11 +13,15 @@ from train import train_one
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--cache-tag", default="n2000_seed42")
-    p.add_argument("--encoder", choices=["conv", "resunet"], default=config.DEFAULT_FIELD_ENCODER)
+    p.add_argument(
+        "--encoder", choices=["conv", "resunet"], default=config.DEFAULT_FIELD_ENCODER
+    )
     p.add_argument("--n-freq-train", type=int, default=config.N_FREQ_TRAIN)
     p.add_argument("--n-freq-eval", type=int, default=config.N_FREQ_EVAL)
     p.add_argument("--seed", type=int, default=config.SEED)
-    p.add_argument("--target", choices=["R_col", "R_nom"], default=config.DEFAULT_TARGET)
+    p.add_argument(
+        "--target", choices=["R_col", "R_nom"], default=config.DEFAULT_TARGET
+    )
     p.add_argument("--epochs", type=int, default=config.EPOCHS)
     p.add_argument("--patience", type=int, default=config.PATIENCE)
     p.add_argument("--batch-size", type=int, default=config.BATCH_SIZE)
