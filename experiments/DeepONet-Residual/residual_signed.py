@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from tqdm import tqdm
 
 try:
     import hdf5plugin  # noqa: F401
@@ -118,11 +119,11 @@ def sample_indices_from_residual(cache_tag: str) -> np.ndarray:
 
 
 def _nested_parent_tag(cache_tag: str) -> str | None:
-    """n2000_seed42 → n1000_seed42; n3000_seed42 → n2000_seed42."""
+    """n2000_seed42 → n1000_seed42; n3000 → n2000; n7680 → n1000 (test-slice parent)."""
     from ood_io import parse_cache_tag
 
     n, seed = parse_cache_tag(cache_tag)
-    parent_n = {2000: 1000, 3000: 2000}.get(n)
+    parent_n = {2000: 1000, 3000: 2000, 7680: 1000}.get(n)
     if parent_n is None:
         return None
     return f"n{parent_n}_seed{seed}"
@@ -283,9 +284,8 @@ def build_signed_cache(
     vs_col = np.empty((n, n_rec), dtype=np.float32)
     metas: list[dict] = []
 
-    for i, sidx in enumerate(sample_indices):
+    for i, sidx in enumerate(tqdm(sample_indices, desc=f"signed {cache_tag}")):
         sidx = int(sidx)
-        print(f"[signed] {i + 1}/{n} sample_idx={sidx}", flush=True)
         rc, rn, tc, tn, meta = compute_signed_for_index(
             sidx,
             manifest[sidx],

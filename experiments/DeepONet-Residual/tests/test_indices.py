@@ -30,6 +30,7 @@ def test_stratified_nested_same_seed():
 def test_nested_parent_tag():
     assert _nested_parent_tag("n2000_seed42") == "n1000_seed42"
     assert _nested_parent_tag("n3000_seed42") == "n2000_seed42"
+    assert _nested_parent_tag("n7680_seed42") == "n1000_seed42"
     assert _nested_parent_tag("n1000_seed42") is None
 
 

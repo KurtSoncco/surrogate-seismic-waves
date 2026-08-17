@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -13,12 +14,15 @@ import numpy as np
 import torch
 from model import BranchMode, FieldEncoderKind, build_model
 from torch import nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
+from tqdm import tqdm, trange
+from wandb_util import finish_wandb, init_wandb, log_wandb, summary_wandb
 
 from data import (
     ResidualDeepONetDataset,
     TargetName,
     TrunkSet,
+    iid_resample_sampler,
     make_splits,
     stoch_dim,
 )
@@ -95,7 +99,7 @@ def evaluate(
     crit = nn.SmoothL1Loss(beta=config.SMOOTH_L1_BETA)
     t_mean = stats["target_mean"].to(device)
     t_std = stats["target_std"].to(device)
-    for batch in loader:
+    for batch in tqdm(loader, desc="eval", leave=False):
         fields = batch["fields"].to(device)
         stoch = batch["stoch"].to(device)
         trunk_y = batch["trunk_y"].to(device)
@@ -217,8 +221,53 @@ def _forward(
     return model(fields, stoch, trunk_y)
 
 
-def _trunk_dim(ds) -> int:
-    return int(ds._cache[0]["trunk_y"].shape[-1])
+def _arch_kwargs(
+    *,
+    residual_fno: bool,
+    n_rec: int,
+    fno_width: int,
+    fno_n_modes: tuple[int, int],
+    fno_n_layers: int,
+    n_gno_layers: int,
+    fno_kind: str = "vanilla",
+) -> dict[str, Any]:
+    return {
+        "residual_fno": bool(residual_fno),
+        "n_rec": int(n_rec),
+        "fno_width": int(fno_width),
+        "fno_n_modes": tuple(fno_n_modes),
+        "fno_n_layers": int(fno_n_layers),
+        "n_gno_layers": int(n_gno_layers),
+        "fno_kind": str(fno_kind),
+    }
+
+
+def _peak_band_mask(freq_s: np.ndarray, n_rec: int) -> torch.Tensor | None:
+    lo, hi = config.PEAK_BAND_HZ
+    band = (np.asarray(freq_s) >= lo) & (np.asarray(freq_s) <= hi)
+    if not np.any(band):
+        return None
+    mask = np.broadcast_to(band[None, :], (n_rec, len(freq_s))).reshape(-1)
+    return torch.from_numpy(np.ascontiguousarray(mask))
+
+
+def _batch_rel_l2(pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
+    if mask is not None:
+        m = mask.to(pred.device)
+        pred = pred[:, m]
+        target = target[:, m]
+    diff = torch.linalg.vector_norm(pred - target, dim=-1)
+    den = torch.linalg.vector_norm(target, dim=-1).clamp_min(1e-12)
+    return (diff / den).mean()
+
+
+def _flatten_domain_metrics(per_domain: dict[str, dict[str, float]], prefix: str = "test") -> dict[str, float]:
+    out: dict[str, float] = {}
+    for dname, mets in per_domain.items():
+        for key, val in mets.items():
+            if isinstance(val, (int, float)):
+                out[f"{prefix}/{dname}/{key}"] = float(val)
+    return out
 
 
 def train_from_datasets(
@@ -241,17 +290,50 @@ def train_from_datasets(
     n_freq_eval: int = config.N_FREQ_EVAL,
     init_ckpt: Path | None = None,
     serial_tf1d: bool = False,
+    use_wandb: bool = True,
+    iid_frac: float | None = None,
+    aux_tf_rel_l2: float = 0.0,
+    aux_peak_band: float = 0.0,
+    residual_fno: bool = False,
+    fno_width: int = config.FNO_WIDTH,
+    fno_n_modes: tuple[int, int] = config.FNO_N_MODES,
+    fno_n_layers: int = config.FNO_N_LAYERS,
+    n_gno_layers: int = config.GNO_N_LAYERS,
+    fno_kind: str = "vanilla",
+    mix_tag: str | None = None,
+    lr_sched_factor: float = config.LR_SCHED_FACTOR,
+    lr_sched_patience: int = config.LR_SCHED_PATIENCE,
+    lr_sched_min: float = config.LR_SCHED_MIN,
+    use_lr_sched: bool = True,
 ) -> dict[str, Any]:
     """Train on already-built datasets; evaluate extra_tests with train-split norms."""
     from torch.utils.data import DataLoader as _DL
 
     device = _device()
     stats = fit_and_apply_norms(train_ds, val_ds, *extra_tests.values())
-    train_loader = _DL(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
+    sampler: WeightedRandomSampler | None = None
+    if iid_frac is not None and hasattr(train_ds, "domain_names_per_item"):
+        sampler = iid_resample_sampler(train_ds, float(iid_frac))
+    train_loader = _DL(
+        train_ds,
+        batch_size=batch_size,
+        shuffle=sampler is None,
+        sampler=sampler,
+        num_workers=0,
+    )
     val_loader = _DL(val_ds, batch_size=batch_size, shuffle=False, num_workers=0)
     n_rec = train_ds.n_rec
     n_freq = len(train_ds.f_idx) if hasattr(train_ds, "f_idx") else n_freq_train
     trunk_dim = _trunk_dim(train_ds)
+    arch_kw = _arch_kwargs(
+        residual_fno=residual_fno,
+        n_rec=n_rec,
+        fno_width=fno_width,
+        fno_n_modes=fno_n_modes,
+        fno_n_layers=fno_n_layers,
+        n_gno_layers=n_gno_layers,
+        fno_kind=fno_kind,
+    )
     model = build_model(
         branch_mode,
         field_channels=config.FIELD_CHANNELS,
@@ -263,6 +345,7 @@ def train_from_datasets(
         trunk_hidden=config.TRUNK_HIDDEN,
         trunk_layers=config.TRUNK_LAYERS,
         field_encoder=field_encoder,
+        **arch_kw,
     ).to(device)
     if init_ckpt is not None:
         blob = torch.load(init_ckpt, map_location="cpu", weights_only=False)
@@ -275,24 +358,85 @@ def train_from_datasets(
         betas=config.ADAMW_BETAS,
         weight_decay=config.WEIGHT_DECAY,
     )
+    sched: torch.optim.lr_scheduler.ReduceLROnPlateau | None = None
+    if use_lr_sched:
+        sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            opt,
+            mode="min",
+            factor=float(lr_sched_factor),
+            patience=int(lr_sched_patience),
+            min_lr=float(lr_sched_min),
+            threshold=1e-8,
+        )
     crit = nn.SmoothL1Loss(beta=config.SMOOTH_L1_BETA)
+    t_mean = stats["target_mean"].to(device)
+    t_std = stats["target_std"].to(device)
+    freq_s = getattr(train_ds, "freq_s", None)
+    peak_mask = (
+        _peak_band_mask(np.asarray(freq_s), n_rec) if freq_s is not None else None
+    )
+    wandb_run = init_wandb(
+        run_name,
+        {
+            "encoder": field_encoder,
+            "serial_tf1d": serial_tf1d,
+            "n_freq_train": n_freq_train,
+            "lr": lr,
+            "batch_size": batch_size,
+            "epochs": epochs,
+            "patience": patience if patience is not None else config.PATIENCE,
+            "lr_sched": bool(use_lr_sched),
+            "lr_sched_factor": float(lr_sched_factor),
+            "lr_sched_patience": int(lr_sched_patience),
+            "lr_sched_min": float(lr_sched_min),
+            "val_monitor": "smooth_l1",
+            "seed": seed,
+            "iid_frac": iid_frac,
+            "aux_tf_rel_l2": aux_tf_rel_l2,
+            "aux_peak_band": aux_peak_band,
+            "residual_fno": residual_fno,
+            "n_train": len(train_ds),
+            "n_val": len(val_ds),
+            "host": os.environ.get("WANDB_HOST", "laptop"),
+            "mix": mix_tag,
+            "n_freq": n_freq_train,
+            **arch_kw,
+        },
+        enabled=use_wandb,
+    )
     best_val = float("inf")
     best_state = None
+    best_epoch = 0
     patience_budget = int(patience if patience is not None else config.PATIENCE)
     patience_left = patience_budget
     history: list[dict] = []
     ckpt_path = config.CHECKPOINT_DIR / f"{run_name}.pt"
     t0 = time.time()
-    for epoch in range(1, epochs + 1):
+    epoch_bar = trange(1, epochs + 1, desc=run_name)
+    for epoch in epoch_bar:
         model.train()
         tr_loss, tr_n = 0.0, 0
-        for batch in train_loader:
+        tr_aux, tr_peak = 0.0, 0.0
+        for batch in tqdm(train_loader, desc="train", leave=False):
             fields = batch["fields"].to(device)
             stoch = batch["stoch"].to(device)
             trunk_y = batch["trunk_y"].to(device)
             target_t = batch["target"].to(device)
             pred = _forward(model, fields, stoch, trunk_y, branch_mode)
             loss = crit(pred, target_t)
+            if aux_tf_rel_l2 > 0 or aux_peak_band > 0:
+                pred_raw = pred * t_std + t_mean
+                tf1d = batch["tf1d"].to(device)
+                tf2d = batch["tf2d"].to(device)
+                tf_hat = tf1d + pred_raw
+                if aux_tf_rel_l2 > 0:
+                    aux = _batch_rel_l2(tf_hat, tf2d, None)
+                    loss = loss + float(aux_tf_rel_l2) * aux
+                    tr_aux += float(aux.item()) * target_t.shape[0]
+                if aux_peak_band > 0 and peak_mask is not None:
+                    peak = _batch_rel_l2(tf_hat, tf2d, peak_mask)
+                    loss = loss + float(aux_peak_band) * peak
+                    tr_peak += float(peak.item()) * target_t.shape[0]
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
@@ -307,32 +451,67 @@ def train_from_datasets(
             n_rec=n_rec,
             n_freq=n_freq,
         )
-        history.append(
-            {
-                "epoch": epoch,
-                "train_smooth_l1": tr_loss / max(tr_n, 1),
-                **{f"val_{k}": v for k, v in val_m.items()},
-            }
-        )
-        print(
-            f"[{run_name}] epoch {epoch}/{epochs}  "
-            f"train_sL1={history[-1]['train_smooth_l1']:.4e}  "
-            f"val_r2_R={val_m['r2_R']:.3f}  "
-            f"val_pearson_R_freq={val_m['pearson_R_freq']:.3f}  "
-            f"val_Δr2_TF={val_m['delta_r2_TF']:.4f}",
-            flush=True,
-        )
-        if val_m["smooth_l1"] < best_val - 1e-8:
+        train_sL1 = tr_loss / max(tr_n, 1)
+        row = {
+            "epoch": epoch,
+            "train_smooth_l1": train_sL1,
+            **{f"val_{k}": v for k, v in val_m.items()},
+        }
+        if aux_tf_rel_l2 > 0:
+            row["train_tf_rel_l2"] = tr_aux / max(tr_n, 1)
+        if aux_peak_band > 0:
+            row["train_peak_rel_l2"] = tr_peak / max(tr_n, 1)
+        history.append(row)
+        improved = val_m["smooth_l1"] < best_val - 1e-8
+        if improved:
             best_val = val_m["smooth_l1"]
+            best_epoch = epoch
             best_state = {
                 k: v.detach().cpu().clone() for k, v in model.state_dict().items()
             }
             patience_left = patience_budget
         elif not no_early_stop:
             patience_left -= 1
-            if patience_left <= 0:
-                print(f"[{run_name}] early stop at epoch {epoch}", flush=True)
-                break
+        epoch_bar.set_postfix(
+            sL1=f"{train_sL1:.3e}",
+            r2_R=f"{val_m['r2_R']:.3f}",
+            lr=f"{opt.param_groups[0]['lr']:.1e}",
+        )
+        payload = {
+            "epoch": epoch,
+            "train/smooth_l1": train_sL1,
+            "lr": opt.param_groups[0]["lr"],
+            "val/smooth_l1": val_m["smooth_l1"],
+            "val/r2_R": val_m["r2_R"],
+            "val/pearson_R_freq": val_m["pearson_R_freq"],
+            "val/delta_r2_TF": val_m["delta_r2_TF"],
+            "val/rel_l2_TF": val_m["rel_l2_TF"],
+            "val/rel_l2_TF_1d_only": val_m["rel_l2_TF_1d_only"],
+            "val/best_smooth_l1": best_val,
+            "val/best_epoch": best_epoch,
+        }
+        if "train_tf_rel_l2" in row:
+            payload["train/tf_rel_l2"] = row["train_tf_rel_l2"]
+        if "train_peak_rel_l2" in row:
+            payload["train/peak_rel_l2"] = row["train_peak_rel_l2"]
+        log_wandb(wandb_run, payload, step=epoch)
+        if sched is not None:
+            prev_lr = float(opt.param_groups[0]["lr"])
+            sched.step(val_m["smooth_l1"])
+            new_lr = float(opt.param_groups[0]["lr"])
+            if new_lr < prev_lr * 0.999:
+                print(
+                    f"[{run_name}] ReduceLROnPlateau {prev_lr:.2e} → {new_lr:.2e} "
+                    f"at epoch {epoch} (monitor=val/smooth_l1)",
+                    flush=True,
+                )
+        if not no_early_stop and not improved and patience_left <= 0:
+            print(
+                f"[{run_name}] early stop at epoch {epoch} "
+                f"(best val smooth_l1={best_val:.4e} @ {best_epoch})",
+                flush=True,
+            )
+            break
 
     if best_state is not None:
         model.load_state_dict(best_state)
@@ -355,6 +534,17 @@ def train_from_datasets(
             f"rel_l2_TF={per_domain[dname]['rel_l2_TF']:.3f}",
             flush=True,
         )
+    flat = _flatten_domain_metrics(per_domain)
+    log_wandb(wandb_run, flat)
+    summary_wandb(
+        wandb_run,
+        {
+            "best_val_smooth_l1": best_val,
+            "best_epoch": best_epoch,
+            "epochs_ran": len(history),
+            **flat,
+        },
+    )
 
     stats_cpu = {k: v.detach().cpu() for k, v in stats.items()}
     torch.save(
@@ -367,9 +557,14 @@ def train_from_datasets(
             "n_freq_train": int(n_freq_train),
             "n_freq_eval": int(n_freq_eval),
             "serial_tf1d": bool(serial_tf1d),
+            "iid_frac": iid_frac,
+            "aux_tf_rel_l2": float(aux_tf_rel_l2),
+            "aux_peak_band": float(aux_peak_band),
             "stats": stats_cpu,
             "test_by_domain": per_domain,
             "history": history,
+            "best_epoch": int(best_epoch),
+            **arch_kw,
         },
         ckpt_path,
     )
@@ -389,12 +584,23 @@ def train_from_datasets(
         "init_ckpt": str(init_ckpt) if init_ckpt else None,
         "test_by_domain": per_domain,
         "best_val_smooth_l1": best_val,
+        "best_epoch": int(best_epoch),
         "seed": seed,
+        "iid_frac": iid_frac,
+        "aux_tf_rel_l2": float(aux_tf_rel_l2),
+        "aux_peak_band": float(aux_peak_band),
+        **arch_kw,
     }
-    out_json = config.RESULTS_DIR / f"{run_name}.json"
+    out_json = config.RESULTS_DIR / "arch_train" / f"{run_name}.json"
+    out_json.parent.mkdir(parents=True, exist_ok=True)
     out_json.write_text(json.dumps(result, indent=2, default=str))
     print(f"[{run_name}] wrote {out_json}", flush=True)
+    finish_wandb(wandb_run)
     return result
+
+
+def _trunk_dim(ds) -> int:
+    return int(ds._cache[0]["trunk_y"].shape[-1])
 
 
 def train_one(
@@ -414,14 +620,18 @@ def train_one(
     n_freq_train: int = config.N_FREQ_TRAIN,
     n_freq_eval: int = config.N_FREQ_EVAL,
     serial_tf1d: bool = False,
+    use_wandb: bool = True,
+    lr_sched_factor: float = config.LR_SCHED_FACTOR,
+    lr_sched_patience: int = config.LR_SCHED_PATIENCE,
+    lr_sched_min: float = config.LR_SCHED_MIN,
+    use_lr_sched: bool = True,
 ) -> dict[str, Any]:
-    device = _device()
     cache_dir = _build_signed_cache(cache_tag)
     meta = np.load(cache_dir / "meta.npz", allow_pickle=True)
     n = len(meta["sample_idx"])
     splits = make_splits(n, seed=seed)
-    from torch.utils.data import DataLoader as _DL
-
+    enc_tag = "" if field_encoder == "conv" else f"_{field_encoder}"
+    name = run_name or f"{branch_mode}{enc_tag}_{trunk_set}_{target}_{cache_tag}"
     train_ds = ResidualDeepONetDataset(
         cache_dir,
         splits.train,
@@ -438,123 +648,18 @@ def train_one(
         n_freq=n_freq_train,
         serial_tf1d=serial_tf1d,
     )
-    test_ds = ResidualDeepONetDataset(
-        cache_dir,
-        splits.test,
-        target=target,
-        trunk_set=trunk_set,
-        n_freq=n_freq_train,
-        serial_tf1d=serial_tf1d,
-    )
-    stats = fit_and_apply_norms(train_ds, val_ds, test_ds)
-    train_loader = _DL(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
-    val_loader = _DL(val_ds, batch_size=batch_size, shuffle=False, num_workers=0)
-    test_loader = _DL(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
-
-    n_rec = train_ds.n_rec
-    n_freq = len(train_ds.f_idx)
-
-    trunk_dim = _trunk_dim(train_ds)
-    model = build_model(
-        branch_mode,
-        field_channels=config.FIELD_CHANNELS,
-        stoch_dim=stoch_dim(),
-        trunk_dim=trunk_dim,
-        latent_dim=config.LATENT_DIM,
-        field_hidden=config.FIELD_HIDDEN,
-        branch_hidden=config.BRANCH_HIDDEN,
-        trunk_hidden=config.TRUNK_HIDDEN,
-        trunk_layers=config.TRUNK_LAYERS,
-        field_encoder=field_encoder,
-    ).to(device)
-
-    opt = torch.optim.AdamW(
-        model.parameters(),
-        lr=lr,
-        betas=config.ADAMW_BETAS,
-        weight_decay=config.WEIGHT_DECAY,
-    )
-    crit = nn.SmoothL1Loss(beta=config.SMOOTH_L1_BETA)
-    best_val = float("inf")
-    best_state = None
-    patience_budget = int(patience if patience is not None else config.PATIENCE)
-    patience_left = patience_budget
-    history: list[dict] = []
-
-    enc_tag = "" if field_encoder == "conv" else f"_{field_encoder}"
-    name = run_name or f"{branch_mode}{enc_tag}_{trunk_set}_{target}_{cache_tag}"
-    ckpt_path = config.CHECKPOINT_DIR / f"{name}.pt"
-
-    t0 = time.time()
-    for epoch in range(1, epochs + 1):
-        model.train()
-        tr_loss, tr_n = 0.0, 0
-        for batch in train_loader:
-            fields = batch["fields"].to(device)
-            stoch = batch["stoch"].to(device)
-            trunk_y = batch["trunk_y"].to(device)
-            target_t = batch["target"].to(device)
-            pred = _forward(model, fields, stoch, trunk_y, branch_mode)
-            loss = crit(pred, target_t)
-            opt.zero_grad(set_to_none=True)
-            loss.backward()
-            opt.step()
-            tr_loss += float(loss.item()) * target_t.shape[0]
-            tr_n += target_t.shape[0]
-        val_m = evaluate(
-            model,
-            val_loader,
-            device,
-            branch_mode,
-            stats,
-            n_rec=n_rec,
-            n_freq=n_freq,
+    extra: dict[str, Any] = {
+        "test": ResidualDeepONetDataset(
+            cache_dir,
+            splits.test,
+            target=target,
+            trunk_set=trunk_set,
+            n_freq=n_freq_train,
+            serial_tf1d=serial_tf1d,
         )
-        row = {
-            "epoch": epoch,
-            "train_smooth_l1": tr_loss / max(tr_n, 1),
-            **{f"val_{k}": v for k, v in val_m.items()},
-        }
-        history.append(row)
-        print(
-            f"[{name}] epoch {epoch}/{epochs}  "
-            f"train_sL1={row['train_smooth_l1']:.4e}  "
-            f"val_r2_R={val_m['r2_R']:.3f}  "
-            f"val_pearson_R_freq={val_m['pearson_R_freq']:.3f}  "
-            f"val_Δr2_TF={val_m['delta_r2_TF']:.4f}",
-            flush=True,
-        )
-        if val_m["smooth_l1"] < best_val - 1e-8:
-            best_val = val_m["smooth_l1"]
-            best_state = {
-                k: v.detach().cpu().clone() for k, v in model.state_dict().items()
-            }
-            patience_left = patience_budget
-        elif not no_early_stop:
-            patience_left -= 1
-            if patience_left <= 0:
-                print(f"[{name}] early stop at epoch {epoch}", flush=True)
-                break
-
-    if best_state is not None:
-        model.load_state_dict(best_state)
-    test_m = evaluate(
-        model,
-        test_loader,
-        device,
-        branch_mode,
-        stats,
-        n_rec=n_rec,
-        n_freq=n_freq,
-    )
-    test_m_full = test_m
+    }
     if int(n_freq_eval) != int(n_freq_train):
-        print(
-            f"[{name}] full-frequency eval n_freq={n_freq_eval} "
-            f"(trained at {n_freq_train})",
-            flush=True,
-        )
-        test_full = ResidualDeepONetDataset(
+        extra["test_full"] = ResidualDeepONetDataset(
             cache_dir,
             splits.test,
             target=target,
@@ -562,69 +667,36 @@ def train_one(
             n_freq=n_freq_eval,
             serial_tf1d=serial_tf1d,
         )
-        apply_norms(test_full, stats)
-        test_full_loader = _DL(
-            test_full, batch_size=batch_size, shuffle=False, num_workers=0
-        )
-        test_m_full = evaluate(
-            model,
-            test_full_loader,
-            device,
-            branch_mode,
-            stats,
-            n_rec=test_full.n_rec,
-            n_freq=len(test_full.f_idx),
-        )
-    stats_cpu = {k: v.detach().cpu() for k, v in stats.items()}
-    torch.save(
-        {
-            "model": best_state or model.state_dict(),
-            "target": target,
-            "branch_mode": branch_mode,
-            "trunk_set": trunk_set,
-            "cache_tag": cache_tag,
-            "field_encoder": field_encoder,
-            "n_freq_train": int(n_freq_train),
-            "n_freq_eval": int(n_freq_eval),
-            "serial_tf1d": bool(serial_tf1d),
-            "stats": stats_cpu,
-            "loss": "SmoothL1Loss",
-            "optimizer": "AdamW",
-            "adamw_betas": list(config.ADAMW_BETAS),
-            "smooth_l1_beta": config.SMOOTH_L1_BETA,
-            "test": test_m_full,
-            "test_train_freq": test_m,
-            "history": history,
-        },
-        ckpt_path,
+    result = train_from_datasets(
+        train_ds=train_ds,
+        val_ds=val_ds,
+        extra_tests=extra,
+        target=target,
+        branch_mode=branch_mode,
+        trunk_set=trunk_set,
+        epochs=epochs,
+        batch_size=batch_size,
+        lr=lr,
+        seed=seed,
+        run_name=name,
+        patience=patience,
+        no_early_stop=no_early_stop,
+        field_encoder=field_encoder,
+        n_freq_train=n_freq_train,
+        n_freq_eval=n_freq_eval,
+        serial_tf1d=serial_tf1d,
+        use_wandb=use_wandb,
+        lr_sched_factor=lr_sched_factor,
+        lr_sched_patience=lr_sched_patience,
+        lr_sched_min=lr_sched_min,
+        use_lr_sched=use_lr_sched,
     )
-    result = {
-        "name": name,
-        "target": target,
-        "branch_mode": branch_mode,
-        "trunk_set": trunk_set,
-        "field_encoder": field_encoder,
-        "serial_tf1d": bool(serial_tf1d),
-        "cache_tag": cache_tag,
-        "n_freq_train": int(n_freq_train),
-        "n_freq_eval": int(n_freq_eval),
-        "loss": "SmoothL1Loss",
-        "optimizer": "AdamW",
-        "adamw_betas": list(config.ADAMW_BETAS),
-        "n_samples": n,
-        "n_train": len(splits.train),
-        "n_val": len(splits.val),
-        "n_test": len(splits.test),
-        "epochs_ran": len(history),
-        "seconds": time.time() - t0,
-        "checkpoint": str(ckpt_path),
-        "test": test_m_full,
-        "test_train_freq": test_m,
-        "best_val_smooth_l1": best_val,
-    }
-    out_json = config.RESULTS_DIR / f"{name}.json"
-    out_json.write_text(json.dumps(result, indent=2))
-    print(f"[{name}] test {test_m} → {out_json}", flush=True)
+    result["cache_tag"] = cache_tag
+    result["n_samples"] = n
+    result["n_test"] = len(splits.test)
+    by = result.get("test_by_domain", {})
+    result["test_train_freq"] = by.get("test")
+    result["test"] = by.get("test_full", by.get("test"))
     return result
 
 
@@ -647,10 +719,19 @@ def main() -> None:
     p.add_argument("--lr", type=float, default=config.LR)
     p.add_argument("--seed", type=int, default=config.SEED)
     p.add_argument("--patience", type=int, default=config.PATIENCE)
+    p.add_argument(
+        "--lr-sched",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="ReduceLROnPlateau on val SmoothL1; restore best-val weights at the end.",
+    )
+    p.add_argument("--lr-sched-factor", type=float, default=config.LR_SCHED_FACTOR)
+    p.add_argument("--lr-sched-patience", type=int, default=config.LR_SCHED_PATIENCE)
+    p.add_argument("--lr-sched-min", type=float, default=config.LR_SCHED_MIN)
     p.add_argument("--no-early-stop", action="store_true")
     p.add_argument(
         "--field-encoder",
-        choices=["conv", "resunet"],
+        choices=["conv", "resunet", "gno", "attn", "gat"],
         default=config.DEFAULT_FIELD_ENCODER,
     )
     p.add_argument(
@@ -671,6 +752,12 @@ def main() -> None:
         default=config.N_FREQ_EVAL,
         help="Frequency bins for reported test metrics (default: full 1000).",
     )
+    p.add_argument(
+        "--wandb",
+        action=argparse.BooleanOptionalAction,
+        default=config.WANDB_DEFAULT,
+        help="Log train/val/test metrics to Weights & Biases.",
+    )
     args = p.parse_args()
     train_one(
         cache_tag=args.cache_tag,
@@ -687,6 +774,11 @@ def main() -> None:
         n_freq_train=args.n_freq_train,
         n_freq_eval=args.n_freq_eval,
         serial_tf1d=args.serial_tf1d,
+        use_wandb=args.wandb,
+        lr_sched_factor=args.lr_sched_factor,
+        lr_sched_patience=args.lr_sched_patience,
+        lr_sched_min=args.lr_sched_min,
+        use_lr_sched=args.lr_sched,
     )
 
 

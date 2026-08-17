@@ -15,6 +15,8 @@ from typing import Any
 
 import config
 import numpy as np
+from tqdm import tqdm
+from wandb_util import finish_wandb, init_wandb, log_wandb, summary_wandb
 
 _RES = config.RESIDUAL_DIR
 if str(_RES) not in sys.path:
@@ -182,6 +184,13 @@ def _load_residual_model(ckpt_path: Path, device):
         trunk_hidden=config.TRUNK_HIDDEN,
         trunk_layers=config.TRUNK_LAYERS,
         field_encoder=blob.get("field_encoder", "conv"),
+        residual_fno=bool(blob.get("residual_fno", False)),
+        n_rec=int(blob.get("n_rec", config.N_LATERAL)),
+        fno_width=int(blob.get("fno_width", config.FNO_WIDTH)),
+        fno_n_modes=tuple(blob.get("fno_n_modes", config.FNO_N_MODES)),
+        fno_n_layers=int(blob.get("fno_n_layers", config.FNO_N_LAYERS)),
+        n_gno_layers=int(blob.get("n_gno_layers", config.GNO_N_LAYERS)),
+        fno_kind=blob.get("fno_kind", "vanilla"),
     )
     model.load_state_dict(blob["model"])
     model.to(device)
@@ -418,8 +427,7 @@ def eval_corpus(
     rec = recorder_x_indices(root)
     rows: list[dict[str, Any]] = []
     print(f"[{name}] {len(h5s)} H5 under {root}", flush=True)
-    for i, p in enumerate(h5s):
-        print(f"[{name}] {i + 1}/{len(h5s)} {p.name}", flush=True)
+    for p in tqdm(h5s, desc=f"eval_ood {name}"):
         rows.append(
             eval_one_h5(
                 p,
@@ -509,7 +517,7 @@ def main() -> None:
         "--checkpoint",
         type=Path,
         default=config.DEFAULT_CHECKPOINT if config.DEFAULT_CHECKPOINT.is_file() else None,
-        help="Residual checkpoint (default: shipped serial P3 mix). Pass empty via --haskell-only.",
+        help="Residual checkpoint (default: shipped GINO). Pass empty via --haskell-only.",
     )
     p.add_argument(
         "--haskell-only",
@@ -536,6 +544,12 @@ def main() -> None:
         type=Path,
         default=config.RESULTS_DIR / "ood_eval.json",
     )
+    p.add_argument(
+        "--wandb",
+        action=argparse.BooleanOptionalAction,
+        default=config.WANDB_DEFAULT,
+        help="Log per-corpus evaluation summaries to wandb.",
+    )
     args = p.parse_args()
     if args.haskell_only:
         args.checkpoint = None
@@ -554,6 +568,16 @@ def main() -> None:
         "split": args.split,
         "corpora": {},
     }
+    ckpt_name = Path(args.checkpoint).stem if args.checkpoint else "haskell_only"
+    wandb_run = init_wandb(
+        f"eval_ood_{ckpt_name}_{args.split}",
+        {
+            "checkpoint": report["checkpoint"],
+            "split": args.split,
+            "clamp": args.clamp,
+        },
+        enabled=args.wandb,
+    )
     roots = default_ood_roots()
     if args.corpus:
         wanted = {c.strip() for c in args.corpus}
@@ -583,10 +607,18 @@ def main() -> None:
             if k in ("corpus", "root"):
                 continue
             print(f"  {k}: {s[k]}", flush=True)
+        payload = {
+            f"eval/{name}/{k}": v
+            for k, v in s.items()
+            if isinstance(v, (int, float)) and not isinstance(v, bool)
+        }
+        log_wandb(wandb_run, payload)
+        summary_wandb(wandb_run, payload)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2, default=str))
     print(f"\nWrote {args.out}", flush=True)
+    finish_wandb(wandb_run)
 
 
 if __name__ == "__main__":

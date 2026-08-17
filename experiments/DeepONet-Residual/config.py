@@ -93,15 +93,33 @@ LR: float = 1e-3
 WEIGHT_DECAY: float = 1e-5
 ADAMW_BETAS: tuple[float, float] = (0.9, 0.999)
 SMOOTH_L1_BETA: float = 1.0  # Huber transition (PyTorch SmoothL1Loss beta)
-EPOCHS: int = 300
-PATIENCE: int = 60
+EPOCHS: int = 500
+PATIENCE: int = 80  # epochs without a new best val metric before stop
+LR_SCHED_FACTOR: float = 0.5
+LR_SCHED_PATIENCE: int = 20  # plateau epochs before ReduceLROnPlateau
+LR_SCHED_MIN: float = 1e-6
 TRAIN_FRAC: float = 0.70
 VAL_FRAC: float = 0.15
 NUM_WORKERS: int = 0
 DEFAULT_TARGET: str = "R_nom"
 DEFAULT_FIELD_ENCODER: str = "resunet"
 DEFAULT_SERIAL_TF1D: bool = True
-DEFAULT_CHECKPOINT: Path = CHECKPOINT_DIR / "arch_serial_P3_mix.pt"
+DEFAULT_CHECKPOINT: Path = CHECKPOINT_DIR / "M700_gino.pt"
+
+WANDB_PROJECT: str = os.environ.get("WANDB_PROJECT", "deeponet-residual")
+WANDB_DEFAULT: bool = True
+
+# FNO-on-R (DeepFNOnet-style residual grid)
+FNO_WIDTH: int = 32
+FNO_N_MODES: tuple[int, int] = (8, 16)  # (recorders, freq); 8 < 21/2
+FNO_N_LAYERS: int = 4
+GNO_N_LAYERS: int = 3
+
+# Aux TF losses (0 = off)
+AUX_TF_REL_L2: float = 0.0
+AUX_PEAK_BAND: float = 0.0
+PEAK_BAND_HZ: tuple[float, float] = (0.5, 2.0)
+IID_RESAMPLE_FRAC: float | None = None  # e.g. 0.5 → 50% IID per epoch
 
 for d in (CACHE_DIR, RESULTS_DIR, CHECKPOINT_DIR):
     d.mkdir(parents=True, exist_ok=True)

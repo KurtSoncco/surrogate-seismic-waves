@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from tqdm import tqdm
 
 import config
 from ood_io import (
@@ -156,8 +157,7 @@ def build_ood_signed_cache(name: str, *, force: bool = False) -> Path:
     metas: list[dict[str, Any]] = []
     freq_ref: np.ndarray | None = None
 
-    for i, h5_path in enumerate(h5s):
-        print(f"[ood-cache {name}] {i + 1}/{n} {h5_path.name}", flush=True)
+    for i, h5_path in enumerate(tqdm(h5s, desc=f"ood-cache {name}")):
         vs, zeta, params, extra = read_h5_sample(h5_path)
         tf, freq = load_or_compute_tf(h5_path, tf_cache)
         if freq_ref is None:

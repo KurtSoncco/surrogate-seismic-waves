@@ -166,10 +166,12 @@ def _run_protocol(
     epochs: int,
 ) -> dict[str, Any]:
     train_ds = CombinedResidualDataset(
-        [_ds(c, i, n_freq=n_freq_train, serial=serial) for _, c, i in train_parts]
+        [_ds(c, i, n_freq=n_freq_train, serial=serial) for _, c, i in train_parts],
+        domain_names=[name for name, _, _ in train_parts],
     )
     val_ds = CombinedResidualDataset(
-        [_ds(c, i, n_freq=n_freq_train, serial=serial) for _, c, i in val_parts]
+        [_ds(c, i, n_freq=n_freq_train, serial=serial) for _, c, i in val_parts],
+        domain_names=[name for name, _, _ in val_parts],
     )
     extra = {
         dname: _ds(c, i, n_freq=n_freq_eval, serial=serial)

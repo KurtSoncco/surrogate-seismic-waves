@@ -373,7 +373,7 @@ Conditioning \(\hat R\) on \(\log\mathrm{TF}_{1D}\) (serial / discrepancy operat
 4. **DeltaPhi retrieve-and-residual** ([arXiv:2406.09795](https://arxiv.org/abs/2406.09795) / NeurIPS 2025) — **not trained**. Would retrieve a nearby column-Haskell or IID neighbor at inference and learn the residual to that state, not to a global nom. Needs a retrieval index; parked.
 5. **Multiscale / Fourier residual on \(R(x,f)\)** (Multiscale DeepONet [arXiv:2111.04860](https://arxiv.org/abs/2111.04860), Fourier-MIONet [arXiv:2303.04778](https://arxiv.org/abs/2303.04778)) — **stretch, not run**. Serial + mix already closed the column-Haskell gap on every held-out slice. Revisit only if a new geometry re-opens it.
 
-Out of scope (unchanged): PI-DeepONet PDE residuals, GNO, n=3000, Lambda.
+Out of scope (unchanged): PI-DeepONet PDE residuals, DeltaPhi. GNO / FNO-on-\(R\) / n-ladder: **§10**.
 
 ### 9.5 Verdict
 
@@ -400,5 +400,203 @@ Same-space comparison for the shipped serial P3 mix (held-out test slices, linea
 GIFNO-XT `test_pearson` is a global pool; residual `pearson_TF_freq` is mean per-recorder spectrum correlation (closest to GIFNO-XT `test_pearson_mean` **0.939**). On IID the residual is **behind on amplitude L2** but **nearly tied on spectral shape**. On OOD, Pearson is the clearer win: GIFNO-XT leftover spectra are weakly correlated or uncorrelated; nom*+\(\hat R\) keeps the resonances.
 
 The residual is **not** trying to beat GIFNO-XT on in-family IID amplitude. It exists because GIFNO-XT has to invent layered/dipping physics from a 1-soil training prior and fails OOD. On that job the shipped operator wins by a wide margin (and matches or beats column Haskell). IID Pearson is already close (0.90 vs 0.92–0.94); the leftover gap is L2, not shape. No DeltaPhi / Fourier-\(R\) follow-up: OOD vs the no-residual baseline is already good.
+
+Follow-up (n-ladder, train recipe, FNO-on-\(R\), recorder GNO / GINO): **§10**. The GINO residual now ships (`checkpoints/M700_gino.pt`).
+
+---
+
+## 10. Training recipe, n-ladder, FNO-on-\(R\), and recorder GNO (this round)
+
+Control is the §9 serial ResUNet P3 mix (`arch_serial_P3_mix.pt`): SmoothL1, `n_freq_train=200`, 1000-bin eval, patience 60, RTX 5080 Laptop. Held-out tests stay seed-42 (IID 150, dip 144, 3L 144). Extra IID for M1400 is taken from n2000 samples **outside** the n1000 corpus — naive `make_splits(2000)` would leak 107 of 150 n1000 test files. Logs: wandb project `deeponet-residual` (offline on this laptop) + tqdm epoch/batch bars. Reproduce:
+
+```bash
+GIFNO_DATA_ROOT=data/gifno_screen \
+GIFNO_OOD_DIPPING=data/gifno_screen/ood_dipping \
+GIFNO_OOD_THREE_LAYER=data/gifno_screen/ood_three_layer \
+uv run python experiments/DeepONet-Residual/arch_train.py --mix M1400 --run-name M1400_serial
+uv run python experiments/DeepONet-Residual/arch_train.py --mix M700 --encoder gno --fno --run-name M700_gino
+uv run python experiments/DeepONet-Residual/eval_ood.py --checkpoint experiments/DeepONet-Residual/checkpoints/M700_gino.pt --split test
+```
+
+**Gates:** IID rel L2 toward GIFNO-XT **0.30** without collapsing OOD (dipping ≲ 0.37 / Pearson ≲ 0.88); three-layer **beat column Haskell** (per-file mean col **0.597**, pooled col **0.635**).
+
+### 10.1 VRAM
+
+| Setup | peak GB (bs=16) |
+|-------|-----------------|
+| serial ResUNet | 1.14 (bs=8: 0.60) |
+| + FNO-on-\(R\) (32 ch, modes 8×16, 4 layers) | 1.23 |
+| recorder GNO | 0.94 |
+
+16 GB is not the limit; CPU preload is. Train batch stays **8** to match the shipped control. M7680 / Lambda not used: n-ladder was flat and FNO/GNO fit.
+
+### 10.2 n-ladder (same serial ResUNet)
+
+| Mix | IID train | + dip/3L | IID rel L2 / Pearson | dipping | 3-layer |
+|-----|-----------|----------|----------------------|---------|---------|
+| **M700** (control) | 700 | 672+672 | **0.422 / 0.900** | **0.371 / 0.880** | **0.634 / 0.802** |
+| M1400 | 700+700 extra | 672+672 | 0.421 / 0.902 | 0.378 / 0.875 | 0.641 / 0.808 |
+
+IID rel L2 drop 0.001 ≪ 0.02. Matches E1: more IID does not buy residual skill. **Stop** (no M2100, no Lambda M7680). Winning \(n\) = **M700**.
+
+### 10.3 Train recipe (on M700)
+
+| Recipe | IID rel L2 / Pearson | dipping | 3-layer |
+|--------|----------------------|---------|---------|
+| SmoothL1-on-\(R\) (control) | **0.422 / 0.900** | **0.371 / 0.880** | 0.634 / 0.802 |
+| 50% IID resampling | 0.427 / 0.898 | 0.392 / 0.863 | 0.639 / 0.802 |
+| aux TF rel L2 0.25 + 0.5–2 Hz peak 0.1 | 0.423 / 0.897 | 0.378 / 0.873 | **0.630 / 0.804** |
+
+Resampling hurts. Aux TF L2 is a hair better on 3-layer and fails the IID ≤ 0.422 gate by 0.001. Keep **SmoothL1-only** as the training loss.
+
+### 10.4 Architecture (M700, SmoothL1, serial \(\log\mathrm{TF}_{1D}\))
+
+FNO is a 4-layer FNOBlocks residual on the \((21, n_f)\) \(\hat R\) grid (GELU, modes 8×16). GNO is per-recorder 1D depth conv + 3-layer chain message passing (kNN=2 along \(x\)), then a per-node DeepONet branch. GINO = GNO encoder + FNO-on-\(R\).
+
+Pooled held-out test (rel L2 / Pearson_TF_freq):
+
+| Arch | IID | dipping | 3-layer | vs col (pooled 0.489 / 0.570 / 0.635) |
+|------|-----|---------|---------|----------------------------------------|
+| serial ResUNet (control) | 0.422 / 0.900 | 0.371 / 0.880 | 0.634 / 0.802 | beats IID+dip; 3L ties |
+| FNO-on-\(R\) | **0.371 / 0.918** | 0.345 / 0.892 | 0.615 / 0.812 | beats col on all three |
+| recorder GNO | 0.420 / 0.899 | 0.372 / 0.873 | 0.550 / **0.876** | 3L is the GNO story |
+| **GINO (GNO+FNO)** | **0.371 / 0.915** | **0.335 / 0.896** | **0.533 / 0.866** | **winner** |
+
+GNO is the lateral leftover the global AdaptiveAvgPool was missing (Residual RF gate, §5.5). FNO is the oscillatory leftover vs column Haskell. Combining them does not trade one for the other.
+
+`eval_ood --split test` on GINO (per-file mean, n=144):
+
+| Corpus | Haskell-col mean rel L2 | GINO mean rel L2 / Pearson_freq | frac beats col |
+|--------|-------------------------|---------------------------------|----------------|
+| dipping | 0.547 | **0.312 / 0.896** | **99.3%** (serial was 98%) |
+| three_layer | 0.597 | **0.481 / 0.866** | **82.6%** (serial was 49%) |
+
+### 10.5 vs GIFNO-XT and ship
+
+| Domain | GIFNO-XT | Haskell-col | serial P3 mix | **GINO** |
+|--------|----------|-------------|---------------|----------|
+| IID | **0.302 / 0.919** | 0.489 / 0.841 | 0.422 / 0.900 | **0.371 / 0.915** |
+| dipping | ~0.77–0.79 | 0.570 / 0.702 | 0.371 / 0.880 | **0.335 / 0.896** |
+| three_layer | ~0.97 | 0.635 / 0.770 | 0.634 / 0.802 | **0.533 / 0.866** |
+
+IID Pearson is now tied with GIFNO-XT (0.915 vs 0.919). Amplitude L2 is still behind (0.371 vs 0.302). Three-layer **clears** column Haskell on pooled L2 and on 83% of held-out files.
+
+**Ship:** `checkpoints/M700_gino.pt`. Keep `arch_serial_P3_mix.pt` as the §9 control. Skip mesh Transolver / DeltaPhi. GINO-wide + n-scale (did not unseat this ckpt): **§11**.
+
+---
+
+## 11. GINO-wide recipe and n-scale (this round)
+
+Laptop §10 GINO is the control: width 32, modes \(8\times16\), `batch_size=8`, `n_freq_train=200` (IID **0.371 / 0.915**, dipping **0.335 / 0.896**, 3-layer **0.533 / 0.866**). This round widens FNO (width 64, modes \(8\times32\), 4 layers, `batch_size=32`) and n-scales that recipe only while IID rel L2 drops \(\ge 0.02\) with OOD held. Held-out slices stay seed-42 (IID 150, dip 144, 3L 144). SmoothL1 only. No TH-FNO / LOGLO-POD / GIFNO-XT / mesh Transolver.
+
+**Host:** Lambda Labs `gpu_1x_a10` (`ubuntu@163.192.40.133`, NVIDIA A10 23 GB). Same files via rsync (`data/gifno_screen` + signed caches). Wandb project [`deeponet-residual`](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual) is **online** (`WANDB_MODE=online`, `host=lambda`). Laptop §10 + rehearsal runs were `wandb sync`'d from `experiments/DeepONet-Residual/wandb/offline-run-*`. VRAM of the wide recipe: **2.46 GB peak** on the 5080 (2.84M params).
+
+```bash
+bash experiments/DeepONet-Residual/lambda_train.sh \
+  --mix M700 --encoder gno --fno --batch-size 32 \
+  --fno-width 64 --fno-modes 8,32 --fno-layers 4 \
+  --run-name M700_gino_wide_lambda
+```
+
+### 11.1 Wider GINO on M700 (same files)
+
+| Recipe | host | IID rel L2 / Pearson | dipping | 3-layer | epochs | wandb |
+|--------|------|----------------------|---------|---------|--------|-------|
+| GINO M700 (control, §10) | 5080 | **0.371 / 0.915** | **0.335 / 0.896** | **0.533 / 0.866** | 96 | [synced](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual) |
+| GINO-wide M700 | 5080 | 0.364 / 0.920 | 0.334 / 0.900 | 0.549 / 0.855 | 93 | [4vhdsnlf](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/4vhdsnlf) |
+| GINO-wide M700 | **A10** | 0.376 / 0.915 | 0.340 / 0.896 | 0.538 / 0.861 | 113 | [zq6qxief](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/zq6qxief) |
+
+A10 IID rel L2 **rose** 0.005 vs control (5080 rehearsal dropped 0.007). Neither hits \(\ge 0.02\). Dipping holds (\(\le 0.35\)). Three-layer is slightly worse. **Skip** `n_freq_train=1000`.
+
+### 11.2 n-scale the wide recipe
+
+| Mix | host | IID rel L2 / Pearson | dipping | 3-layer | ΔIID vs M700-wide | wandb |
+|-----|------|----------------------|---------|---------|-------------------|-------|
+| M700-wide | A10 | 0.376 / 0.915 | 0.340 / 0.896 | 0.538 / 0.861 | — | [zq6qxief](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/zq6qxief) |
+| **M1400-wide** | **A10** | **0.343 / 0.929** | **0.328 / 0.900** | 0.542 / 0.855 | **−0.033** | [h94bwcl7](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/h94bwcl7) |
+| M1400-wide | 5080 | 0.343 / 0.928 | 0.327 / 0.902 | 0.545 / 0.853 | −0.021 vs 5080-wide | [jg3u3s7f](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/jg3u3s7f) |
+
+Unlike the serial ResUNet n-ladder (§10.2, ΔIID \(0.001\)), extra nested-safe IID **does** buy leftover L2 once FNO has width. OOD holds (dipping improved; 3-layer flat). Gate to M2100 **fires**.
+
+**Stop before M2100 / M7680:** `cache/n3000_seed42` has indices only. The screen pack on the A10 still has **133 / 3000** H5 files; Box is not mounted. Nested-safe M7680 would also need a `n7680_seed42` Haskell pass.
+
+### 11.3 Winner / ship
+
+Winner = best 3-layer rel L2 among runs with IID \(\le 0.371\) and dipping \(\le 0.35\). Lambda M700-wide (IID 0.376) is out. Qualified: laptop GINO **0.533**, 5080 M1400-wide 0.545, A10 M1400-wide 0.542. **Laptop GINO 3-layer 0.533** still wins.
+
+IID moved toward GIFNO-XT **0.30** (0.371 → **0.343**) without collapsing OOD, but the ship rule is three-layer leftover vs column Haskell, not IID L2.
+
+**Ship:** keep [`checkpoints/M700_gino.pt`](checkpoints/M700_gino.pt). A10 ablations pulled to `checkpoints/M700_gino_wide_lambda.pt` and `M1400_gino_wide_lambda.pt`. Skip mesh Transolver / DeltaPhi / GIFNO-XT retrain.
+
+### 11.4 Longer train + ReduceLROnPlateau (A10)
+
+Fixed `lr=1e-3` was still in the weights at early stop. New loop: **ReduceLROnPlateau** on val SmoothL1 (`factor=0.5`, plateau 20, `min_lr=1e-6`), max **500** epochs, early-stop patience **80**, restore the **best val** checkpoint.
+
+| Mix | best@ | stop | IID | dipping | 3-layer | wandb |
+|-----|-------|------|-----|---------|---------|-------|
+| M700-wide + sched | 26 | 106 | **0.357 / 0.924** | **0.334 / 0.900** | 0.552 / 0.855 | [o0ueo68d](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/o0ueo68d) |
+| M1400-wide + sched | 36 | 116 | 0.349 / 0.928 | 0.333 / 0.899 | 0.545 / 0.854 | [8jrrje75](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/8jrrje75) |
+
+LR dropped three times on each run (1e-3 → 1.25e-4); those later epochs did **not** beat the early val best, so the restored weights are the epoch-26/36 snapshots. M700-wide IID **0.357** is the first wide run to beat control 0.371 (Δ **−0.014**, still short of the 0.02 nf=1000 gate). M1400 vs that M700 is only **−0.008**, so n-scale does **not** fire under this recipe. Three-layer is still worse than laptop GINO **0.533**. **Ship unchanged.**
+
+---
+
+## 12. SOTA operator heads on the leftover grid (A10)
+
+Same M700 mix, serial \(\log\mathrm{TF}_{1D}\), SmoothL1, ReduceLROnPlateau, bs=32, FNO width 64 / modes \(8\times32\) unless noted. Held-out seed-42 tests. Direct TF SOTA remains GIFNO-XT (IID **0.302 / 0.919**) which still collapses OOD.
+
+Three published operator families, adapted to the 21-recorder × frequency leftover (not a full PDE mesh):
+
+| Head | Paper | What we implemented |
+|------|-------|---------------------|
+| GINO (control) | Li et al. GINO / DeepFNOnet | chain GNO (kNN=2) + vanilla FNOBlocks on \(R\) |
+| U-FNO | Wen et al. 2022 | FNO layer + local 3×3 conv residual each block |
+| F-FNO | Tran et al. 2023 | factorized 1D spectral conv along recorder and freq |
+| GNOT / Transolver-lite | Hao et al. GNOT; Wu et al. Transolver 2024 | self-attention over the 21 stations, then vanilla FNO-on-\(R\) |
+| AFNO | Guibas et al. 2022 | shared channel MLP in Fourier space |
+| WNO | Tripura & Chakraborty 2023 | 1-level Haar DWT on frequency + local conv |
+| FNO-1D | Li et al. (1D spectral) | FNO along frequency only (GNO already mixes \(x\)) |
+| GAT | Veličković et al. 2018 | local attention on {left, self, right}, then vanilla FNO |
+
+Pooled held-out rel L2 / Pearson_TF_freq:
+
+| Model | IID | dipping | 3-layer | vs col (0.489 / 0.570 / 0.635) | wandb |
+|-------|-----|---------|---------|--------------------------------|-------|
+| GIFNO-XT (no residual) | **0.302 / 0.919** | ~0.77–0.79 | ~0.97 | loses OOD | — |
+| **GINO M700 (ship)** | 0.371 / 0.915 | **0.335 / 0.896** | **0.533 / 0.866** | **winner** | §10 |
+| GINO-wide + sched | **0.357 / 0.924** | 0.334 / 0.900 | 0.552 / 0.855 | best IID among residuals | [o0ueo68d](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/o0ueo68d) |
+| GAT + FNO | 0.364 / 0.920 | **0.331 / 0.902** | 0.542 / 0.860 | closest runner-up | [we6br04l](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/we6br04l) |
+| U-FNO + GNO | 0.377 / 0.911 | 0.345 / 0.891 | 0.565 / 0.850 | local conv does not help \(R\) | [5koj3fcv](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/5koj3fcv) |
+| Attn + FNO | 0.375 / 0.917 | 0.339 / 0.898 | 0.621 / 0.806 | 3L ≈ serial ResUNet | [4ylwfy6d](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/4ylwfy6d) |
+| AFNO + GNO | 0.378 / 0.915 | 0.354 / 0.887 | 0.561 / 0.851 | dip misses 0.35 | [8rn3pvrn](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/8rn3pvrn) |
+| FNO-1D + GNO | 0.395 / 0.911 | 0.372 / 0.871 | 0.565 / 0.846 | freq-only spectra too weak | [cljoe5ho](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/cljoe5ho) |
+| F-FNO + GNO | 0.397 / 0.905 | 0.375 / 0.870 | 0.561 / 0.847 | dip fails 0.35 gate | [f997t5ua](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/f997t5ua) |
+| WNO + GNO | 0.554 / 0.742 | 0.498 / 0.735 | 0.673 / 0.761 | Haar leftover is a miss | [7o0qq4e7](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/7o0qq4e7) |
+
+**What this says.** The leftover is not a generic 2D PDE field. Extra local conv (U-FNO), factorized/1D/adaptive Fourier (F-FNO, FNO-1D, AFNO), and Haar wavelets all **hurt** vs vanilla FNO on \((21, n_f)\). Dense station attention **drops three-layer** back toward the pooled-encoder regime (0.621 vs GNO 0.533). **Local GAT** keeps the kNN=2 graph and is the only runner-up (dip 0.331, IID 0.364) but still loses three-layer to chain GNO (0.542 vs **0.533**). The line-graph GNO + vanilla FNO inductive bias is the one that fits.
+
+None of the SOTA heads beat laptop GINO on three-layer, and none close GIFNO-XT’s IID L2 without giving up OOD. **Ship stays** [`checkpoints/M700_gino.pt`](checkpoints/M700_gino.pt). Round-2 ablations: `M700_gino_afno_lambda.pt`, `M700_gino_wno_lambda.pt`, `M700_gino_fno1d_lambda.pt`, `M700_gat_fno_lambda.pt`. Skip full-mesh Transolver / DeltaPhi / GIFNO-XT retrain.
+
+---
+
+## 13. n-scale M2100 (staged n3000 H5)
+
+§11.2 gated M2100 after GINO-wide M1400 dropped IID **0.376 → 0.343**. The screen pack had only 133 H5; Box is now mounted. Incremental copy of missing names from `data/gifno_screen/n3000_h5_names.txt` into `data/gifno_screen/h5/` (2867 files; one local `run_370.h5` was a zeroed HDF5 and was recopied). Haskell `cache/n3000_seed42` is complete (`r_nom_signed.npy` + `fields.npy`, 1.1 GB). Nested-safe mix: n1000 train 700 + **1400 extras from n3000 outside the n1000 corpus** + OOD trains (3444 rows). Held-out tests stay seed-42 (150 / 144 / 144). Do **not** `make_splits(3000)`.
+
+Lambda still has 133 H5; training reads the signed cache, not extra H5. Logs: new wandb project [`deeponet-nscale`](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-nscale) (`host=lambda`, tags `mix` / `encoder` / `fno_kind` / `host`, test metrics in `run.summary` only). Leave [`deeponet-residual`](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual) as the §10–12 archive.
+
+Same wide + ReduceLROnPlateau recipe as §11.4 / §12: `--encoder {gno,gat} --fno --batch-size 32 --fno-width 64 --fno-modes 8,32 --fno-layers 4`.
+
+| Mix | host | IID rel L2 / Pearson | dipping | 3-layer | ΔIID vs A10 M1400-wide 0.343 | wandb |
+|-----|------|----------------------|---------|---------|------------------------------|-------|
+| M1400-wide (control, §11.2) | A10 | **0.343 / 0.929** | 0.328 / 0.900 | 0.542 / 0.855 | — | [h94bwcl7](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual/runs/h94bwcl7) |
+| M2100 GINO-wide + sched | A10 | 0.334 / 0.934 | **0.327 / 0.903** | 0.550 / 0.854 | **−0.009** | [sqqtczdc](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-nscale/runs/sqqtczdc) |
+| **M2100 GAT+FNO + sched** | A10 | **0.326 / 0.933** | **0.325 / 0.901** | 0.541 / 0.861 | **−0.017** | [38pseh2m](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-nscale/runs/38pseh2m) |
+
+GINO best-val epoch 28 / stop 108; GAT 44 / 124. Dipping stays \(\le 0.35\). IID keeps falling, but neither run hits the pre-declared **≥ 0.02** drop vs M1400-wide 0.343 (GAT is 0.003 short). Three-layer is still worse than laptop GINO **0.533** (GAT 0.541 is the closer of the two). **Skip M7680** (no rest-of-IID H5, no `n7680_seed42` Haskell).
+
+Winner rule unchanged: best three-layer rel L2 among IID \(\le 0.371\) and dipping \(\le 0.35\). All M2100 runs qualify on the gates; both lose three-layer to [`checkpoints/M700_gino.pt`](checkpoints/M700_gino.pt). Extra IID moved IID from 0.343 → **0.326** (GAT) toward GIFNO-XT **0.30**, but that does not unseat the ship.
+
+**Ship:** keep [`checkpoints/M700_gino.pt`](checkpoints/M700_gino.pt). Pulled `M2100_gino_wide_lambda.pt` and `M2100_gat_fno_lambda.pt`. Skip mesh Transolver / DeltaPhi / GIFNO-XT retrain.
 
 

@@ -10,7 +10,8 @@ from typing import Literal
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+from tqdm import tqdm
 
 try:
     import hdf5plugin  # noqa: F401
@@ -219,13 +220,8 @@ class ResidualDeepONetDataset(Dataset):
         self.stoch_dim = stoch_dim()
         # Preload tensors for this split (n=100 ablation is H5-bound otherwise).
         self._cache: list[dict[str, torch.Tensor]] = []
-        for j, local_i in enumerate(self.indices):
-            if (j + 1) % 25 == 0 or j == 0:
-                print(
-                    f"[dataset {target}/{trunk_set}/nf={len(self.f_idx)}] "
-                    f"preload {j + 1}/{len(self.indices)}",
-                    flush=True,
-                )
+        desc = f"dataset {target}/{trunk_set}/nf={len(self.f_idx)}"
+        for local_i in tqdm(self.indices, desc=desc, leave=False):
             item = self._load_item(int(local_i))
             self._cache.append({k: torch.from_numpy(v) for k, v in item.items()})
 
@@ -347,15 +343,25 @@ def make_loaders(
 class CombinedResidualDataset(Dataset):
     """Concat of preloaded ResidualDeepONetDataset caches (for multi-domain train)."""
 
-    def __init__(self, datasets: Sequence[ResidualDeepONetDataset]):
+    def __init__(
+        self,
+        datasets: Sequence[ResidualDeepONetDataset],
+        domain_names: Sequence[str] | None = None,
+    ):
         if not datasets:
             raise ValueError("need at least one dataset")
         self._parts = list(datasets)
+        names = list(domain_names) if domain_names is not None else ["unk"] * len(self._parts)
+        if len(names) != len(self._parts):
+            raise ValueError("domain_names must match datasets")
         self._cache: list[dict[str, torch.Tensor]] = []
-        for ds in self._parts:
+        self.domain_names_per_item: list[str] = []
+        for ds, name in zip(self._parts, names):
             self._cache.extend(ds._cache)
+            self.domain_names_per_item.extend([str(name)] * len(ds._cache))
         self.n_rec = self._parts[0].n_rec
         self.f_idx = self._parts[0].f_idx
+        self.freq_s = getattr(self._parts[0], "freq_s", None)
         self.trunk_names = self._parts[0].trunk_names
         self.serial_tf1d = self._parts[0].serial_tf1d
 
@@ -364,3 +370,25 @@ class CombinedResidualDataset(Dataset):
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         return self._cache[idx]
+
+
+def iid_resample_sampler(
+    ds: CombinedResidualDataset,
+    iid_frac: float,
+) -> WeightedRandomSampler:
+    """Weighted sampler so an expected ``iid_frac`` of each epoch is IID."""
+    is_iid = np.array(
+        [name.startswith("iid") for name in ds.domain_names_per_item], dtype=bool
+    )
+    n_iid = int(is_iid.sum())
+    n_ood = int((~is_iid).sum())
+    if n_iid == 0 or n_ood == 0:
+        raise ValueError("iid resampling needs both IID and OOD items")
+    weights = np.zeros(len(ds), dtype=np.float64)
+    weights[is_iid] = float(iid_frac) / n_iid
+    weights[~is_iid] = (1.0 - float(iid_frac)) / n_ood
+    return WeightedRandomSampler(
+        torch.as_tensor(weights, dtype=torch.double),
+        num_samples=len(ds),
+        replacement=True,
+    )
