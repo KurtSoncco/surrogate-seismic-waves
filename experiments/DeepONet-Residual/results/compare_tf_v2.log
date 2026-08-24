@@ -1,0 +1,391 @@
+=== in-dist compare v2 Sun Aug 23 01:30:36 UTC 2026 ===
+[compare] device=cuda cache=/home/ubuntu/surrogate-seismic-waves/experiments/DeepONet-Residual/cache/full7680_seed42
+[compare] test samples: 1152 / 7680
+[compare] fitting DeepONet train norms (preload train split)...
+[compare] loading cached norms /home/ubuntu/surrogate-seismic-waves/experiments/DeepONet-Residual/cache/full7680_seed42/train_norms_seed42.pt
+[compare] DeepONet ckpt=/home/ubuntu/surrogate-seismic-waves/experiments/DeepONet-Residual/checkpoints/single_per_rec_col_full_R_nom_full7680_seed42.pt
+[compare] loading LOGLO...
+[GIFNO-FDO-XT-LOGLO-POD config] env overrides: LATENT_CHANNELS=128, NUM_FNO_LAYERS=5, POD_NUM_MODES=64, DEEPONET_LATENT_DIM=128
+[GIFNO config] env overrides: LATENT_CHANNELS=128, NUM_FNO_LAYERS=5
+[compare] LOGLO ckpt=/home/ubuntu/surrogate-seismic-waves/checkpoints/tier2_pod64_full7680/best_model.pt
+/home/ubuntu/surrogate-seismic-waves/experiments/DeepONet-Residual/compare_tf_loglo_vs_deeponet.py:227: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  fields_t = torch.from_numpy(fields)
+[1/1152] sidx=4340  LOGLO relL2=0.180  DeepONet relL2=0.233  TF1D relL2=0.320
+[25/1152] sidx=5749  LOGLO relL2=0.191  DeepONet relL2=0.327  TF1D relL2=0.430
+[50/1152] sidx=7268  LOGLO relL2=0.295  DeepONet relL2=0.616  TF1D relL2=0.671
+[75/1152] sidx=5737  LOGLO relL2=0.227  DeepONet relL2=0.356  TF1D relL2=0.464
+[100/1152] sidx=6035  LOGLO relL2=0.270  DeepONet relL2=0.364  TF1D relL2=0.489
+[125/1152] sidx=2546  LOGLO relL2=0.142  DeepONet relL2=0.196  TF1D relL2=0.360
+[150/1152] sidx=1094  LOGLO relL2=0.379  DeepONet relL2=0.398  TF1D relL2=0.715
+[175/1152] sidx=7109  LOGLO relL2=0.117  DeepONet relL2=0.165  TF1D relL2=0.337
+[200/1152] sidx=7297  LOGLO relL2=0.177  DeepONet relL2=0.338  TF1D relL2=0.407
+[225/1152] sidx=4617  LOGLO relL2=0.195  DeepONet relL2=0.358  TF1D relL2=0.513
+[250/1152] sidx=5927  LOGLO relL2=0.142  DeepONet relL2=0.203  TF1D relL2=0.321
+[275/1152] sidx=4292  LOGLO relL2=0.201  DeepONet relL2=0.357  TF1D relL2=0.325
+[300/1152] sidx=7651  LOGLO relL2=0.375  DeepONet relL2=0.388  TF1D relL2=0.586
+[325/1152] sidx=1596  LOGLO relL2=0.314  DeepONet relL2=0.568  TF1D relL2=0.762
+[350/1152] sidx=4259  LOGLO relL2=0.263  DeepONet relL2=0.388  TF1D relL2=0.616
+[375/1152] sidx=5443  LOGLO relL2=0.220  DeepONet relL2=0.254  TF1D relL2=0.465
+[400/1152] sidx=1379  LOGLO relL2=0.209  DeepONet relL2=0.547  TF1D relL2=0.457
+[425/1152] sidx=5348  LOGLO relL2=0.272  DeepONet relL2=0.384  TF1D relL2=0.498
+[450/1152] sidx=3465  LOGLO relL2=0.164  DeepONet relL2=0.263  TF1D relL2=0.335
+[475/1152] sidx=1549  LOGLO relL2=0.337  DeepONet relL2=0.400  TF1D relL2=0.641
+[500/1152] sidx=4133  LOGLO relL2=0.211  DeepONet relL2=0.346  TF1D relL2=0.455
+[525/1152] sidx=1179  LOGLO relL2=0.312  DeepONet relL2=0.356  TF1D relL2=0.385
+[550/1152] sidx=2873  LOGLO relL2=0.241  DeepONet relL2=0.301  TF1D relL2=0.498
+[575/1152] sidx=7122  LOGLO relL2=0.211  DeepONet relL2=0.277  TF1D relL2=0.348
+[600/1152] sidx=190  LOGLO relL2=0.213  DeepONet relL2=0.278  TF1D relL2=0.376
+[625/1152] sidx=5905  LOGLO relL2=0.307  DeepONet relL2=0.382  TF1D relL2=0.500
+[650/1152] sidx=2248  LOGLO relL2=0.129  DeepONet relL2=0.187  TF1D relL2=0.355
+[675/1152] sidx=5334  LOGLO relL2=0.287  DeepONet relL2=0.379  TF1D relL2=0.616
+[700/1152] sidx=2743  LOGLO relL2=0.167  DeepONet relL2=0.232  TF1D relL2=0.321
+[725/1152] sidx=414  LOGLO relL2=0.176  DeepONet relL2=0.287  TF1D relL2=0.442
+[750/1152] sidx=4366  LOGLO relL2=0.154  DeepONet relL2=0.189  TF1D relL2=0.387
+[775/1152] sidx=1967  LOGLO relL2=0.249  DeepONet relL2=0.277  TF1D relL2=0.365
+[800/1152] sidx=1824  LOGLO relL2=0.293  DeepONet relL2=0.344  TF1D relL2=0.617
+[825/1152] sidx=2846  LOGLO relL2=0.235  DeepONet relL2=0.371  TF1D relL2=0.747
+[850/1152] sidx=3477  LOGLO relL2=0.282  DeepONet relL2=0.348  TF1D relL2=0.467
+[875/1152] sidx=4109  LOGLO relL2=0.168  DeepONet relL2=0.429  TF1D relL2=0.449
+[900/1152] sidx=7246  LOGLO relL2=0.155  DeepONet relL2=0.180  TF1D relL2=0.412
+[925/1152] sidx=6651  LOGLO relL2=0.158  DeepONet relL2=0.189  TF1D relL2=0.248
+[950/1152] sidx=5601  LOGLO relL2=0.234  DeepONet relL2=0.342  TF1D relL2=0.497
+[975/1152] sidx=81  LOGLO relL2=0.173  DeepONet relL2=0.280  TF1D relL2=0.493
+[1000/1152] sidx=7358  LOGLO relL2=0.366  DeepONet relL2=0.334  TF1D relL2=0.546
+[1025/1152] sidx=5420  LOGLO relL2=0.147  DeepONet relL2=0.181  TF1D relL2=0.268
+[1050/1152] sidx=279  LOGLO relL2=0.233  DeepONet relL2=0.387  TF1D relL2=0.526
+[1075/1152] sidx=1524  LOGLO relL2=0.266  DeepONet relL2=0.393  TF1D relL2=0.478
+[1100/1152] sidx=1058  LOGLO relL2=0.294  DeepONet relL2=0.371  TF1D relL2=0.621
+[1125/1152] sidx=4382  LOGLO relL2=0.501  DeepONet relL2=0.537  TF1D relL2=0.713
+[1150/1152] sidx=5729  LOGLO relL2=0.145  DeepONet relL2=0.201  TF1D relL2=0.339
+{
+  "n_test": 1152,
+  "cache_tag": "full7680_seed42",
+  "seed": 42,
+  "deeponet_ckpt": "/home/ubuntu/surrogate-seismic-waves/experiments/DeepONet-Residual/checkpoints/single_per_rec_col_full_R_nom_full7680_seed42.pt",
+  "loglo_ckpt": "/home/ubuntu/surrogate-seismic-waves/checkpoints/tier2_pod64_full7680/best_model.pt",
+  "note": "Same DeepONet full7680 test split; full 1000 freqs; DeepONet = TF1D_nom + R_hat (ResUNet); LOGLO = direct TF surrogate",
+  "loglo": {
+    "rel_l2": {
+      "mean": 0.2423293279328694,
+      "median": 0.22578879445791245,
+      "p10": 0.1541079431772232,
+      "p90": 0.3386035293340684
+    },
+    "pearson_f": {
+      "mean": 0.9454266902558213,
+      "median": 0.9569952435407754,
+      "p10": 0.907655508057002,
+      "p90": 0.978257432857486
+    },
+    "r2": {
+      "mean": 0.8798423455971979,
+      "median": 0.9045395668071557,
+      "p10": 0.7972277662154305,
+      "p90": 0.9533299318789675
+    }
+  },
+  "deeponet": {
+    "rel_l2": {
+      "mean": 0.34370658586784786,
+      "median": 0.330439031124115,
+      "p10": 0.22099814265966417,
+      "p90": 0.4861337423324585
+    },
+    "pearson_f": {
+      "mean": 0.9021537111100416,
+      "median": 0.9181291830466487,
+      "p10": 0.8210722535716823,
+      "p90": 0.9623402431599322
+    },
+    "r2": {
+      "mean": 0.7586933095753924,
+      "median": 0.8016736872987049,
+      "p10": 0.5636268969315734,
+      "p90": 0.9061344259825341
+    }
+  },
+  "tf1d_nom_only": {
+    "rel_l2": {
+      "mean": 0.4942054352464361,
+      "median": 0.48870450258255005,
+      "p10": 0.31677141785621643,
+      "p90": 0.6869362771511078
+    },
+    "pearson_f": {
+      "mean": 0.7675545302648374,
+      "median": 0.7965294092448258,
+      "p10": 0.5739386204405508,
+      "p90": 0.9212670726604275
+    },
+    "r2": {
+      "mean": 0.5137287405554735,
+      "median": 0.5568410915074138,
+      "p10": 0.13542754099485166,
+      "p90": 0.8062416377941184
+    }
+  },
+  "win_rate_rel_l2": {
+    "loglo_better": 0.9487847222222222,
+    "deeponet_better": 0.051215277777777776
+  }
+}
+[compare] wrote /home/ubuntu/surrogate-seismic-waves/experiments/DeepONet-Residual/results/compare_tf_loglo_vs_deeponet_v2/summary.json
+=== OOD compare v2 Sun Aug 23 01:32:32 UTC 2026 ===
+[ood-compare] device=cuda ood=/home/ubuntu/surrogate-seismic-waves/data/ood_h5 gt=/home/ubuntu/surrogate-seismic-waves/checkpoints/ood_scores_full7680
+[compare] loading cached norms /home/ubuntu/surrogate-seismic-waves/experiments/DeepONet-Residual/cache/full7680_seed42/train_norms_seed42.pt
+[GIFNO-FDO-XT-LOGLO-POD config] env overrides: LATENT_CHANNELS=128, NUM_FNO_LAYERS=5, POD_NUM_MODES=64, DEEPONET_LATENT_DIM=128
+[GIFNO config] env overrides: LATENT_CHANNELS=128, NUM_FNO_LAYERS=5
+[ood-compare] dipping: 960 cases
+  [dipping] 1/960  LOGLO=0.798  DN=0.810  TF1D=0.626
+  [dipping] 50/960  LOGLO=0.926  DN=0.540  TF1D=0.602
+  [dipping] 100/960  LOGLO=1.023  DN=0.680  TF1D=0.669
+  [dipping] 150/960  LOGLO=1.261  DN=1.089  TF1D=0.691
+  [dipping] 200/960  LOGLO=0.957  DN=0.355  TF1D=0.401
+  [dipping] 250/960  LOGLO=1.119  DN=0.489  TF1D=0.511
+  [dipping] 300/960  LOGLO=1.094  DN=0.474  TF1D=0.568
+  [dipping] 350/960  LOGLO=0.902  DN=0.806  TF1D=0.694
+  [dipping] 400/960  LOGLO=0.939  DN=0.658  TF1D=0.659
+  [dipping] 450/960  LOGLO=1.047  DN=0.899  TF1D=0.779
+  [dipping] 500/960  LOGLO=0.869  DN=0.645  TF1D=0.637
+  [dipping] 550/960  LOGLO=1.034  DN=0.696  TF1D=0.609
+  [dipping] 600/960  LOGLO=0.348  DN=0.269  TF1D=0.330
+  [dipping] 650/960  LOGLO=0.883  DN=0.673  TF1D=0.666
+  [dipping] 700/960  LOGLO=0.991  DN=0.646  TF1D=0.511
+  [dipping] 750/960  LOGLO=1.081  DN=0.816  TF1D=0.762
+  [dipping] 800/960  LOGLO=0.866  DN=0.484  TF1D=0.494
+  [dipping] 850/960  LOGLO=1.074  DN=0.597  TF1D=0.695
+  [dipping] 900/960  LOGLO=0.997  DN=0.609  TF1D=0.744
+  [dipping] 950/960  LOGLO=0.755  DN=0.382  TF1D=0.491
+[ood-compare] wrote partial /home/ubuntu/surrogate-seismic-waves/experiments/DeepONet-Residual/results/compare_tf_ood_loglo_vs_deeponet_v2/partial_dipping.json
+[ood-compare] three_layer: 960 cases
+  [three_layer] 1/960  LOGLO=0.778  DN=0.922  TF1D=0.948
+  [three_layer] 50/960  LOGLO=0.960  DN=0.912  TF1D=0.988
+  [three_layer] 100/960  LOGLO=0.644  DN=0.936  TF1D=0.932
+  [three_layer] 150/960  LOGLO=0.616  DN=1.032  TF1D=0.977
+  [three_layer] 200/960  LOGLO=0.790  DN=0.972  TF1D=0.905
+  [three_layer] 250/960  LOGLO=0.829  DN=0.929  TF1D=0.921
+  [three_layer] 300/960  LOGLO=0.981  DN=1.006  TF1D=0.993
+  [three_layer] 350/960  LOGLO=0.837  DN=0.951  TF1D=0.958
+  [three_layer] 400/960  LOGLO=1.004  DN=0.959  TF1D=0.983
+  [three_layer] 450/960  LOGLO=0.739  DN=0.994  TF1D=0.961
+  [three_layer] 500/960  LOGLO=0.652  DN=0.968  TF1D=0.960
+  [three_layer] 550/960  LOGLO=0.860  DN=0.931  TF1D=0.946
+  [three_layer] 600/960  LOGLO=0.997  DN=0.986  TF1D=0.992
+  [three_layer] 650/960  LOGLO=0.886  DN=0.979  TF1D=0.972
+  [three_layer] 700/960  LOGLO=0.913  DN=0.999  TF1D=0.985
+  [three_layer] 750/960  LOGLO=0.643  DN=0.993  TF1D=0.961
+  [three_layer] 800/960  LOGLO=0.658  DN=0.892  TF1D=0.906
+  [three_layer] 850/960  LOGLO=0.733  DN=0.944  TF1D=0.970
+  [three_layer] 900/960  LOGLO=0.607  DN=0.928  TF1D=0.949
+  [three_layer] 950/960  LOGLO=0.896  DN=0.989  TF1D=0.980
+[ood-compare] wrote partial /home/ubuntu/surrogate-seismic-waves/experiments/DeepONet-Residual/results/compare_tf_ood_loglo_vs_deeponet_v2/partial_three_layer.json
+{
+  "deeponet_ckpt": "/home/ubuntu/surrogate-seismic-waves/experiments/DeepONet-Residual/checkpoints/single_per_rec_col_full_R_nom_full7680_seed42.pt",
+  "loglo_ckpt": "/home/ubuntu/surrogate-seismic-waves/checkpoints/tier2_pod64_full7680/best_model.pt",
+  "note": "OOD dipping + three_layer; GT from ood_scores_full7680 cache",
+  "campaigns": {
+    "dipping": {
+      "n": 960,
+      "loglo": {
+        "rel_l2": {
+          "mean": 0.9281898528647919,
+          "median": 0.9408365190029144,
+          "p10": 0.8221616804599762,
+          "p90": 1.0652988314628602
+        },
+        "pearson_f": {
+          "mean": -0.020653348403472445,
+          "median": -0.06887387209580975,
+          "p10": -0.14220130277939566,
+          "p90": 0.09449810624544186
+        },
+        "r2": {
+          "mean": -0.8701095538118098,
+          "median": -0.8171338851717114,
+          "p10": -1.5461434527593216,
+          "p90": -0.33486593436504364
+        }
+      },
+      "deeponet": {
+        "rel_l2": {
+          "mean": 0.5962359567638487,
+          "median": 0.6074592769145966,
+          "p10": 0.39395238757133483,
+          "p90": 0.7646796882152558
+        },
+        "pearson_f": {
+          "mean": 0.6530823584249781,
+          "median": 0.6509532584210499,
+          "p10": 0.4652319008646465,
+          "p90": 0.8574662976898797
+        },
+        "r2": {
+          "mean": 0.20031921891279675,
+          "median": 0.2264861214313883,
+          "p10": -0.2317316226321391,
+          "p90": 0.6729670394129507
+        }
+      },
+      "tf1d_nom_only": {
+        "rel_l2": {
+          "mean": 0.5795897209395965,
+          "median": 0.5889960527420044,
+          "p10": 0.41617405116558076,
+          "p90": 0.7260297000408172
+        },
+        "pearson_f": {
+          "mean": 0.6348207761760899,
+          "median": 0.6379812359326169,
+          "p10": 0.4445964840896818,
+          "p90": 0.8332427718723614
+        },
+        "r2": {
+          "mean": 0.2685619526167653,
+          "median": 0.2692552142762728,
+          "p10": -0.05235564353867289,
+          "p90": 0.6251096297986719
+        }
+      },
+      "win_rate_rel_l2": {
+        "loglo_better": 0.021875,
+        "deeponet_better": 0.978125
+      }
+    },
+    "three_layer": {
+      "n": 960,
+      "loglo": {
+        "rel_l2": {
+          "mean": 0.8069490765842299,
+          "median": 0.8195516467094421,
+          "p10": 0.632221919298172,
+          "p90": 0.9564020514488221
+        },
+        "pearson_f": {
+          "mean": 0.360183588744845,
+          "median": 0.3334149021019838,
+          "p10": 0.042553443083770154,
+          "p90": 0.7228490926082825
+        },
+        "r2": {
+          "mean": 0.0724623356639749,
+          "median": 0.02785453734051624,
+          "p10": -0.20374309879148986,
+          "p90": 0.38770154393653294
+        }
+      },
+      "deeponet": {
+        "rel_l2": {
+          "mean": 0.9606833208973209,
+          "median": 0.960949569940567,
+          "p10": 0.9116692066192627,
+          "p90": 1.0150212526321412
+        },
+        "pearson_f": {
+          "mean": 0.02528344442245524,
+          "median": 0.01283268824318939,
+          "p10": -0.11422620783974338,
+          "p90": 0.1707253944844439
+        },
+        "r2": {
+          "mean": -0.3139251924934611,
+          "median": -0.30611223888437544,
+          "p10": -0.5229298986940261,
+          "p90": -0.09419803350539188
+        }
+      },
+      "tf1d_nom_only": {
+        "rel_l2": {
+          "mean": 0.9560991977031033,
+          "median": 0.9623243808746338,
+          "p10": 0.9190918207168579,
+          "p90": 0.9845414161682129
+        },
+        "pearson_f": {
+          "mean": -0.002180234876409414,
+          "median": -0.0209967568011111,
+          "p10": -0.08303433008895936,
+          "p90": 0.1073483844882726
+        },
+        "r2": {
+          "mean": -0.2977007768433147,
+          "median": -0.29373754396558815,
+          "p10": -0.4780077903986937,
+          "p90": -0.12213534113128179
+        }
+      },
+      "win_rate_rel_l2": {
+        "loglo_better": 0.8864583333333333,
+        "deeponet_better": 0.11354166666666667
+      }
+    }
+  },
+  "combined": {
+    "n": 1920,
+    "loglo": {
+      "rel_l2": {
+        "mean": 0.8675694647245109,
+        "median": 0.8896845579147339,
+        "p10": 0.6552610158920288,
+        "p90": 1.0177335619926453
+      },
+      "pearson_f": {
+        "mean": 0.1697651201706863,
+        "median": 0.056120220548157705,
+        "p10": -0.12130769365611054,
+        "p90": 0.6779307849107818
+      },
+      "r2": {
+        "mean": -0.39882360907391745,
+        "median": -0.2302531739046747,
+        "p10": -1.2528508158069342,
+        "p90": 0.3266177431761859
+      }
+    },
+    "deeponet": {
+      "rel_l2": {
+        "mean": 0.7784596388305848,
+        "median": 0.8694115579128265,
+        "p10": 0.48151450157165526,
+        "p90": 0.994347208738327
+      },
+      "pearson_f": {
+        "mean": 0.3391829014237167,
+        "median": 0.3563813430180287,
+        "p10": -0.05819723850201746,
+        "p90": 0.7849308753052875
+      },
+      "r2": {
+        "mean": -0.056802986790332174,
+        "median": -0.12287753596570361,
+        "p10": -0.4763604535194539,
+        "p90": 0.5162958558729478
+      }
+    },
+    "tf1d_nom_only": {
+      "rel_l2": {
+        "mean": 0.7678444593213498,
+        "median": 0.8201258778572083,
+        "p10": 0.48282237350940704,
+        "p90": 0.9795671701431274
+      },
+      "pearson_f": {
+        "mean": 0.31632027064984025,
+        "median": 0.32307788795898235,
+        "p10": -0.0731858346057476,
+        "p90": 0.7619390819719131
+      },
+      "r2": {
+        "mean": -0.014569412113274687,
+        "median": -0.09974898994533943,
+        "p10": -0.4236982579466904,
+        "p90": 0.5012445406207924
+      }
+    },
+    "win_rate_rel_l2": {
+      "loglo_better": 0.45416666666666666,
+      "deeponet_better": 0.5458333333333333
+    }
+  }
+}
+[ood-compare] wrote /home/ubuntu/surrogate-seismic-waves/experiments/DeepONet-Residual/results/compare_tf_ood_loglo_vs_deeponet_v2/summary.json
+=== ALL DONE Sun Aug 23 01:38:21 UTC 2026 ===

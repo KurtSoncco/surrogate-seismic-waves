@@ -84,6 +84,8 @@ LOGLO_HF_NOISE_ALPHA: float = 0.025
 # as a 1D-along-x operator). Default = full collapse: validated to match/beat
 # full depth at ~11x throughput and ~20x fewer params. 1 = legacy full depth.
 LOGLO_DEPTH_STRIDE: int = NZ_MAX
+# Optional warm-start path (encoder+head); set via GIFNO_INIT_CHECKPOINT.
+INIT_CHECKPOINT: str = ""
 
 # --- POD-DeepONet readout ---
 BRANCH_MODE: str = "surface"
@@ -305,6 +307,8 @@ def _parse_env_value(key: str, raw: str):
         return float(raw)
     if key == "WANDB_RUN_NAME":
         return raw
+    if key == "INIT_CHECKPOINT":
+        return raw
     raise KeyError(f"Unknown config override key: {key}")
 
 
@@ -372,6 +376,7 @@ _OVERRIDABLE_KEYS = (
     "ADAM_EPS",
     "AMSGRAD",
     "WANDB_RUN_NAME",
+    "INIT_CHECKPOINT",
 )
 
 

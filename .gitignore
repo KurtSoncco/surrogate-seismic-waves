@@ -67,6 +67,23 @@ logs/
 *.npy
 **/cache/
 
+# Publication full-7680 checkpoints (LOGLO-POD + residual DeepONet)
+!checkpoints/tier2_pod64_full7680/
+!checkpoints/tier2_pod64_full7680/best_model.pt
+!experiments/DeepONet-Residual/checkpoints/
+!experiments/DeepONet-Residual/checkpoints/single_per_rec_col_full_R_nom_full7680_seed42.pt
+!experiments/DeepONet-Residual/checkpoints/single_resunet_full_R_nom_full7680_seed42.pt
+
+# LOGLO vs DeepONet TF comparison summaries
+!experiments/DeepONet-Residual/results/compare_tf_loglo_vs_deeponet/
+!experiments/DeepONet-Residual/results/compare_tf_loglo_vs_deeponet/**
+!experiments/DeepONet-Residual/results/compare_tf_ood_loglo_vs_deeponet/
+!experiments/DeepONet-Residual/results/compare_tf_ood_loglo_vs_deeponet/**
+!experiments/DeepONet-Residual/results/compare_tf_loglo_vs_deeponet_v2/
+!experiments/DeepONet-Residual/results/compare_tf_loglo_vs_deeponet_v2/**
+!experiments/DeepONet-Residual/results/compare_tf_ood_loglo_vs_deeponet_v2/
+!experiments/DeepONet-Residual/results/compare_tf_ood_loglo_vs_deeponet_v2/**
+
 # OS files
 .DS_Store
 Thumbs.db

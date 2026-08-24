@@ -85,6 +85,22 @@ def train_model(train_loader, val_loader):
 
     model = create_model().to(config.DEVICE)
 
+    init_ckpt = getattr(config, "INIT_CHECKPOINT", "") or ""
+    if init_ckpt:
+        from pathlib import Path
+
+        ckpt_path = Path(init_ckpt)
+        if not ckpt_path.is_file():
+            raise FileNotFoundError(f"INIT_CHECKPOINT not found: {ckpt_path}")
+        state = torch.load(ckpt_path, map_location=config.DEVICE, weights_only=True)
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        print(
+            f"[init] Loaded weights from {ckpt_path} "
+            f"(missing={len(missing)} unexpected={len(unexpected)})"
+        )
+        if missing:
+            print(f"[init] missing keys (first 8): {missing[:8]}")
+
     if config.TORCH_COMPILE and hasattr(torch, "compile"):
         model = torch.compile(model)
 
