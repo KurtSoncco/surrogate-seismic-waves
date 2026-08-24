@@ -41,7 +41,6 @@ config.setup_import_paths()
 from capability_check import (  # noqa: E402
     build_input_from_h5,
     compare_tfs,
-    compute_ground_truth_tf,
     load_model,
     predict_tf,
 )
@@ -322,7 +321,6 @@ def score_campaign(
             compare_tfs(
                 tf_pred, tf_true, freq, case_name=slug, out_dir=case_dir
             )
-        row_meta = dict(manifest[i]) if i < len(manifest) else {}
         # Align by index from path
         idx = int(Path(case_dir_str).name.split("_")[1])
         man_row = next((r for r in manifest if int(r["index"]) == idx), {})

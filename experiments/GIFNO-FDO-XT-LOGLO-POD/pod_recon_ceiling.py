@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -31,8 +32,6 @@ import torch
 import config
 
 config.setup_import_paths()
-
-import importlib.util
 
 _POD_SCRIPT = (
     Path(__file__).resolve().parents[1] / "GIFNO" / "preprocess" / "compute_pod_basis.py"

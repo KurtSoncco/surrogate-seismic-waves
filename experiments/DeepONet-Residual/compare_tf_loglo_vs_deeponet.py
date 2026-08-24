@@ -34,9 +34,7 @@ import config as dn_config
 from data import (
     ResidualDeepONetDataset,
     build_recorder_fields,
-    freq_screen_indices,
     make_splits,
-    pad_depth,
     stoch_dim,
     trunk_feature_names,
 )

@@ -2,19 +2,9 @@
 
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
 
 import numpy as np
-
-
-def _load(name: str):
-    path = Path(__file__).resolve().parents[1] / name
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    # Avoid running apply_env / heavy imports by only loading helpers when possible
-    return path
 
 
 def test_score_ood_stratify_summary_importable():

@@ -32,14 +32,7 @@ from response_variability.metrics import (  # noqa: E402
     spatial_sigma_ln,
     theoretical_f0,
 )
-from response_variability.names import (  # noqa: E402
-    COMPARE_METHODS,
-    GINO,
-    HASKELL_COLUMN,
-    HASKELL_NOMINAL,
-    OPENSEES,
-    TF_KEYS,
-)
+from response_variability.names import OPENSEES, TF_KEYS  # noqa: E402
 
 OUT_DIR = config.RESULTS_DIR / "response_variability"
 CENTRAL_REC = config.N_LATERAL // 2
