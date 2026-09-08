@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellowgreen?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Github stars](https://img.shields.io/github/stars/KurtSoncco/surrogate-seismic-waves?style=social)](https://github.com/KurtSoncco/surrogate-seismic-waves/stargazers)
 
-> This repository develops surrogate models for seismic wave propagation and site-response prediction. We benchmark operator-learning approaches (Fourier Neural Operators, DeepONets), latent-space pipelines, and autoencoder-based representations against physics-based simulations from **ITASCA FLAC** (1D layered profiles) and **OpenSees** (2D soil-variability domains). The goal is accurate transfer-function prediction with orders-of-magnitude faster inference than full physics runs.
+> This repository develops surrogate models for seismic wave propagation and site-response prediction. Two shipped operators map 2D OpenSees soil-variability domains to transfer functions: **LOGLO-POD** (direct TF, best in-family IID) and **residual GINO** (Haskell leftover, best OOD). The goal is accurate transfer-function prediction with orders-of-magnitude faster inference than full physics runs.
 
 [Research Questions](#-research-questions--hypothesis) • [Repository Layout](#-repository-layout) • [Methodology](#️-methodology) • [Data](#-data) • [Experiments](#-experiments) • [Key Results](#-key-results) • [How to Reproduce](#-how-to-reproduce)
 
@@ -15,9 +15,8 @@
 
 ## 🎯 Research Questions / Hypothesis
 
-- How effective are operator-learning models (FNO, DeepONet) versus classical 1D/2D physics simulators for predicting transfer functions?
-- Can latent-space or autoencoder front-ends improve FNO training on high-dimensional soil profiles?
-- Does spectral boosting (multi-stage residual FNO) reduce error beyond a single well-trained base model?
+- How effective are operator-learning models versus classical 1D/2D physics simulators for predicting transfer functions?
+- Can a 1D Haskell prior plus a residual operator improve OOD generalization on layered and dipping geometry?
 - What is the accuracy vs. speed trade-off when generalizing to unseen soil profiles and frequency content?
 
 ---
@@ -27,15 +26,11 @@
 ```
 surrogate-seismic-waves/
 ├── wave_surrogate/          # Core library: FNO, DAE, PCE, FLAC API, TTF utilities
-├── experiments/             # Research experiments (see below)
-│   ├── GIFNO/               # Shared data loader, losses, Delta scripts
-│   ├── GIFNO-FDO-XT-LOGLO-POD/  # Active: LOGLO encoder + POD readout (best 2D model)
-│   ├── latent_FNO/          # Encoder → latent FNO → decoder pipeline
-│   ├── rf_seed/             # 2D Vs → transfer function FNO baseline
-│   ├── Multi-Input Operator/# DeepONet (branch + trunk)
-│   ├── SpecBoost/           # Two-stage spectral boosting (negative result)
-│   └── dae/                 # Denoising autoencoders & OT encoders (experimental)
-├── tests/                   # CI test suite (library + selected experiment tests)
+├── experiments/
+│   ├── GIFNO/               # Shared OpenSees loader, losses, Delta scripts
+│   ├── GIFNO-FDO-XT-LOGLO-POD/  # LOGLO-POD full (best 2D IID model)
+│   └── DeepONet-Residual/   # Residual GINO rebal FT (shipped leftover)
+├── tests/                   # CI test suite (library + experiment tests)
 └── pyproject.toml           # uv project config, Ruff, pytest
 ```
 
@@ -48,10 +43,9 @@ surrogate-seismic-waves/
    - **2D OpenSees runs (GIFNO):** H5 wavefield snapshots on a 500 m soil-variability strip with lateral recorders; transfer functions computed in preprocessing.
 
 2. **Surrogate modeling**
-   - **Direct FNO / DeepONet:** Map soil inputs to frequency-domain transfer functions.
-   - **Latent FNO:** Compress inputs with an encoder, apply FNO in latent space, decode to TF.
-   - **DAE / OT encoders:** Learn compact representations of Vs or multi-channel soil profiles before operator learning.
-   - **Composite losses (GIFNO):** Masked relative Lp + optional H¹ frequency loss + hard-example mining at recorder locations.
+   - **LOGLO-POD:** Dual-path spectral encoder + POD-DeepONet readout maps the 2D strip directly to recorder TFs.
+   - **Residual GINO:** Geometry-aware Haskell nom plus a GNO+FNO leftover on signed `R = TF_2D − TF_1D`.
+   - **Composite losses (GIFNO):** Masked relative Lp + optional H¹ frequency loss + band curriculum.
 
 3. **Evaluation**
    - Regression: MSE, MAE, RMSE, R², relative L2.
@@ -62,15 +56,15 @@ surrogate-seismic-waves/
 
 ## 💾 Data
 
-Datasets are **not stored in this repository** due to size.
+Datasets are **not stored in this repository** due to size. Split sizes, tensor shapes, and which `n=2000` is which are in **[`DATA.md`](DATA.md)**.
 
 | Source | Description | Used by |
 |--------|-------------|---------|
-| FLAC 1D profiles | Vs profiles + transfer functions (~1000 samples) | `wave_surrogate`, `latent_FNO`, `Multi-Input Operator`, `rf_seed` |
-| OpenSees H5 (Box / HPC) | 2D wavefield runs (`run_*.h5`) + derived TF cache | `GIFNO`, `GIFNO-FDO-XT-LOGLO-POD` |
+| FLAC 1D profiles | Vs profiles + transfer functions (~1000 samples) | `wave_surrogate` |
+| OpenSees H5 (Box / HPC) | 2D wavefield runs (`run_*.h5`) + derived TF cache | `GIFNO`, `GIFNO-FDO-XT-LOGLO-POD`, `DeepONet-Residual` |
 | Local dummy data | Synthetic paths for unit tests (no Box mount) | `GIFNO/tests` |
 
-**Local data access (GIFNO):** mount Box at `/mnt/box_lab` or set:
+**Local data access (GIFNO):** mount Box at `/mnt/box` (or `/mnt/box_lab`) or set:
 
 ```bash
 export GIFNO_DATA_ROOT="/path/to/data"   # must contain h5/ and transfer_function/
@@ -82,9 +76,9 @@ On HPC (NCSA Delta, Savio), use the shell scripts in `experiments/GIFNO/` (`delt
 
 ## 🧪 Experiments
 
-### `GIFNO-FDO-XT-LOGLO-POD` — LOGLO encoder + POD readout (active)
+### `GIFNO-FDO-XT-LOGLO-POD` — LOGLO encoder + POD readout (2D, full)
 
-Best 2D OpenSees surrogate: **dual-path LOGLO spectral encoder** (depth-collapsed to 1D-along-x) + **POD-DeepONet readout**. Publication model: `tier2_pod64` (W&B `sweep_tier2_pod64_n2000`, full run `sweep_tier2_pod64_full`).
+Best **in-family IID** 2D OpenSees surrogate: **dual-path LOGLO spectral encoder** (depth-collapsed to 1D-along-x) + **POD-DeepONet readout**. Publication model: `tier2_pod64` trained on the full 7680-sample set (`checkpoints/tier2_pod64_full7680`, W&B `tier2_pod64_full7680`).
 
 - **Input:** `(4, 128, 500)` — normalized Vs, zeta, x/z coords on the 500 m variability strip.
 - **Output:** Transfer functions at 21 lateral recorders × 1000 frequencies.
@@ -95,59 +89,33 @@ Best 2D OpenSees surrogate: **dual-path LOGLO spectral encoder** (depth-collapse
 cd experiments/GIFNO-FDO-XT-LOGLO-POD
 source ../GIFNO/delta_env.sh
 uv run python capability_check.py --all          # OOD capability checks
-sbatch --time=24:00:00 delta_train.sh            # full-dataset training
+bash run_full_7680_train.sh                      # full-dataset training
+sbatch --time=24:00:00 delta_train.sh            # same on Delta
 ```
 
 Shared infrastructure (data loader, metrics, Delta scripts) lives in `experiments/GIFNO/`.
 
-### `GIFNO` — shared OpenSees pipeline (legacy baseline)
+### `DeepONet-Residual` — residual GINO rebal FT
 
-Original grid-direct FNO baseline and **shared library** for LOGLO-POD: H5 data loading, TF preprocessing, metrics, and NCSA Delta deployment scripts.
+Shipped leftover on geometry-aware Haskell nom: freeze-GNO fine-tune of mix **M7680** (`iid_frac=0.34`, three-layer val stop). Checkpoint: `experiments/DeepONet-Residual/checkpoints/M7680_gino_rebal_ft.pt`.
+
+```bash
+GIFNO_DATA_ROOT=data/gifno_screen \
+GIFNO_OOD_DIPPING=data/gifno_screen/ood_dipping \
+GIFNO_OOD_THREE_LAYER=data/gifno_screen/ood_three_layer \
+uv run python experiments/DeepONet-Residual/eval_ood.py --split test
+```
+
+See [`experiments/DeepONet-Residual/README.md`](experiments/DeepONet-Residual/README.md).
+
+### `GIFNO` — shared OpenSees pipeline
+
+H5 data loading, TF preprocessing, metrics, and NCSA Delta deployment scripts used by LOGLO-POD.
 
 ```bash
 cd experiments/GIFNO
-uv run python main.py --limit 32    # legacy baseline smoke test
+uv run python main.py --limit 32    # shared-pipeline smoke test
 ```
-
-### `latent_FNO` — Latent-Space FNO
-
-Tests whether FNO is more effective in a learned latent space:
-
-`Vs profile → Encoder → FNO processor → Decoder → Transfer function`
-
-Modular encoders (MLP, CNN, Transformer), FNO processors (simple, sequence, multiscale, adaptive), and decoders. Supports ablation studies and W&B tracking.
-
-```bash
-cd experiments/latent_FNO
-uv run python main.py list-configs
-uv run python main.py train --config baseline --epochs 1000
-uv run python main.py ablation
-```
-
-### `rf_seed` — 2D Vs → TF FNO Baseline
-
-2D CNN encoder on `(67 × 1500)` Vs grids + FNO operator decoder → 1000-point transfer function. Useful seed/baseline for spatially extended profiles.
-
-```bash
-cd experiments/rf_seed
-uv run python main.py
-```
-
-### `Multi-Input Operator` — DeepONet
-
-Branch network (Vs profile) + trunk network (frequency coordinates) following the DeepONet formulation for operator learning on 1D profiles.
-
-### `SpecBoost` — Spectral Boosting (negative result)
-
-Two-stage training inspired by [FNO spectral analysis (arXiv:2404.07200)](https://arxiv.org/abs/2404.07200): a base FNO followed by a residual-correction FNO. **Conclusion:** residuals after the first model were too small and poorly structured for the booster to learn; multi-stage boosting did not improve accuracy.
-
-### `dae/` — Autoencoders & OT Encoders (experimental)
-
-- **`Vs_profiles/`:** Decoupled autoencoder for 1D Vs reconstruction; OT encoder/decoder variants.
-- **`FNO_latent/`:** OT encoder + 1D FNO surrogate on soil profiles (research prototype).
-- **`TF/`:** Transfer-function autoencoder experiments.
-
-These scripts are excluded from CI pytest (`--ignore=experiments/dae`); use them interactively when data paths are configured.
 
 ### `wave_surrogate` — Core Package
 
@@ -163,26 +131,7 @@ Reusable implementations tested in CI:
 
 ## 📊 Key Results
 
-### Latent FNO — best configuration (saved run)
-
-On the 1D FLAC hold-out test set (150 samples, 1000 frequency points):
-
-| Metric | Value |
-|--------|-------|
-| R² | **0.787** |
-| Pearson (overall) | **0.890** |
-| Mean sample correlation | **0.901** |
-| Min sample correlation | **0.766** |
-| RMSE | 2.10 |
-| MAPE | 14.7% |
-
-Latent FNO clearly outperformed simpler baselines in the same ablation sweep (e.g. test R² ≈ 0.30 for several MLP/CNN-only configs). Operating FNO in a learned latent space improved both amplitude and spectral shape fidelity.
-
-### SpecBoost — spectral boosting
-
-Multi-stage residual FNO did **not** improve predictions; residual magnitudes were ~1 order of magnitude too small and weakly correlated with inputs. A single well-tuned FNO (or latent FNO) is preferred over boosting for this dataset.
-
-### LOGLO-POD — 2D OpenSees operator (best model)
+### LOGLO-POD — 2D OpenSees operator (full)
 
 On the 2000-sample screen hold-out (`tier2_pod64`, convergence band curriculum):
 
@@ -192,17 +141,19 @@ On the 2000-sample screen hold-out (`tier2_pod64`, convergence band curriculum):
 | `test_pearson` | **0.919** |
 | `test_pearson_mean` (per-recorder) | **0.939** |
 
-**OOD capability checks** (3-layer profiles, dipping interfaces) fail catastrophically
-(rel L2 ~16–26, Pearson ≈ 0) — see `experiments/GIFNO-FDO-XT-LOGLO-POD/capability_check.py`
-and docs under `checkpoints/capability_checks/` (local, gitignored).
+That screen uses the first 2000 manifest rows, not the residual nested tests.
 
-Full-dataset training (`sweep_tier2_pod64_full`) is the publication target on Delta.
+### Residual GINO vs LOGLO — nested leftover tests (shipped)
 
-### rf_seed — 2D Vs baseline
+Same seed-42 slices (IID 150 / dipping 144 / three-layer 144):
 
-Example evaluation plots are saved under `experiments/rf_seed/results/` (`predictions_summary.png`, `correlation_vs_frequency.png`, etc.).
+| Model | IID rel L2 | dipping | three-layer |
+|-------|-----------:|--------:|------------:|
+| 1D Haskell nom | 0.565 | 0.601 | 0.730 |
+| LOGLO-POD full7680 | **0.338** | 0.930 | 0.843 |
+| GINO rebal FT | 0.353 | **0.322** | **0.525** |
 
-![rf_seed predictions summary](experiments/rf_seed/results/predictions_summary.png)
+LOGLO is the better in-family amplitude fit and still collapses on layered/dipping geometry. GINO (`experiments/DeepONet-Residual/checkpoints/M7680_gino_rebal_ft.pt`) is the leftover that holds OOD. See [`experiments/DeepONet-Residual/results/compare_gino_loglo/`](experiments/DeepONet-Residual/results/compare_gino_loglo/) and [`experiments/DeepONet-Residual/README.md`](experiments/DeepONet-Residual/README.md).
 
 ---
 
@@ -234,11 +185,11 @@ CI runs the same steps on every push to `main` ([workflow](.github/workflows/ci.
 Point data paths via each experiment's `config.py` or environment variables, then:
 
 ```bash
-# Example: latent FNO training
-cd experiments/latent_FNO && uv run python main.py train --config baseline
-
-# Example: LOGLO-POD capability check or training
+# LOGLO-POD capability check or full training
 cd experiments/GIFNO-FDO-XT-LOGLO-POD && uv run python capability_check.py --all
+
+# Residual GINO OOD eval (default checkpoint = M7680_gino_rebal_ft)
+uv run python experiments/DeepONet-Residual/eval_ood.py --split test
 ```
 
 ### 4. GIFNO on NCSA Delta (from WSL)
@@ -255,7 +206,7 @@ Requires Box mount (`go-lab`), Duo MFA for SSH, and W&B credentials on the clust
 
 - **Package manager:** [uv](https://github.com/astral-sh/uv) with lockfile (`uv.lock`).
 - **Linting:** Ruff (`uv run ruff check .`).
-- **Tests:** pytest over `wave_surrogate`, `GIFNO`, and `GIFNO-FDO-XT-LOGLO-POD`; `experiments/dae` excluded.
+- **Tests:** pytest over `wave_surrogate`, `GIFNO`, `GIFNO-FDO-XT-LOGLO-POD`, and `DeepONet-Residual`.
 - **Logging:** Weights & Biases for experiment tracking where configured.
 
 ---

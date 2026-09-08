@@ -1,7 +1,11 @@
-# DeepONet-Residual — Results
+# DeepONet-Residual — Results (lab notebook)
+
+**Current figures and shipped metrics:** [`results/README.md`](results/README.md)  
+**Nested LOGLO vs GINO:** [`results/compare_gino_loglo/`](results/compare_gino_loglo/)
+
+This file is the chronological bake-off log (ResUNet → GINO → rebal FT). Numbers below that pre-date `M7680_gino_rebal_ft` are not the shipped leftover.
 
 **Experiment:** [`experiments/DeepONet-Residual/`](.)  
-**Sibling feature gate:** [`../Residual/RESULTS.md`](../Residual/RESULTS.md)  
 **Primary data:** stratified **n = 1000** (seed 42), sample split 700 / 150 / 150  
 **Focus target:** signed **\(R_{\mathrm{nom}}\)** (nominal Haskell baseline)
 

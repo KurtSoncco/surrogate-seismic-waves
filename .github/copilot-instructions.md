@@ -11,6 +11,9 @@ This codebase develops machine learning surrogates for seismic wave propagation 
 - **`scripts/flac/`**: Integration with FLAC physics simulator for ground truth generation
 - **`wave_surrogate/models/`**: Model implementations (FNO, DAE, PCE architectures)
 - **`wave_surrogate/ttf/`**: Transfer function calculations for seismic response analysis
+- **`experiments/GIFNO-FDO-XT-LOGLO-POD/`**: LOGLO-POD full 2D OpenSees operator
+- **`experiments/DeepONet-Residual/`**: Residual GINO rebal FT leftover
+- **`experiments/GIFNO/`**: Shared OpenSees H5 loader, losses, and HPC scripts
 
 ### Data Pipeline
 1. **Input**: Soil profiles (Vs, density) + bedrock motion time series
