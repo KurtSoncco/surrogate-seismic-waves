@@ -26,6 +26,7 @@ from train import _device, _forward, apply_norms  # noqa: E402
 
 from response_variability.metrics import (  # noqa: E402
     FREQ_BANDS,
+    band_pearson,
     band_rel_l2,
     method_vs_reference,
     peak_af,
@@ -97,13 +98,25 @@ def predict_gino(
     test_idx: np.ndarray,
     ckpt_path: Path,
     batch_size: int,
+    field_1d_repeat: bool = False,
+    cov_scale: float = 1.0,
 ) -> np.ndarray:
-    """Return GINO |TF| reconstructions, shape (n_test, n_rec, n_freq)."""
+    """Return GINO |TF| reconstructions, shape (n_test, n_rec, n_freq).
+
+    ``field_1d_repeat`` tiles the central column so GNO/FNO see no lateral Vs.
+    ``cov_scale`` multiplies the CoV entry (last stoch dim for xi_cov/cov_only).
+    """
     import torch
+
+    from data import dataset_kwargs_from_blob, repeat_center_column
+    from model import apply_query_freq
+    from unified_metrics import tf_from_residual
 
     device = _device()
     model, blob, stats, trunk_set = _load_residual_model(ckpt_path, device)
     serial = bool(blob.get("serial_tf1d", True))
+    log_residual = bool(blob.get("log_residual", False))
+    ds_kw = dataset_kwargs_from_blob(blob)
     ds = ResidualDeepONetDataset(
         cache_dir,
         test_idx,
@@ -111,8 +124,10 @@ def predict_gino(
         trunk_set=trunk_set,
         n_freq=config.N_FREQ_EVAL,
         serial_tf1d=serial,
+        **ds_kw,
     )
     apply_norms(ds, stats)
+    apply_query_freq(model, getattr(ds, "freq_s", None))
     loader = DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=0)
     n_rec = ds.n_rec
     n_freq = len(ds.f_idx)
@@ -122,16 +137,24 @@ def predict_gino(
     hats: list[np.ndarray] = []
     with torch.no_grad():
         for batch in tqdm(loader, desc="GINO iid test", leave=False):
+            fields = batch["fields"]
+            if field_1d_repeat:
+                fields = torch.from_numpy(repeat_center_column(fields.numpy()))
+            stoch = batch["stoch"]
+            if float(cov_scale) != 1.0:
+                stoch = stoch.clone()
+                stoch[:, -1] = stoch[:, -1] * float(cov_scale)
             pred_n = _forward(
                 model,
-                batch["fields"].to(device),
-                batch["stoch"].to(device),
+                fields.to(device),
+                stoch.to(device),
                 batch["trunk_y"].to(device),
                 mode,
+                geom_flags=batch.get("geom_flags"),
             )
-            pred = pred_n * t_std + t_mean
-            tf1d = batch["tf1d"].to(device)
-            hats.append((tf1d + pred).cpu().numpy())
+            pred = (pred_n * t_std + t_mean).cpu().numpy()
+            tf1d = batch["tf1d"].numpy()
+            hats.append(tf_from_residual(tf1d, pred, log_residual=log_residual))
     stacked = np.concatenate(hats, axis=0)
     return stacked.reshape(len(ds), n_rec, n_freq).astype(np.float64)
 
@@ -248,11 +271,21 @@ def band_misfit_table(pack: dict[str, np.ndarray]) -> pd.DataFrame:
                         cand, ref_c, freq, lo=lo, hi=hi
                     )
                     row[f"rel_l2_{band}_central"] = row[f"rel_l2_{band}"]
+                    row[f"pearson_{band}"] = band_pearson(
+                        cand, ref_c, freq, lo=lo, hi=hi
+                    )
+                    row[f"pearson_{band}_central"] = row[f"pearson_{band}"]
                 else:
                     row[f"rel_l2_{band}"] = band_rel_l2(
                         cand, ref_full, freq, lo=lo, hi=hi
                     )
                     row[f"rel_l2_{band}_central"] = band_rel_l2(
+                        _as_central(cand), ref_c, freq, lo=lo, hi=hi
+                    )
+                    row[f"pearson_{band}"] = band_pearson(
+                        cand, ref_full, freq, lo=lo, hi=hi
+                    )
+                    row[f"pearson_{band}_central"] = band_pearson(
                         _as_central(cand), ref_c, freq, lo=lo, hi=hi
                     )
             rows.append(row)
@@ -276,6 +309,10 @@ def aggregate_json(summary: pd.DataFrame, misfit: pd.DataFrame) -> dict[str, Any
             "rel_l2_mid_mean": float(mis["rel_l2_mid"].mean()),
             "rel_l2_high_mean": float(mis["rel_l2_high"].mean()),
         }
+        if "pearson_low" in mis.columns:
+            rec["pearson_low_mean"] = float(mis["pearson_low"].mean())
+            rec["pearson_mid_mean"] = float(mis["pearson_mid"].mean())
+            rec["pearson_high_mean"] = float(mis["pearson_high"].mean())
         if "rel_l2_spatial" in sub.columns:
             rec["rel_l2_spatial_mean"] = float(sub["rel_l2_spatial"].mean())
         out[method] = rec

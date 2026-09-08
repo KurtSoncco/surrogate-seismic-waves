@@ -13,7 +13,7 @@ import numpy as np
 import torch
 
 import config
-from data import CombinedResidualDataset, ResidualDeepONetDataset
+from data import CombinedResidualDataset, ResidualDeepONetDataset, dataset_kwargs_from_blob
 from domain_splits import ensure_splits, load_split
 from ood_signed_cache import (
     build_ood_signed_cache,
@@ -121,7 +121,13 @@ def _eval_frozen_rhat(splits: dict[str, Path]) -> dict[str, Any]:
     ]
     for name, cache, idx in specs:
         ds = ResidualDeepONetDataset(
-            cache, idx, target="R_nom", trunk_set="full", n_freq=config.N_FREQ_EVAL
+            cache,
+            idx,
+            target="R_nom",
+            trunk_set=trunk_set,
+            n_freq=config.N_FREQ_EVAL,
+            serial_tf1d=bool(blob.get("serial_tf1d", True)),
+            **dataset_kwargs_from_blob(blob),
         )
         apply_norms(ds, stats)
         loader = DataLoader(ds, batch_size=config.BATCH_SIZE, shuffle=False)

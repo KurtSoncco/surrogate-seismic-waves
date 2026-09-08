@@ -7,6 +7,7 @@ import pytest
 
 from response_variability.metrics import (
     anderson_frequency_domain,
+    band_pearson,
     band_rel_l2,
     log_residual_bias,
     peak_af,
@@ -23,6 +24,7 @@ from response_variability.names import (
     OPENSEES,
     PASSERI,
     PRETELL,
+    PRETELL_P84,
     TORO,
 )
 from response_variability.plot_iid import (
@@ -32,7 +34,7 @@ from response_variability.plot_iid import (
     select_f0_quantile_indices,
     select_impedance_indices,
 )
-from response_variability.seiskit_arms import hallal_config, pretell_strip_columns
+from response_variability.seiskit_arms import hallal_config, lognormal_upper, pretell_strip_columns
 
 
 def test_peak_af_finds_resonance():
@@ -80,6 +82,17 @@ def test_band_rel_l2_masks_frequency():
     high = band_rel_l2(pred, true, freq, lo=2.0, hi=10.0)
     assert low > 0.5
     assert high == pytest.approx(0.0)
+
+
+def test_band_pearson_masks_frequency():
+    freq = np.array([0.2, 0.3, 1.0, 5.0, 8.0])
+    true = np.linspace(1.0, 5.0, 5)
+    pred = true.copy()
+    pred[:2] = true[:2][::-1]
+    low = band_pearson(pred, true, freq, lo=0.1, hi=0.5)
+    high = band_pearson(pred, true, freq, lo=2.0, hi=10.0)
+    assert high == pytest.approx(1.0)
+    assert low < 0.5
 
 
 def test_rel_l2_identical_is_zero():
@@ -161,10 +174,67 @@ def test_readable_method_names():
     assert TORO == "Toro Vs"
     assert PASSERI == "Passeri tts"
     assert PRETELL == "Pretell"
+    assert PRETELL_P84 == "Pretell p84"
     assert HASKELL_NOMINAL == "1D Base Case"
     assert HASKELL_COLUMN == "Pretell's approach"
     assert HASKELL_NOMINAL in COMPARE_METHODS
     assert HASKELL_COLUMN in COMPARE_METHODS
+    from response_variability.names import SEISKIT_METHODS
+
+    assert PRETELL_P84 in SEISKIT_METHODS
+
+
+def test_lognormal_upper_is_geomean_times_exp_sigma():
+    geo = np.array([np.e, 2.0])
+    sig = np.array([1.0, 0.0])
+    out = lognormal_upper(geo, sig, z=1.0)
+    np.testing.assert_allclose(out, [np.e**2, 2.0])
+    stacked = np.full((3, 4), 2.0)
+    scalar = lognormal_upper(stacked, np.array([0.0, 0.0, np.log(2.0)]))
+    np.testing.assert_allclose(scalar[0], 2.0)
+    np.testing.assert_allclose(scalar[2], 4.0)
+
+
+def test_attach_pretell_p84_scores_as_method():
+    from response_variability.seiskit_arms import attach_pretell_p84
+
+    pack = {
+        "tf_gino": 1,
+        "tf_pretell": np.array([[1.0, 2.0]]),
+        "sigma_ln_pretell": np.array([[0.0, np.log(2.0)]]),
+        "tf_opensees": 1,
+    }
+    pack = attach_pretell_p84(pack)
+    np.testing.assert_allclose(pack["tf_pretell_p84"], [[1.0, 4.0]])
+    assert compare_methods_in(pack)[-1] == PRETELL_P84
+
+
+def test_upgrade_sigma_ln_from_presentation_requires_matching_idx(tmp_path):
+    from response_variability.seiskit_arms import (
+        attach_pretell_p84,
+        upgrade_sigma_ln_from_presentation,
+    )
+
+    collapsed = {
+        "sample_idx": np.array([10, 20]),
+        "tf_pretell": np.ones((2, 3)),
+        "sigma_ln_pretell": np.array([0.0, 0.0]),
+    }
+    src = tmp_path / "iid_pack.npz"
+    np.savez(
+        src,
+        sample_idx=np.array([10, 20]),
+        sigma_ln_pretell=np.array([[0.0, np.log(2.0), 0.0], [0.0, 0.0, 0.0]]),
+    )
+    upgraded = upgrade_sigma_ln_from_presentation(collapsed, src)
+    assert upgraded["sigma_ln_pretell"].shape == (2, 3)
+    p84 = attach_pretell_p84(upgraded)["tf_pretell_p84"]
+    np.testing.assert_allclose(p84[0], [1.0, 2.0, 1.0])
+
+    mismatch = dict(collapsed)
+    mismatch["sample_idx"] = np.array([99, 20])
+    skipped = upgrade_sigma_ln_from_presentation(mismatch, src)
+    np.testing.assert_array_equal(skipped["sigma_ln_pretell"], [0.0, 0.0])
 
 
 def test_pretell_strip_columns_span_cropped_domain():
@@ -193,3 +263,124 @@ def test_hallal_config_matches_rv_simplified_flags():
 def test_compare_methods_in_follows_pack_keys():
     pack = {"tf_gino": 1, "tf_toro": 1, "tf_opensees": 1}
     assert compare_methods_in(pack) == [GINO, TORO]
+
+
+def test_default_checkpoint_is_rebal_ft():
+    import config
+
+    assert config.DEFAULT_CHECKPOINT.name == "M7680_gino_rebal_ft.pt"
+
+
+def test_pearson_tf_freq_perfect_is_one():
+    from response_variability.plot_presentation import pearson_tf_freq_per_sample
+
+    tf = np.linspace(1.0, 3.0, 40).reshape(1, 1, 40)
+    tf = np.broadcast_to(tf, (4, 21, 40)).copy()
+    out = pearson_tf_freq_per_sample(tf, tf)
+    assert out.shape == (4,)
+    assert np.allclose(out, 1.0)
+
+
+def test_pick_pearson_quantile_indices_unique_and_spread():
+    from response_variability.plot_presentation import (
+        PEARSON_QUANTILES,
+        pick_pearson_quantile_indices,
+    )
+
+    p = np.linspace(0.40, 0.98, 40)
+    idx = pick_pearson_quantile_indices(p)
+    assert len(idx) == len(PEARSON_QUANTILES)
+    assert len(set(idx.tolist())) == len(idx)
+    assert p[idx[0]] < p[idx[-1]]
+
+
+def test_nominal_vs_profile_two_and_three_layer():
+    from response_variability.plot_presentation import nominal_vs_profile
+
+    z, vs = nominal_vs_profile(vs1=200.0, H=30.0, vs2=800.0, nz=60, dz=1.0)
+    assert z[0] < z[-1]
+    assert vs[0] == pytest.approx(200.0)
+    assert vs[-1] == pytest.approx(800.0)
+    z3, vs3 = nominal_vs_profile(
+        vs1=180.0,
+        H=50.0,
+        vs2=900.0,
+        nz=80,
+        dz=1.0,
+        h1=20.0,
+        h2=30.0,
+        vs_mid=350.0,
+    )
+    assert vs3[5] == pytest.approx(180.0)
+    assert vs3[25] == pytest.approx(350.0)
+    assert vs3[70] == pytest.approx(900.0)
+    assert z3.shape == vs3.shape
+    from response_variability.plot_presentation import nominal_vs_stairs
+
+    vs_s, z_s = nominal_vs_stairs(vs1=200.0, H=30.0, vs2=800.0, z_max=50.0)
+    assert set(np.unique(vs_s).tolist()) == {200.0, 800.0}
+    assert z_s[0] == pytest.approx(0.0)
+    assert z_s[-1] == pytest.approx(50.0)
+    vs3s, z3s = nominal_vs_stairs(
+        vs1=180.0, H=50.0, vs2=900.0, z_max=70.0, h1=20.0, h2=30.0, vs_mid=350.0
+    )
+    assert set(np.unique(vs3s).tolist()) == {180.0, 350.0, 900.0}
+    assert z3s[-1] == pytest.approx(70.0)
+
+
+def test_case_title_includes_rh_ahv_cov():
+    from response_variability.plot_presentation import _case_title, make_synthetic_pack
+
+    pack = make_synthetic_pack(n=4, seed=0)
+    title = _case_title(pack, 0, 0.10, "iid")
+    assert r"$r_H$" in title
+    assert r"$a_{HV}$" in title
+    assert "CoV=" in title
+    assert r"$V_{s2}$" in title
+
+
+def test_stored_nz_includes_bedrock_below_soil():
+    from response_variability.plot_presentation import _stored_nz, make_synthetic_pack
+
+    pack = make_synthetic_pack(n=4, nz=40)
+    i = 0
+    n_plot = _stored_nz(pack["vs_2d"][i])
+    assert n_plot > int(pack["soil_nz"][i])
+    assert float(np.nanmax(pack["vs_2d"][i, :n_plot])) == pytest.approx(
+        float(pack["vs2"][i])
+    )
+
+
+def test_presentation_plots_write_eleven_files(tmp_path):
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from response_variability.plot_presentation import (
+        DOMAIN_SPECS,
+        make_synthetic_pack,
+        plot_all_from_packs,
+    )
+
+    packs = {
+        domain: make_synthetic_pack(domain=domain, n=12, seed=i)
+        for i, domain in enumerate(DOMAIN_SPECS)
+    }
+    paths = plot_all_from_packs(packs, tmp_path)
+    assert len(paths) == 11
+    names = {p.name for p in paths}
+    for domain in DOMAIN_SPECS:
+        for page in (1, 2, 3):
+            assert f"compare_{domain}_page{page}.png" in names
+    assert "pearson_histograms.png" in names
+    assert "vs_mosaic.png" in names
+    for p in paths:
+        assert p.is_file()
+        assert p.stat().st_size > 0
+
+
+def test_presentation_live_skipped_without_caches():
+    from response_variability.plot_presentation import caches_ready
+
+    if caches_ready():
+        pytest.skip("mix caches present; live GINO/Pretell scoring is not a unit test")
+    assert caches_ready() is False

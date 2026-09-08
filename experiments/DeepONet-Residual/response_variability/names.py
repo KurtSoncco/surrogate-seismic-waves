@@ -9,9 +9,10 @@ HASKELL_COLUMN = "Pretell's approach"
 TORO = "Toro Vs"
 PASSERI = "Passeri tts"
 PRETELL = "Pretell"
+PRETELL_P84 = "Pretell p84"
 
 COMPARE_METHODS = (GINO, HASKELL_NOMINAL, HASKELL_COLUMN)
-SEISKIT_METHODS = (TORO, PASSERI, PRETELL)
+SEISKIT_METHODS = (TORO, PASSERI, PRETELL, PRETELL_P84)
 ALL_METHODS = (OPENSEES, *COMPARE_METHODS, *SEISKIT_METHODS)
 
 # Wong / Nature colorblind palette. OpenSees is the black reference.
@@ -23,6 +24,7 @@ METHOD_COLORS = {
     TORO: "#D55E00",
     PASSERI: "#CC79A7",
     PRETELL: "#E69F00",
+    PRETELL_P84: "#6B3A0F",
 }
 
 METHOD_LINESTYLES = {
@@ -33,6 +35,7 @@ METHOD_LINESTYLES = {
     TORO: (0, (3, 1, 1, 1)),
     PASSERI: ":",
     PRETELL: "-.",
+    PRETELL_P84: (0, (6, 1.4)),
 }
 
 METHOD_ZORDER = {
@@ -43,6 +46,7 @@ METHOD_ZORDER = {
     TORO: 2,
     PASSERI: 2,
     PRETELL: 3,
+    PRETELL_P84: 6,
 }
 
 TF_KEYS = {
@@ -53,4 +57,5 @@ TF_KEYS = {
     TORO: "tf_toro",
     PASSERI: "tf_passeri",
     PRETELL: "tf_pretell",
+    PRETELL_P84: "tf_pretell_p84",
 }

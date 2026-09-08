@@ -116,9 +116,12 @@ def rel_l2(pred: np.ndarray, true: np.ndarray, *, mask: np.ndarray | None = None
     return float(np.linalg.norm(p - t) / den)
 
 
-def pearson(a: np.ndarray, b: np.ndarray) -> float:
+def pearson(a: np.ndarray, b: np.ndarray, *, mask: np.ndarray | None = None) -> float:
     a = np.asarray(a, dtype=float).ravel()
     b = np.asarray(b, dtype=float).ravel()
+    if mask is not None:
+        m = np.asarray(mask, dtype=bool).ravel()
+        a, b = a[m], b[m]
     finite = np.isfinite(a) & np.isfinite(b)
     a, b = a[finite], b[finite]
     if a.size < 2 or b.size < 2:
@@ -149,6 +152,28 @@ def band_rel_l2(
     if p.ndim == 1:
         return rel_l2(p, t, mask=m)
     return rel_l2(p[:, m], t[:, m])
+
+
+def band_pearson(
+    pred: np.ndarray,
+    true: np.ndarray,
+    freq: np.ndarray,
+    *,
+    lo: float,
+    hi: float,
+) -> float:
+    """Pearson of |TF| on a frequency band (mean over recorders if 2-D)."""
+    f = np.asarray(freq, dtype=float).ravel()
+    m = band_mask(f, lo, hi)
+    p = np.asarray(pred, dtype=float)
+    t = np.asarray(true, dtype=float)
+    if p.ndim == 1:
+        return pearson(p, t, mask=m)
+    cors = [pearson(p[r, m], t[r, m]) for r in range(p.shape[0])]
+    finite = np.isfinite(cors)
+    if not np.any(finite):
+        return float("nan")
+    return float(np.mean(np.asarray(cors)[finite]))
 
 
 def method_vs_reference(

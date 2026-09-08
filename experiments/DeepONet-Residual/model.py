@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Literal
+import importlib.util
+import math
+from pathlib import Path
+from typing import Any, Literal
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+import config
 
 
 class ConvFieldEncoder(nn.Module):
@@ -136,8 +142,12 @@ class ResUNetFieldEncoder(nn.Module):
         return self.head(d0)
 
 
-FieldEncoderKind = Literal["conv", "resunet", "gno", "attn", "gat"]
-FNOKind = Literal["vanilla", "ufno", "ffno", "afno", "wno", "fno1d"]
+FieldEncoderKind = Literal["conv", "resunet", "gno", "attn", "gat", "identity"]
+ColEncKind = Literal["conv", "mlp", "attn"]
+StochInjectKind = Literal["mlp", "concat"]
+FuseKind = Literal["mlp", "add"]
+COL_ENC_POOL_BINS = 16
+FNOKind = Literal["vanilla", "ufno", "ffno", "afno", "wno", "fno1d", "loglo", "tf", "band2"]
 
 
 def build_field_encoder(
@@ -175,6 +185,114 @@ class TrunkMLP(nn.Module):
         return self.net(y)
 
 
+# Full trunk: f_star, sin_f, cos_f, x_over_lambda [, log TF1D]. Scale coords only.
+FULL_TRUNK_COORD_DIMS: tuple[int, ...] = (0, 3)
+
+
+def mscale_factors(n_scales: int) -> tuple[float, ...]:
+    """Fixed dyadic scales β or α = 1, 2, 4, … (arXiv:2504.10932)."""
+    n = max(int(n_scales), 1)
+    return tuple(float(2**i) for i in range(n))
+
+
+def mscale_hidden(hidden: int, n_scales: int) -> int:
+    """Shrink each subnet so S parallel trunks stay near the single-trunk budget."""
+    n = max(int(n_scales), 1)
+    if n <= 1:
+        return int(hidden)
+    return max(32, int(hidden) // n)
+
+
+def mscale_split_latent(latent_dim: int, n_scales: int) -> list[int]:
+    """Per-subnet output widths that concatenate back to ``latent_dim``."""
+    n = max(int(n_scales), 1)
+    base, rem = divmod(int(latent_dim), n)
+    return [base + (1 if i < rem else 0) for i in range(n)]
+
+
+def _scale_coord_channels(
+    y: torch.Tensor, beta: float, coord_dims: tuple[int, ...]
+) -> torch.Tensor:
+    if abs(float(beta) - 1.0) < 1e-12 or not coord_dims:
+        return y
+    y_s = y.clone()
+    for d in coord_dims:
+        if 0 <= d < y_s.shape[-1]:
+            y_s[..., d] = float(beta) * y[..., d]
+    return y_s
+
+
+class MscaleTrunk(nn.Module):
+    """Parallel trunk MLPs on scaled coordinate channels (arXiv:2504.10932 eq. 12).
+
+    ``S=1`` is not used: callers keep a plain ``TrunkMLP`` so shipped checkpoints
+    stay byte-identical. ``S>1`` concatenates subnet outputs to ``latent_dim``.
+    """
+
+    def __init__(
+        self,
+        input_dim: int,
+        latent_dim: int,
+        hidden: int = 128,
+        num_layers: int = 4,
+        n_scales: int = 4,
+        coord_dims: tuple[int, ...] = FULL_TRUNK_COORD_DIMS,
+    ):
+        super().__init__()
+        self.n_scales = max(int(n_scales), 1)
+        self.betas = mscale_factors(self.n_scales)
+        self.coord_dims = tuple(int(i) for i in coord_dims)
+        self.latent_dim = int(latent_dim)
+        widths = mscale_split_latent(latent_dim, self.n_scales)
+        h = mscale_hidden(hidden, self.n_scales)
+        self.subnets = nn.ModuleList(
+            [TrunkMLP(input_dim, w, h, num_layers) for w in widths]
+        )
+
+    def forward(self, y: torch.Tensor) -> torch.Tensor:
+        parts = [
+            net(_scale_coord_channels(y, beta, self.coord_dims))
+            for net, beta in zip(self.subnets, self.betas)
+        ]
+        return torch.cat(parts, dim=-1) if len(parts) > 1 else parts[0]
+
+
+def _build_trunk(
+    input_dim: int,
+    latent_dim: int,
+    hidden: int,
+    num_layers: int,
+    n_scales: int,
+    coord_dims: tuple[int, ...],
+) -> nn.Module:
+    if max(int(n_scales), 1) <= 1:
+        return TrunkMLP(input_dim, latent_dim, hidden, num_layers)
+    return MscaleTrunk(
+        input_dim,
+        latent_dim,
+        hidden,
+        num_layers,
+        n_scales=n_scales,
+        coord_dims=coord_dims,
+    )
+
+
+def _make_fuse(in_dim: int, hidden: int, out_dim: int, *, deep: bool) -> nn.Sequential:
+    if deep:
+        return nn.Sequential(
+            nn.Linear(in_dim, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, out_dim),
+        )
+    return nn.Sequential(
+        nn.Linear(in_dim, hidden),
+        nn.GELU(),
+        nn.Linear(hidden, out_dim),
+    )
+
+
 class SingleBranchDeepONet(nn.Module):
     """Park et al. style: shared branch fuses fields + stochastic early."""
 
@@ -192,6 +310,9 @@ class SingleBranchDeepONet(nn.Module):
         use_fields: bool = True,
         use_stoch: bool = True,
         field_encoder: FieldEncoderKind = "conv",
+        n_mscale_trunk: int = 1,
+        n_mscale_branch: int = 1,
+        mscale_coord_dims: tuple[int, ...] = FULL_TRUNK_COORD_DIMS,
     ):
         super().__init__()
         if not use_fields and not use_stoch:
@@ -200,6 +321,9 @@ class SingleBranchDeepONet(nn.Module):
         self.use_stoch = use_stoch
         self.latent_dim = latent_dim
         self.field_encoder_kind = field_encoder
+        self.n_mscale_trunk = max(int(n_mscale_trunk), 1)
+        self.n_mscale_branch = max(int(n_mscale_branch), 1)
+        self.branch_alphas = mscale_factors(self.n_mscale_branch)
 
         field_out = latent_dim if use_fields else 0
         self.field_enc = (
@@ -213,29 +337,55 @@ class SingleBranchDeepONet(nn.Module):
             else None
         )
         in_dim = field_out + (stoch_dim if use_stoch else 0)
-        self.fuse = nn.Sequential(
-            nn.Linear(in_dim, branch_hidden),
-            nn.GELU(),
-            nn.Linear(branch_hidden, branch_hidden),
-            nn.GELU(),
-            nn.Linear(branch_hidden, latent_dim),
+        self.fuse = _make_fuse(in_dim, branch_hidden, latent_dim, deep=True)
+        if self.n_mscale_branch > 1:
+            self.fuses = nn.ModuleList(
+                [
+                    _make_fuse(in_dim, branch_hidden, latent_dim, deep=True)
+                    for _ in range(self.n_mscale_branch)
+                ]
+            )
+            self.fuse = self.fuses[0]
+        else:
+            self.fuses = None
+        self.trunk = _build_trunk(
+            trunk_dim,
+            latent_dim,
+            trunk_hidden,
+            trunk_layers,
+            self.n_mscale_trunk,
+            mscale_coord_dims,
         )
-        self.trunk = TrunkMLP(trunk_dim, latent_dim, trunk_hidden, trunk_layers)
         self.bias = nn.Parameter(torch.zeros(1))
+
+    def _fuse_one(
+        self,
+        fuse: nn.Module,
+        fields: torch.Tensor | None,
+        stoch: torch.Tensor | None,
+        alpha: float,
+    ) -> torch.Tensor:
+        parts: list[torch.Tensor] = []
+        if self.use_fields:
+            assert fields is not None
+            scaled = fields if abs(alpha - 1.0) < 1e-12 else fields * alpha
+            parts.append(self.field_enc(scaled))
+        if self.use_stoch:
+            assert stoch is not None
+            parts.append(stoch)
+        return fuse(torch.cat(parts, dim=-1))
 
     def branch(
         self,
         fields: torch.Tensor | None,
         stoch: torch.Tensor | None,
     ) -> torch.Tensor:
-        parts: list[torch.Tensor] = []
-        if self.use_fields:
-            assert fields is not None
-            parts.append(self.field_enc(fields))
-        if self.use_stoch:
-            assert stoch is not None
-            parts.append(stoch)
-        return self.fuse(torch.cat(parts, dim=-1))
+        if self.fuses is None:
+            return self._fuse_one(self.fuse, fields, stoch, 1.0)
+        p = self._fuse_one(self.fuses[0], fields, stoch, self.branch_alphas[0])
+        for fuse, alpha in zip(self.fuses[1:], self.branch_alphas[1:]):
+            p = p + self._fuse_one(fuse, fields, stoch, alpha)
+        return p
 
     def forward(
         self,
@@ -304,25 +454,113 @@ class MultiBranchDeepONet(nn.Module):
 
 
 class _ColumnEncoder(nn.Module):
-    """Per-recorder 1D conv down the depth: (B, C, Nz, Nr) → (B, Nr, out_dim)."""
+    """Per-recorder 1D conv down the depth: (B, C, Nz, Nr) → (B, Nr, out_dim).
 
-    def __init__(self, in_channels: int, hidden: int, out_dim: int):
+    ``depth_tokens=1`` (ship) globally pools each column. ``depth_tokens>1``
+    keeps that many depth bins in the node vector so RF structure along z
+    is not discarded before GNO.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        hidden: int,
+        out_dim: int,
+        depth_tokens: int = 1,
+    ):
         super().__init__()
+        self.depth_tokens = max(1, int(depth_tokens))
         self.net = nn.Sequential(
             nn.Conv1d(in_channels, hidden, kernel_size=5, padding=2),
             nn.GELU(),
             nn.MaxPool1d(2),
             nn.Conv1d(hidden, hidden * 2, kernel_size=3, padding=1),
             nn.GELU(),
-            nn.AdaptiveAvgPool1d(1),
+            nn.AdaptiveAvgPool1d(self.depth_tokens),
         )
-        self.proj = nn.Linear(hidden * 2, out_dim)
+        self.proj = nn.Linear(hidden * 2 * self.depth_tokens, out_dim)
 
     def forward(self, fields: torch.Tensor) -> torch.Tensor:
         b, c, nz, nr = fields.shape
         x = fields.permute(0, 3, 1, 2).reshape(b * nr, c, nz)
-        h = self.net(x).squeeze(-1)
+        h = self.net(x).reshape(b * nr, -1)
         return self.proj(h).view(b, nr, -1)
+
+
+class _ColumnMLPEncoder(nn.Module):
+    """Pool depth to ``n_bins`` then Linear(C×bins → out_dim). No Conv1d."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_dim: int,
+        n_bins: int = COL_ENC_POOL_BINS,
+    ):
+        super().__init__()
+        self.n_bins = int(n_bins)
+        self.pool = nn.AdaptiveAvgPool1d(self.n_bins)
+        self.proj = nn.Linear(in_channels * self.n_bins, out_dim)
+
+    def forward(self, fields: torch.Tensor) -> torch.Tensor:
+        b, c, nz, nr = fields.shape
+        x = fields.permute(0, 3, 1, 2).reshape(b * nr, c, nz)
+        h = self.pool(x).reshape(b * nr, -1)
+        return self.proj(h).view(b, nr, -1)
+
+
+class _ColumnAttnEncoder(nn.Module):
+    """Pool depth to tokens, 2-layer TransformerEncoder, mean-pool, project."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_dim: int,
+        n_bins: int = COL_ENC_POOL_BINS,
+        d_model: int = 64,
+        n_layers: int = 2,
+        nhead: int = 4,
+    ):
+        super().__init__()
+        self.n_bins = int(n_bins)
+        self.pool = nn.AdaptiveAvgPool1d(self.n_bins)
+        self.in_proj = nn.Linear(in_channels, d_model)
+        layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=max(4 * d_model, 32),
+            dropout=0.0,
+            activation="gelu",
+            batch_first=True,
+            norm_first=True,
+        )
+        self.enc = nn.TransformerEncoder(
+            layer, num_layers=n_layers, enable_nested_tensor=False
+        )
+        self.out_proj = nn.Linear(d_model, out_dim)
+
+    def forward(self, fields: torch.Tensor) -> torch.Tensor:
+        b, c, nz, nr = fields.shape
+        x = fields.permute(0, 3, 1, 2).reshape(b * nr, c, nz)
+        tok = self.pool(x).permute(0, 2, 1)
+        h = self.enc(self.in_proj(tok)).mean(dim=1)
+        return self.out_proj(h).view(b, nr, -1)
+
+
+def _build_column_encoder(
+    kind: ColEncKind,
+    *,
+    in_channels: int,
+    hidden: int,
+    out_dim: int,
+    depth_tokens: int,
+) -> nn.Module:
+    if kind == "mlp":
+        return _ColumnMLPEncoder(in_channels, out_dim)
+    if kind == "attn":
+        return _ColumnAttnEncoder(in_channels, out_dim)
+    return _ColumnEncoder(
+        in_channels, hidden, out_dim, depth_tokens=depth_tokens
+    )
 
 
 class _ChainGNO(nn.Module):
@@ -435,7 +673,13 @@ class _RecorderGAT(nn.Module):
 
 
 class RecorderGNODeepONet(nn.Module):
-    """DeepONet whose branch is per-recorder after chain GNO (lateral leftover)."""
+    """DeepONet whose branch is per-recorder after chain GNO (lateral leftover).
+
+    Optional OrbitAll-style physics tokens: Haskell log|TF1D| (last trunk channel
+    when serial) and layer/dip flags are fused into GNO nodes. Optional learned
+    1D head predicts Haskell TF1D from the same latent (must stay faithful to
+    Haskell, not OpenSees).
+    """
 
     def __init__(
         self,
@@ -449,44 +693,173 @@ class RecorderGNODeepONet(nn.Module):
         trunk_hidden: int = 128,
         trunk_layers: int = 4,
         n_gno_layers: int = 3,
-        node_mixer: Literal["gno", "attn", "gat"] = "gno",
+        node_mixer: Literal["gno", "attn", "gat", "identity"] = "gno",
+        physics_tokens: bool = False,
+        geom_flag_dim: int = 0,
+        learned_1d: bool = False,
+        col_enc_depth_tokens: int = 1,
+        n_mscale_trunk: int = 1,
+        n_mscale_branch: int = 1,
+        mscale_coord_dims: tuple[int, ...] = FULL_TRUNK_COORD_DIMS,
+        col_enc: ColEncKind = "conv",
+        stoch_inject: StochInjectKind = "mlp",
+        fuse_kind: FuseKind = "mlp",
     ):
         super().__init__()
         self.latent_dim = latent_dim
+        self.physics_tokens = bool(physics_tokens)
+        self.geom_flag_dim = int(geom_flag_dim)
+        self.learned_1d = bool(learned_1d)
+        self.accepts_geom_flags = self.geom_flag_dim > 0
+        self.n_mscale_trunk = max(int(n_mscale_trunk), 1)
+        self.n_mscale_branch = max(int(n_mscale_branch), 1)
+        self.branch_alphas = mscale_factors(self.n_mscale_branch)
+        self.col_enc_kind = str(col_enc)
+        self.stoch_inject = str(stoch_inject)
+        self.fuse_kind = str(fuse_kind)
+        if self.fuse_kind == "add" and self.stoch_inject != "mlp":
+            raise ValueError("fuse=add requires stoch-inject=mlp so node and stoch dims match")
         self.field_encoder_kind = (
             "attn"
             if node_mixer == "attn"
-            else ("gat" if node_mixer == "gat" else "gno")
+            else (
+                "gat"
+                if node_mixer == "gat"
+                else ("identity" if node_mixer == "identity" else "gno")
+            )
         )
-        self.col_enc = _ColumnEncoder(field_channels, field_hidden, latent_dim)
+        self.col_enc = _build_column_encoder(
+            col_enc,
+            in_channels=field_channels,
+            hidden=field_hidden,
+            out_dim=latent_dim,
+            depth_tokens=col_enc_depth_tokens,
+        )
         if node_mixer == "attn":
             self.gno = _RecorderAttn(latent_dim, n_layers=n_gno_layers)
         elif node_mixer == "gat":
             self.gno = _RecorderGAT(latent_dim, n_layers=n_gno_layers)
+        elif node_mixer == "identity":
+            self.gno = nn.Identity()
         else:
             self.gno = _ChainGNO(latent_dim, n_layers=n_gno_layers)
-        self.stoch_mlp = nn.Sequential(nn.Linear(stoch_dim, latent_dim), nn.GELU())
-        self.fuse = nn.Sequential(
-            nn.Linear(2 * latent_dim, branch_hidden),
-            nn.GELU(),
-            nn.Linear(branch_hidden, latent_dim),
+        if self.stoch_inject == "concat":
+            self.stoch_mlp = None
+            fuse_in = latent_dim + int(stoch_dim)
+        else:
+            self.stoch_mlp = nn.Sequential(nn.Linear(stoch_dim, latent_dim), nn.GELU())
+            fuse_in = 2 * latent_dim
+        if self.fuse_kind == "add":
+            self.fuse = nn.Identity()
+            self.fuses = None
+        else:
+            self.fuse = _make_fuse(fuse_in, branch_hidden, latent_dim, deep=False)
+            if self.n_mscale_branch > 1:
+                self.fuses = nn.ModuleList(
+                    [
+                        _make_fuse(fuse_in, branch_hidden, latent_dim, deep=False)
+                        for _ in range(self.n_mscale_branch)
+                    ]
+                )
+                self.fuse = self.fuses[0]
+            else:
+                self.fuses = None
+        self.trunk = _build_trunk(
+            trunk_dim,
+            latent_dim,
+            trunk_hidden,
+            trunk_layers,
+            self.n_mscale_trunk,
+            mscale_coord_dims,
         )
-        self.trunk = TrunkMLP(trunk_dim, latent_dim, trunk_hidden, trunk_layers)
         self.bias = nn.Parameter(torch.zeros(1))
+        self.phys_mlp: nn.Module | None = None
+        if self.physics_tokens:
+            self.phys_mlp = nn.Sequential(
+                nn.Linear(32, latent_dim),
+                nn.GELU(),
+                nn.Linear(latent_dim, latent_dim),
+            )
+        self.geom_mlp: nn.Module | None = None
+        if self.geom_flag_dim > 0:
+            self.geom_mlp = nn.Sequential(
+                nn.Linear(self.geom_flag_dim, latent_dim),
+                nn.GELU(),
+                nn.Linear(latent_dim, latent_dim),
+            )
+        self.tf1d_head: nn.Module | None = None
+        if self.learned_1d:
+            self.tf1d_head = nn.Linear(latent_dim, 1)
+        self.last_nodes: torch.Tensor | None = None
+        self.last_tf1d_hat: torch.Tensor | None = None
+
+    def _encode_nodes(
+        self,
+        fields: torch.Tensor,
+        trunk_y: torch.Tensor,
+        geom_flags: torch.Tensor | None,
+        n_rec: int,
+        n_freq: int,
+    ) -> torch.Tensor:
+        nodes = self.col_enc(fields)
+        if self.phys_mlp is not None:
+            log_tf = trunk_y[..., -1].reshape(trunk_y.shape[0], n_rec, n_freq)
+            pooled = F.adaptive_avg_pool1d(log_tf, 32)
+            nodes = nodes + self.phys_mlp(pooled)
+        if self.geom_mlp is not None:
+            flags = geom_flags
+            if flags is None:
+                flags = torch.zeros(
+                    trunk_y.shape[0],
+                    self.geom_flag_dim,
+                    device=trunk_y.device,
+                    dtype=trunk_y.dtype,
+                )
+            nodes = nodes + self.geom_mlp(flags).unsqueeze(1)
+        return self.gno(nodes)
 
     def forward(
         self,
         fields: torch.Tensor | None,
         stoch: torch.Tensor | None,
         trunk_y: torch.Tensor,
+        geom_flags: torch.Tensor | None = None,
     ) -> torch.Tensor:
         assert fields is not None and stoch is not None
-        nodes = self.gno(self.col_enc(fields))
-        s = self.stoch_mlp(stoch).unsqueeze(1).expand(-1, nodes.shape[1], -1)
-        p = self.fuse(torch.cat([nodes, s], dim=-1))
-        n_rec = p.shape[1]
         n_q = trunk_y.shape[1]
+        n_rec = fields.shape[-1]
         n_freq = n_q // n_rec
+        if self.stoch_mlp is None:
+            s = stoch.unsqueeze(1).expand(-1, n_rec, -1)
+        else:
+            s = self.stoch_mlp(stoch).unsqueeze(1).expand(-1, n_rec, -1)
+
+        def _fuse(nodes_i: torch.Tensor, fuse_mod: nn.Module) -> torch.Tensor:
+            if self.fuse_kind == "add":
+                return nodes_i + s
+            return fuse_mod(torch.cat([nodes_i, s], dim=-1))
+
+        if self.n_mscale_branch <= 1:
+            nodes = self._encode_nodes(fields, trunk_y, geom_flags, n_rec, n_freq)
+            p = _fuse(nodes, self.fuse)
+        else:
+            p = None
+            nodes = None
+            fuse_mods = (
+                list(self.fuses)
+                if self.fuses is not None
+                else [self.fuse] * self.n_mscale_branch
+            )
+            for fuse, alpha in zip(fuse_mods, self.branch_alphas):
+                scaled = fields if abs(alpha - 1.0) < 1e-12 else fields * alpha
+                nodes_i = self._encode_nodes(scaled, trunk_y, geom_flags, n_rec, n_freq)
+                if abs(alpha - 1.0) < 1e-12:
+                    nodes = nodes_i
+                contrib = _fuse(nodes_i, fuse)
+                p = contrib if p is None else p + contrib
+            if nodes is None:
+                nodes = nodes_i
+        self.last_nodes = nodes
         p_q = (
             p.unsqueeze(2)
             .expand(-1, n_rec, n_freq, -1)
@@ -495,7 +868,110 @@ class RecorderGNODeepONet(nn.Module):
         bq = self.trunk(trunk_y.reshape(-1, trunk_y.shape[-1])).reshape(
             trunk_y.shape[0], n_q, self.latent_dim
         )
+        self.last_branch = p
+        self.last_trunk = bq
+        if self.tf1d_head is not None:
+            self.last_tf1d_hat = self.tf1d_head(p_q).squeeze(-1)
+        else:
+            self.last_tf1d_hat = None
         return (p_q * bq).sum(dim=-1) + self.bias
+
+
+def gno_core(module: nn.Module) -> nn.Module:
+    """Unwrap FNO / gate / POD / boost wrappers down to RecorderGNODeepONet when present."""
+    inner = module
+    for _ in range(6):
+        nxt = (
+            getattr(inner, "base", None)
+            or getattr(inner, "inner", None)
+            or getattr(inner, "booster", None)
+        )
+        if nxt is None:
+            break
+        inner = nxt
+    return inner
+
+
+def freeze_gno_encoder(module: nn.Module) -> int:
+    """Freeze column encoder + chain GNO. Leftover head / fuse / trunk stay trainable."""
+    core = gno_core(module)
+    n = 0
+    for name in ("col_enc", "gno"):
+        sub = getattr(core, name, None)
+        if sub is None:
+            continue
+        for p in sub.parameters():
+            p.requires_grad = False
+            n += int(p.numel())
+    return n
+
+
+def freeze_fno_head(module: nn.Module) -> int:
+    """Freeze DeepONetFNO leftover head; col_enc / GNO / fuse / trunk stay trainable."""
+    n = 0
+    for m in module.modules():
+        if not isinstance(m, DeepONetFNO):
+            continue
+        for name in (
+            "lift",
+            "proj",
+            "proj_high",
+            "fno",
+            "fno_low",
+            "fno_high",
+            "blocks",
+            "local",
+            "loglo",
+            "axial",
+        ):
+            sub = getattr(m, name, None)
+            if not isinstance(sub, nn.Module):
+                continue
+            for p in sub.parameters():
+                p.requires_grad = False
+                n += int(p.numel())
+    return n
+
+
+class GatedResidual(nn.Module):
+    """Fail-soft gate: TF = TF1D + σ(g) ⊙ R. Gate is per-recorder from GNO nodes."""
+
+    def __init__(self, inner: nn.Module, *, n_rec: int, latent_dim: int):
+        super().__init__()
+        self.inner = inner
+        self.n_rec = int(n_rec)
+        self.gate_head = nn.Linear(int(latent_dim), 1)
+        self.accepts_geom_flags = bool(getattr(inner, "accepts_geom_flags", False))
+        self.last_gate: torch.Tensor | None = None
+
+    def forward(
+        self,
+        fields: torch.Tensor | None,
+        stoch: torch.Tensor | None,
+        trunk_y: torch.Tensor,
+        geom_flags: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        kwargs: dict[str, torch.Tensor] = {}
+        if geom_flags is not None and getattr(self.inner, "accepts_geom_flags", False):
+            kwargs["geom_flags"] = geom_flags
+        r = self.inner(fields, stoch, trunk_y, **kwargs)
+        core = gno_core(self.inner)
+        nodes = getattr(core, "last_nodes", None)
+        if nodes is None:
+            self.last_gate = None
+            return r
+        gate = torch.sigmoid(self.gate_head(nodes))
+        self.last_gate = gate
+        b, n_q = r.shape
+        n_freq = n_q // self.n_rec
+        g_q = (
+            gate.expand(-1, self.n_rec, n_freq).reshape(b, n_q)
+            if gate.shape[1] == self.n_rec
+            else gate.reshape(b, -1)
+        )
+        if g_q.shape != r.shape:
+            g_q = gate.mean(dim=1, keepdim=True).expand_as(r)
+        return r * g_q
 
 
 def _run_fno_layers(fno: nn.Module, x: torch.Tensor) -> torch.Tensor:
@@ -601,6 +1077,182 @@ class HaarWNOLayer(nn.Module):
         return y[..., :w] + x[..., :w]
 
 
+def _load_dual_path_loglo():
+    path = Path(__file__).resolve().parent.parent / "GIFNO" / "spectral_layers.py"
+    spec = importlib.util.spec_from_file_location("_gifno_spectral_layers", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load DualPathLOGLOStack from {path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.DualPathLOGLOStack
+
+
+def _pad_to_multiple(x: torch.Tensor, ph: int, pw: int) -> tuple[torch.Tensor, int, int]:
+    h, w = x.shape[-2], x.shape[-1]
+    pad_h = (ph - h % ph) % ph
+    pad_w = (pw - w % pw) % pw
+    if pad_h or pad_w:
+        x = F.pad(x, (0, pad_w, 0, pad_h), mode="replicate")
+    return x, h, w
+
+
+class ResidualPODReadout(nn.Module):
+    """Replace DeepONet query product with a POD reconstruction of leftover R."""
+
+    def __init__(
+        self,
+        inner: nn.Module,
+        *,
+        n_rec: int,
+        latent_dim: int,
+        pod_modes: np.ndarray,
+        pod_mean: np.ndarray,
+    ):
+        super().__init__()
+        self.inner = inner
+        self.n_rec = int(n_rec)
+        self.accepts_geom_flags = bool(getattr(inner, "accepts_geom_flags", False))
+        modes = np.asarray(pod_modes, dtype=np.float32)
+        mean = np.asarray(pod_mean, dtype=np.float32)
+        if modes.ndim != 3:
+            raise ValueError(f"pod_modes must be (R,K,F), got {modes.shape}")
+        self.n_modes = int(modes.shape[1])
+        self.register_buffer("_pod_modes", torch.as_tensor(modes))
+        self.register_buffer("_pod_mean", torch.as_tensor(mean))
+        hidden = max(int(latent_dim), self.n_modes * 2)
+        self.branch = nn.Sequential(
+            nn.Linear(int(latent_dim), hidden),
+            nn.GELU(),
+            nn.Linear(hidden, self.n_modes),
+        )
+
+    def _slice_basis(self, n_freq: int) -> tuple[torch.Tensor, torch.Tensor]:
+        modes = self._pod_modes
+        mean = self._pod_mean
+        full = int(modes.shape[-1])
+        if n_freq == full:
+            return modes, mean
+        if n_freq < full:
+            idx = torch.linspace(0, full - 1, n_freq, device=modes.device)
+            idx = idx.round().long().clamp(0, full - 1)
+            return modes[..., idx], mean[..., idx]
+        pad = n_freq - full
+        return (
+            F.pad(modes, (0, pad), mode="replicate"),
+            F.pad(mean, (0, pad), mode="replicate"),
+        )
+
+    def forward(
+        self,
+        fields: torch.Tensor | None,
+        stoch: torch.Tensor | None,
+        trunk_y: torch.Tensor,
+        geom_flags: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        kwargs: dict[str, torch.Tensor] = {}
+        if geom_flags is not None and getattr(self.inner, "accepts_geom_flags", False):
+            kwargs["geom_flags"] = geom_flags
+        r_inner = self.inner(fields, stoch, trunk_y, **kwargs)
+        core = gno_core(self.inner)
+        nodes = getattr(core, "last_nodes", None)
+        b, n_q = r_inner.shape
+        n_freq = n_q // self.n_rec
+        if nodes is None:
+            return r_inner
+        coeff = self.branch(nodes)
+        modes, mean = self._slice_basis(n_freq)
+        r_pod = mean.unsqueeze(0) + torch.einsum("brk,rkf->brf", coeff, modes)
+        return r_pod.reshape(b, n_q)
+
+
+class FrozenBoost(nn.Module):
+    """Operator boosting: frozen prior leftover + shrink × tiny booster."""
+
+    def __init__(self, frozen: nn.Module, booster: nn.Module, *, shrink: float = 0.5):
+        super().__init__()
+        self.frozen = frozen
+        self.booster = booster
+        for p in self.frozen.parameters():
+            p.requires_grad = False
+        self.shrink = nn.Parameter(torch.tensor(float(shrink)))
+        self.accepts_geom_flags = bool(getattr(booster, "accepts_geom_flags", False)) or bool(
+            getattr(frozen, "accepts_geom_flags", False)
+        )
+        self.last_gate: torch.Tensor | None = None
+
+    def forward(
+        self,
+        fields: torch.Tensor | None,
+        stoch: torch.Tensor | None,
+        trunk_y: torch.Tensor,
+        geom_flags: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        kwargs_f: dict[str, torch.Tensor] = {}
+        kwargs_b: dict[str, torch.Tensor] = {}
+        if geom_flags is not None:
+            if getattr(self.frozen, "accepts_geom_flags", False):
+                kwargs_f["geom_flags"] = geom_flags
+            if getattr(self.booster, "accepts_geom_flags", False):
+                kwargs_b["geom_flags"] = geom_flags
+        with torch.no_grad():
+            r0 = self.frozen(fields, stoch, trunk_y, **kwargs_f)
+        delta = self.booster(fields, stoch, trunk_y, **kwargs_b)
+        self.last_gate = getattr(self.booster, "last_gate", None)
+        s = self.shrink.clamp(0.0, 1.0)
+        return r0 + s * delta
+
+    def select_shrink_from_val(self, value: float) -> None:
+        with torch.no_grad():
+            self.shrink.copy_(torch.tensor(float(value), device=self.shrink.device))
+
+
+class AxialLeftoverTF(nn.Module):
+    """Bidirectional axial transformer on leftover (B, C, n_rec, n_freq).
+
+    Attends along frequency then recorders of R̂ — not Vs-column station GNOT.
+    Spectra are not causal, so this is an encoder stack, not a GPT decoder.
+    """
+
+    def __init__(self, channels: int, n_layers: int = 4):
+        super().__init__()
+        nhead = _n_heads(channels)
+        ff = max(4 * channels, 32)
+
+        def _layer() -> nn.TransformerEncoderLayer:
+            return nn.TransformerEncoderLayer(
+                d_model=channels,
+                nhead=nhead,
+                dim_feedforward=ff,
+                dropout=0.0,
+                activation="gelu",
+                batch_first=True,
+                norm_first=True,
+            )
+
+        self.freq_layers = nn.ModuleList([_layer() for _ in range(n_layers)])
+        self.rec_layers = nn.ModuleList([_layer() for _ in range(n_layers)])
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b, c, h, w = x.shape
+        for freq_l, rec_l in zip(self.freq_layers, self.rec_layers):
+            xf = x.permute(0, 2, 3, 1).reshape(b * h, w, c)
+            xf = freq_l(xf)
+            x = xf.reshape(b, h, w, c).permute(0, 3, 1, 2)
+            xr = x.permute(0, 3, 2, 1).reshape(b * w, h, c)
+            xr = rec_l(xr)
+            x = xr.reshape(b, w, h, c).permute(0, 3, 2, 1)
+        return x
+
+
+def hz_band_masks(
+    freq_hz: torch.Tensor, *, split_hz: float = 2.0
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Hard frequency masks: low [0.1, split), high [split, 10]. Shape (1, 1, 1, n_f)."""
+    f = freq_hz.reshape(1, 1, 1, -1)
+    high = f >= float(split_hz)
+    return ~high, high
+
+
 class DeepONetFNO(nn.Module):
     """DeepFNOnet-style: DeepONet residual plus an FNO family head on (recorder × freq).
 
@@ -611,6 +1263,9 @@ class DeepONetFNO(nn.Module):
       afno — adaptive Fourier MLP mixer (Guibas et al. 2022)
       wno — Haar wavelet mixing on frequency (Tripura & Chakraborty 2023)
       fno1d — spectral conv along frequency only
+      loglo — DualPathLOGLO + HFP on the leftover grid (all local Fourier modes)
+      tf — axial transformer on leftover frequency then recorders
+      band2 — two vanilla FNOs with a hard 2 Hz mask (low [0.1, 2), high [2, 10])
     """
 
     def __init__(
@@ -622,17 +1277,44 @@ class DeepONetFNO(nn.Module):
         n_modes: tuple[int, int] = (8, 16),
         n_layers: int = 4,
         kind: FNOKind = "vanilla",
+        loglo_patch: tuple[int, int] = (3, 8),
     ):
         super().__init__()
         self.base = base
         self.n_rec = int(n_rec)
+        self.accepts_geom_flags = bool(getattr(base, "accepts_geom_flags", False))
         self.kind: FNOKind = kind
+        self.loglo_patch = (int(loglo_patch[0]), int(loglo_patch[1]))
         self.lift = nn.Conv2d(1, width, kernel_size=1)
         self.proj = nn.Conv2d(width, 1, kernel_size=1)
+        self.proj_high: nn.Conv2d | None = None
         self.local: nn.ModuleList | None = None
         self.blocks: nn.ModuleList | None = None
         self.fno: nn.Module | None = None
-        if kind == "ffno":
+        self.fno_low: nn.Module | None = None
+        self.fno_high: nn.Module | None = None
+        self.loglo: nn.Module | None = None
+        self.axial: nn.Module | None = None
+        self.band_split_hz = float(config.BAND2_SPLIT_HZ)
+        self.register_buffer("_query_freq", torch.empty(0), persistent=False)
+        self.last_band_low: torch.Tensor | None = None
+        self.last_band_high: torch.Tensor | None = None
+        if kind == "band2":
+            from neuralop.layers.fno_block import FNOBlocks
+
+            kw = dict(
+                n_modes=n_modes,
+                in_channels=width,
+                out_channels=width,
+                n_layers=n_layers,
+                non_linearity=F.gelu,
+            )
+            self.fno_low = FNOBlocks(**kw)
+            self.fno_high = FNOBlocks(**kw)
+            self.proj_high = nn.Conv2d(width, 1, kernel_size=1)
+        elif kind == "tf":
+            self.axial = AxialLeftoverTF(width, n_layers=n_layers)
+        elif kind == "ffno":
             self.blocks = nn.ModuleList(
                 [FactorizedFNOLayer(width, n_modes) for _ in range(n_layers)]
             )
@@ -643,6 +1325,15 @@ class DeepONetFNO(nn.Module):
         elif kind == "fno1d":
             self.blocks = nn.ModuleList(
                 [FreqFNOLayer(width, n_modes[1]) for _ in range(n_layers)]
+            )
+        elif kind == "loglo":
+            DualPath = _load_dual_path_loglo()
+            self.loglo = DualPath(
+                n_modes=n_modes,
+                channels=width,
+                n_layers=n_layers,
+                patch_size=self.loglo_patch,
+                hf_noise_alpha=0.0,
             )
         else:
             from neuralop.layers.fno_block import FNOBlocks
@@ -666,17 +1357,69 @@ class DeepONetFNO(nn.Module):
                     ]
                 )
 
+    def set_query_freq(self, freq: np.ndarray | torch.Tensor | None) -> None:
+        if freq is None:
+            self._query_freq = torch.empty(0, device=self._query_freq.device)
+            return
+        arr = np.asarray(freq, dtype=np.float32).ravel() if not torch.is_tensor(freq) else freq
+        t = torch.as_tensor(arr, dtype=torch.float32, device=self._query_freq.device).ravel()
+        self._query_freq = t
+
+    def _grid_freq_hz(self, n_freq: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+        buf = self._query_freq
+        if buf.numel() == n_freq:
+            return buf.to(device=device, dtype=dtype)
+        return torch.logspace(
+            math.log10(float(config.FREQ_START_HZ)),
+            math.log10(float(config.FREQ_END_HZ)),
+            n_freq,
+            device=device,
+            dtype=dtype,
+        )
+
+    @staticmethod
+    def _run_vanilla_fno(fno: nn.Module, x: torch.Tensor) -> torch.Tensor:
+        n_layers = int(getattr(fno, "n_layers", 1))
+        for i in range(n_layers):
+            x = fno(x, index=i)
+        return x
+
     def forward(
         self,
         fields: torch.Tensor | None,
         stoch: torch.Tensor | None,
         trunk_y: torch.Tensor,
+        geom_flags: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        r = self.base(fields, stoch, trunk_y)
+        kwargs: dict[str, torch.Tensor] = {}
+        if geom_flags is not None and getattr(self.base, "accepts_geom_flags", False):
+            kwargs["geom_flags"] = geom_flags
+        r = self.base(fields, stoch, trunk_y, **kwargs)
         b, n_q = r.shape
         n_freq = n_q // self.n_rec
         x = self.lift(r.view(b, 1, self.n_rec, n_freq))
-        if self.blocks is not None:
+        self.last_lift = x
+        if self.fno_low is not None and self.fno_high is not None and self.proj_high is not None:
+            x_l = self._run_vanilla_fno(self.fno_low, x)
+            x_h = self._run_vanilla_fno(self.fno_high, x)
+            r_l = self.proj(x_l)
+            r_h = self.proj_high(x_h)
+            freq = self._grid_freq_hz(n_freq, x.device, x.dtype)
+            m_l, m_h = hz_band_masks(freq, split_hz=self.band_split_hz)
+            m_l = m_l.to(device=x.device, dtype=x.dtype)
+            m_h = m_h.to(device=x.device, dtype=x.dtype)
+            self.last_band_low = m_l
+            self.last_band_high = m_h
+            self.last_fno = x_l + x_h
+            return r + (r_l * m_l + r_h * m_h).reshape(b, n_q)
+        if self.loglo is not None:
+            ph, pw = self.loglo_patch
+            x, h0, w0 = _pad_to_multiple(x, ph, pw)
+            x_g, x_l = self.loglo(x)
+            x = (x_g + x_l)[..., :h0, :w0]
+        elif self.axial is not None:
+            x = self.axial(x)
+        elif self.blocks is not None:
             for layer in self.blocks:
                 x = layer(x)
         else:
@@ -686,7 +1429,15 @@ class DeepONetFNO(nn.Module):
                 x = self.fno(x, index=i)
                 if self.local is not None:
                     x = x + self.local[i](x)
+        self.last_fno = x
         return r + self.proj(x).reshape(b, n_q)
+
+
+def apply_query_freq(module: nn.Module, freq: np.ndarray | torch.Tensor | None) -> None:
+    """Push the current query-grid Hz onto any DeepONetFNO (train 200 vs eval 1000)."""
+    for m in module.modules():
+        if isinstance(m, DeepONetFNO):
+            m.set_query_freq(freq)
 
 
 BranchMode = Literal["single", "multi", "stoch_only", "fields_only"]
@@ -711,64 +1462,276 @@ def build_model(
     fno_n_layers: int = 4,
     n_gno_layers: int = 3,
     fno_kind: FNOKind = "vanilla",
+    physics_tokens: bool = False,
+    geom_flag_dim: int = 0,
+    learned_1d: bool = False,
+    gated: bool = False,
+    pod_readout: bool = False,
+    pod_modes: np.ndarray | None = None,
+    pod_mean: np.ndarray | None = None,
+    pod_n_modes: int = 32,
+    loglo_patch: tuple[int, int] = (3, 8),
+    log_residual: bool = False,
+    col_enc_depth_tokens: int = 1,
+    boost: bool = False,
+    boost_fno_kind: FNOKind = "loglo",
+    boost_width: int | None = None,
+    boost_shrink: float = 0.5,
+    n_mscale_trunk: int = 1,
+    n_mscale_branch: int = 1,
+    mscale_coord_dims: tuple[int, ...] = FULL_TRUNK_COORD_DIMS,
+    col_enc: ColEncKind = "conv",
+    stoch_inject: StochInjectKind = "mlp",
+    fuse_kind: FuseKind = "mlp",
 ) -> nn.Module:
-    if field_encoder in ("gno", "attn", "gat"):
-        if mode != "single":
-            raise ValueError(
-                "GNO/attn/gat encoder is only implemented for single-branch DeepONet"
+    def _core(
+        *,
+        fno_kind_local: FNOKind,
+        width_local: int,
+        gated_local: bool,
+        pod_local: bool,
+    ) -> nn.Module:
+        if field_encoder in ("gno", "attn", "gat", "identity"):
+            if mode != "single":
+                raise ValueError(
+                    "GNO/attn/gat encoder is only implemented for single-branch DeepONet"
+                )
+            mixer = (
+                "attn"
+                if field_encoder == "attn"
+                else (
+                    "gat"
+                    if field_encoder == "gat"
+                    else ("identity" if field_encoder == "identity" else "gno")
+                )
             )
-        mixer = (
-            "attn"
-            if field_encoder == "attn"
-            else ("gat" if field_encoder == "gat" else "gno")
+            inner: nn.Module = RecorderGNODeepONet(
+                field_channels=field_channels,
+                stoch_dim=stoch_dim,
+                trunk_dim=trunk_dim,
+                latent_dim=latent_dim,
+                field_hidden=field_hidden,
+                branch_hidden=branch_hidden,
+                trunk_hidden=trunk_hidden,
+                trunk_layers=trunk_layers,
+                n_gno_layers=n_gno_layers,
+                node_mixer=mixer,
+                physics_tokens=physics_tokens,
+                geom_flag_dim=geom_flag_dim,
+                learned_1d=learned_1d,
+                col_enc_depth_tokens=col_enc_depth_tokens,
+                n_mscale_trunk=n_mscale_trunk,
+                n_mscale_branch=n_mscale_branch,
+                mscale_coord_dims=mscale_coord_dims,
+                col_enc=col_enc,
+                stoch_inject=stoch_inject,
+                fuse_kind=fuse_kind,
+            )
+        elif mode == "multi":
+            inner = MultiBranchDeepONet(
+                n_field_channels=field_channels,
+                stoch_dim=stoch_dim,
+                trunk_dim=trunk_dim,
+                latent_dim=latent_dim,
+                field_hidden=field_hidden,
+                branch_hidden=branch_hidden,
+                trunk_hidden=trunk_hidden,
+                trunk_layers=trunk_layers,
+                field_encoder=field_encoder,
+            )
+        else:
+            use_fields = mode in ("single", "fields_only")
+            use_stoch = mode in ("single", "stoch_only")
+            inner = SingleBranchDeepONet(
+                field_channels=field_channels,
+                stoch_dim=stoch_dim,
+                trunk_dim=trunk_dim,
+                latent_dim=latent_dim,
+                field_hidden=field_hidden,
+                branch_hidden=branch_hidden,
+                trunk_hidden=trunk_hidden,
+                trunk_layers=trunk_layers,
+                use_fields=use_fields,
+                use_stoch=use_stoch,
+                field_encoder=field_encoder,
+                n_mscale_trunk=n_mscale_trunk,
+                n_mscale_branch=n_mscale_branch,
+                mscale_coord_dims=mscale_coord_dims,
+            )
+        if pod_local:
+            modes = pod_modes
+            mean = pod_mean
+            if modes is None or mean is None:
+                modes = np.zeros((n_rec, int(pod_n_modes), 1000), dtype=np.float32)
+                mean = np.zeros((n_rec, 1000), dtype=np.float32)
+            inner = ResidualPODReadout(
+                inner,
+                n_rec=n_rec,
+                latent_dim=latent_dim,
+                pod_modes=modes,
+                pod_mean=mean,
+            )
+        if residual_fno:
+            inner = DeepONetFNO(
+                inner,
+                n_rec=n_rec,
+                width=width_local,
+                n_modes=fno_n_modes,
+                n_layers=fno_n_layers,
+                kind=fno_kind_local,
+                loglo_patch=loglo_patch,
+            )
+        if gated_local:
+            inner = GatedResidual(inner, n_rec=n_rec, latent_dim=latent_dim)
+        return inner
+
+    if boost:
+        frozen = _core(
+            fno_kind_local=fno_kind,
+            width_local=fno_width,
+            gated_local=False,
+            pod_local=False,
         )
-        net: nn.Module = RecorderGNODeepONet(
-            field_channels=field_channels,
-            stoch_dim=stoch_dim,
-            trunk_dim=trunk_dim,
-            latent_dim=latent_dim,
-            field_hidden=field_hidden,
-            branch_hidden=branch_hidden,
-            trunk_hidden=trunk_hidden,
-            trunk_layers=trunk_layers,
-            n_gno_layers=n_gno_layers,
-            node_mixer=mixer,
+        booster = _core(
+            fno_kind_local=boost_fno_kind,
+            width_local=int(boost_width) if boost_width is not None else max(8, fno_width // 2),
+            gated_local=gated,
+            pod_local=pod_readout,
         )
-    elif mode == "multi":
-        net = MultiBranchDeepONet(
-            n_field_channels=field_channels,
-            stoch_dim=stoch_dim,
-            trunk_dim=trunk_dim,
-            latent_dim=latent_dim,
-            field_hidden=field_hidden,
-            branch_hidden=branch_hidden,
-            trunk_hidden=trunk_hidden,
-            trunk_layers=trunk_layers,
-            field_encoder=field_encoder,
-        )
+        net: nn.Module = FrozenBoost(frozen, booster, shrink=boost_shrink)
     else:
-        use_fields = mode in ("single", "fields_only")
-        use_stoch = mode in ("single", "stoch_only")
-        net = SingleBranchDeepONet(
-            field_channels=field_channels,
-            stoch_dim=stoch_dim,
-            trunk_dim=trunk_dim,
-            latent_dim=latent_dim,
-            field_hidden=field_hidden,
-            branch_hidden=branch_hidden,
-            trunk_hidden=trunk_hidden,
-            trunk_layers=trunk_layers,
-            use_fields=use_fields,
-            use_stoch=use_stoch,
-            field_encoder=field_encoder,
+        net = _core(
+            fno_kind_local=fno_kind,
+            width_local=fno_width,
+            gated_local=gated,
+            pod_local=pod_readout,
         )
-    if residual_fno:
-        net = DeepONetFNO(
-            net,
-            n_rec=n_rec,
-            width=fno_width,
-            n_modes=fno_n_modes,
-            n_layers=fno_n_layers,
-            kind=fno_kind,
-        )
+    net.log_residual = bool(log_residual)  # type: ignore[attr-defined]
     return net
+
+
+def _arch_from_src(
+    src: dict[str, Any],
+    blob: dict[str, Any],
+    *,
+    defaults: dict[str, Any],
+) -> dict[str, Any]:
+    """Architecture kwargs for ``build_model`` from a checkpoint (or nested) dict."""
+    fno_width = int(src.get("fno_width", blob.get("fno_width", defaults.get("fno_width", 32))))
+    patch = src.get("loglo_patch", blob.get("loglo_patch", (3, 8)))
+    modes = src.get("pod_modes", blob.get("pod_modes"))
+    mean = src.get("pod_mean", blob.get("pod_mean"))
+    n_modes = src.get("fno_n_modes", blob.get("fno_n_modes", (8, 16)))
+    return {
+        "field_encoder": src.get(
+            "field_encoder", blob.get("field_encoder", defaults.get("field_encoder", "conv"))
+        ),
+        "residual_fno": bool(src.get("residual_fno", blob.get("residual_fno", False))),
+        "n_rec": int(src.get("n_rec", blob.get("n_rec", defaults.get("n_rec", 21)))),
+        "fno_width": fno_width,
+        "fno_n_modes": tuple(n_modes),
+        "fno_n_layers": int(
+            src.get("fno_n_layers", blob.get("fno_n_layers", defaults.get("fno_n_layers", 4)))
+        ),
+        "n_gno_layers": int(
+            src.get("n_gno_layers", blob.get("n_gno_layers", defaults.get("n_gno_layers", 3)))
+        ),
+        "fno_kind": src.get("fno_kind", blob.get("fno_kind", "vanilla")),
+        "physics_tokens": bool(src.get("physics_tokens", blob.get("physics_tokens", False))),
+        "geom_flag_dim": int(src.get("geom_flag_dim", blob.get("geom_flag_dim", 0))),
+        "learned_1d": bool(src.get("learned_1d", blob.get("learned_1d", False))),
+        "gated": bool(src.get("gated", blob.get("gated", False))),
+        "pod_readout": bool(src.get("pod_readout", blob.get("pod_readout", False))),
+        "pod_modes": None if modes is None else np.asarray(modes),
+        "pod_mean": None if mean is None else np.asarray(mean),
+        "pod_n_modes": int(src.get("pod_n_modes", blob.get("pod_n_modes", 32))),
+        "loglo_patch": (int(patch[0]), int(patch[1])),
+        "log_residual": bool(src.get("log_residual", blob.get("log_residual", False))),
+        "col_enc_depth_tokens": int(
+            src.get(
+                "col_enc_depth_tokens",
+                blob.get("col_enc_depth_tokens", defaults.get("col_enc_depth_tokens", 1)),
+            )
+        ),
+        "boost": False,
+        "boost_fno_kind": src.get("boost_fno_kind", blob.get("boost_fno_kind", "loglo")),
+        "boost_width": int(
+            src.get(
+                "boost_width",
+                blob.get("boost_width", max(8, fno_width // 2)),
+            )
+        ),
+        "boost_shrink": float(src.get("boost_shrink", blob.get("boost_shrink", 0.5))),
+        "n_mscale_trunk": int(src.get("n_mscale_trunk", blob.get("n_mscale_trunk", 1))),
+        "n_mscale_branch": int(
+            src.get("n_mscale_branch", blob.get("n_mscale_branch", 1))
+        ),
+        "mscale_coord_dims": tuple(
+            src.get(
+                "mscale_coord_dims",
+                blob.get("mscale_coord_dims", FULL_TRUNK_COORD_DIMS),
+            )
+        ),
+        "col_enc": src.get("col_enc", blob.get("col_enc", defaults.get("col_enc", "conv"))),
+        "stoch_inject": src.get(
+            "stoch_inject", blob.get("stoch_inject", defaults.get("stoch_inject", "mlp"))
+        ),
+        "fuse_kind": src.get(
+            "fuse_kind", blob.get("fuse_kind", defaults.get("fuse_kind", "mlp"))
+        ),
+    }
+
+
+def build_from_checkpoint_blob(
+    blob: dict[str, Any],
+    *,
+    field_channels: int,
+    stoch_dim: int,
+    trunk_dim: int,
+    latent_dim: int = 128,
+    field_hidden: int = 48,
+    branch_hidden: int = 256,
+    trunk_hidden: int = 256,
+    trunk_layers: int = 5,
+) -> nn.Module:
+    """Rebuild a leftover model (including FrozenBoost) from a train.py checkpoint."""
+    common = dict(
+        field_channels=field_channels,
+        stoch_dim=stoch_dim,
+        trunk_dim=trunk_dim,
+        latent_dim=latent_dim,
+        field_hidden=field_hidden,
+        branch_hidden=branch_hidden,
+        trunk_hidden=trunk_hidden,
+        trunk_layers=trunk_layers,
+    )
+    mode = blob.get("branch_mode", "single")
+    if blob.get("boost"):
+        if blob.get("frozen_arch"):
+            frozen_src = blob["frozen_arch"]
+        else:
+            frozen_src = {
+                **blob,
+                "fno_kind": blob.get("fno_kind", "vanilla"),
+                "gated": False,
+                "pod_readout": False,
+            }
+        booster_src = blob.get("booster_arch") or {
+            **blob,
+            "fno_kind": blob.get("boost_fno_kind", "loglo"),
+            "fno_width": blob.get(
+                "boost_width", max(8, int(blob.get("fno_width", 32)) // 2)
+            ),
+            "gated": bool(blob.get("gated", False)),
+            "pod_readout": bool(blob.get("pod_readout", False)),
+        }
+        frozen = build_model(mode, **common, **_arch_from_src(frozen_src, blob, defaults={}))
+        booster = build_model(mode, **common, **_arch_from_src(booster_src, blob, defaults={}))
+        net: nn.Module = FrozenBoost(
+            frozen,
+            booster,
+            shrink=float(blob.get("boost_shrink", 0.5)),
+        )
+        net.log_residual = bool(blob.get("log_residual", False))  # type: ignore[attr-defined]
+        return net
+    return build_model(mode, **common, **_arch_from_src(blob, blob, defaults={}))

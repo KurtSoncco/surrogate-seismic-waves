@@ -10,7 +10,6 @@ from __future__ import annotations
 import csv
 import json
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -105,7 +104,6 @@ def _ood_roots() -> tuple[Path, Path]:
 def _haskell_nom_tf1d(
     h5_path: Path, freq: np.ndarray, recorder_x: np.ndarray
 ) -> np.ndarray:
-    sys.path.insert(0, str(dn_config.RESIDUAL_DIR))
     from haskell_baseline import haskell_at_columns, haskell_nominal_af_within
 
     vs, zeta, params = _read_h5_fields(h5_path)
@@ -145,7 +143,6 @@ def predict_deeponet_ood(
     device: torch.device,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return (TF_hat, TF1D_nom) shape (n_rec, n_freq)."""
-    sys.path.insert(0, str(dn_config.RESIDUAL_DIR))
     from features import fourier_freq_features, spectral_kl_coefficients
 
     vs, zeta, params = _read_h5_fields(h5_path)
@@ -281,7 +278,7 @@ def main() -> None:
     out_dir = Path(
         os.environ.get(
             "COMPARE_OUT",
-            str(dn_config.RESULTS_DIR / "compare_tf_ood_loglo_vs_deeponet"),
+            str(dn_config.RESULTS_DIR / "compare_gino_loglo"),
         )
     )
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -296,7 +293,7 @@ def main() -> None:
             "DEEPONET_CKPT",
             str(
                 dn_config.CHECKPOINT_DIR
-                / "single_resunet_full_R_nom_full7680_seed42.pt"
+                / "M7680_gino_rebal_ft.pt"
             ),
         )
     )

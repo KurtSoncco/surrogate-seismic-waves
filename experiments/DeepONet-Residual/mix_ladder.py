@@ -23,9 +23,16 @@ MIX_TAGS = {
     "M700": 700,
     "M1400": 1400,
     "M2100": 2100,
-    "M7680": None,  # rest-of-IID outside n1000 + n1000 train
+    "M7680": None,  # rest-of-IID outside n1000 + n1000 train + OOD trains
+    "IID2000": 1700,  # nested-safe ~2k: 700 n1000-train + all n2000 extras
+    "IID7680": None,  # same IID extras as M7680, no dipping / three-layer
 }
 N7680_TAG = "n7680_seed42"
+
+
+def is_iid_only_mix(mix_tag: str) -> bool:
+    """IID* tags train on nested-safe IID only (no OOD train/val slices)."""
+    return str(mix_tag).startswith("IID")
 
 
 def extra_local_indices(
@@ -77,12 +84,18 @@ def mix_train_parts(
         ("iid", n1000_cache, np.asarray(iid["train"], dtype=int))
     ]
     n7680_cache = config.CACHE_DIR / N7680_TAG
-    if mix_tag == "M7680":
+    if mix_tag in ("M7680", "IID7680"):
         child = np.load(n7680_cache / "sample_indices.npy")
         parent = np.load(n1000_cache / "sample_indices.npy")
         n_extra = int(len(set(int(g) for g in child) - {int(g) for g in parent}))
         extra = extra_local_indices(parent, child, n_extra, seed=seed)
         parts.append(("iid_extra", n7680_cache, extra))
+    elif mix_tag == "IID2000":
+        parent = np.load(n1000_cache / "sample_indices.npy")
+        child = np.load(n2000_cache / "sample_indices.npy")
+        n_extra = int(len(set(int(g) for g in child) - {int(g) for g in parent}))
+        extra = extra_local_indices(parent, child, n_extra, seed=seed)
+        parts.append(("iid_extra", n2000_cache, extra))
     elif n_iid is not None:
         n_extra = int(n_iid) - IID_TRAIN_M700
         if n_extra > 0:
@@ -95,19 +108,26 @@ def mix_train_parts(
                 child = np.load(n3000_cache / "sample_indices.npy")
                 extra = extra_local_indices(parent, child, n_extra, seed=seed)
                 parts.append(("iid_extra", n3000_cache, extra))
-    dip = load_split(config.CACHE_DIR / "splits" / f"ood_dipping_seed{seed}.npz")
-    tl = load_split(config.CACHE_DIR / "splits" / f"ood_three_layer_seed{seed}.npz")
-    parts.append(
-        ("ood_dipping", cache_dir_for("ood_dipping"), np.asarray(dip["train"]))
-    )
-    parts.append(
-        ("ood_three_layer", cache_dir_for("ood_three_layer"), np.asarray(tl["train"]))
-    )
+    if not is_iid_only_mix(mix_tag):
+        dip = load_split(config.CACHE_DIR / "splits" / f"ood_dipping_seed{seed}.npz")
+        tl = load_split(config.CACHE_DIR / "splits" / f"ood_three_layer_seed{seed}.npz")
+        parts.append(
+            ("ood_dipping", cache_dir_for("ood_dipping"), np.asarray(dip["train"]))
+        )
+        parts.append(
+            ("ood_three_layer", cache_dir_for("ood_three_layer"), np.asarray(tl["train"]))
+        )
     return parts
 
 
-def mix_val_parts(*, seed: int = config.SEED) -> list[tuple[str, Path, np.ndarray]]:
+def mix_val_parts(
+    *, seed: int = config.SEED, iid_only: bool = False
+) -> list[tuple[str, Path, np.ndarray]]:
     iid = iid_n1000_split(seed=seed)
+    if iid_only:
+        return [
+            ("iid", config.CACHE_DIR / "n1000_seed42", np.asarray(iid["val"])),
+        ]
     dip = load_split(config.CACHE_DIR / "splits" / f"ood_dipping_seed{seed}.npz")
     tl = load_split(config.CACHE_DIR / "splits" / f"ood_three_layer_seed{seed}.npz")
     return [

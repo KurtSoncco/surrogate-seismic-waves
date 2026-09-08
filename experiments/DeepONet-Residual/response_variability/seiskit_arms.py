@@ -64,6 +64,83 @@ def _geomean(stack: np.ndarray) -> np.ndarray:
     return np.exp(np.mean(np.log(clipped), axis=0))
 
 
+LN_P84_Z = 1.0  # Φ(1) ≈ 0.8413; GMPE / site-response "84th percentile"
+
+
+def lognormal_upper(
+    geomean: np.ndarray, sigma_ln: np.ndarray, *, z: float = LN_P84_Z
+) -> np.ndarray:
+    """Upper lognormal percentile: geomean × exp(z σ_ln). Default z=1 ≈ 84th."""
+    geo = np.clip(np.asarray(geomean, dtype=np.float64), 1e-12, None)
+    sig = np.asarray(sigma_ln, dtype=np.float64)
+    if sig.shape == geo.shape:
+        pass
+    elif sig.ndim == 0:
+        sig = np.full(geo.shape, float(sig))
+    elif sig.ndim == 1 and geo.ndim >= 2 and sig.shape[0] == geo.shape[0]:
+        sig = sig.reshape((geo.shape[0],) + (1,) * (geo.ndim - 1))
+    elif sig.ndim == 1 and geo.ndim >= 1 and sig.shape[0] == geo.shape[-1]:
+        sig = sig.reshape((1,) * (geo.ndim - 1) + (sig.shape[0],))
+    else:
+        sig = np.broadcast_to(sig, geo.shape)
+    return geo * np.exp(float(z) * np.clip(sig, 0.0, None))
+
+
+def upgrade_sigma_ln_from_presentation(
+    pack: dict,
+    source: Path | None = None,
+    *,
+    key: str = "sigma_ln_pretell",
+) -> dict:
+    """Replace collapsed mean(σ_ln) with per-frequency σ_ln when sample_idx matches.
+
+    Seiskit ``predictions.npz`` stored ``mean(σ_ln(f))`` per case. That makes
+    p84 a uniform scale of the geomean (Pearson unchanged). Presentation packs
+    keep σ_ln(f), which is the GMPE-style 84th-percentile |TF|(f) envelope.
+    """
+    sig = pack.get(key)
+    if sig is None:
+        return pack
+    sig = np.asarray(sig)
+    if sig.ndim >= 2:
+        return pack
+    if source is None:
+        import config as _config
+
+        source = _config.RESULTS_DIR / "presentation" / "iid_pack.npz"
+    source = Path(source)
+    if not source.is_file():
+        return pack
+    other = np.load(source, allow_pickle=True)
+    if key not in other.files:
+        return pack
+    other_sig = np.asarray(other[key], dtype=np.float64)
+    if other_sig.ndim < 2:
+        return pack
+    if "sample_idx" in pack and "sample_idx" in other.files:
+        if not np.array_equal(
+            np.asarray(pack["sample_idx"]), np.asarray(other["sample_idx"])
+        ):
+            return pack
+    n = int(np.asarray(pack["tf_pretell"]).shape[0])
+    if other_sig.shape[0] != n:
+        return pack
+    out = dict(pack)
+    out[key] = other_sig
+    return out
+
+
+def attach_pretell_p84(pack: dict) -> dict:
+    """Add ``tf_pretell_p84`` from stored Pretell geomean and σ_ln (no Haskell rerun)."""
+    if "tf_pretell" not in pack or "sigma_ln_pretell" not in pack:
+        return pack
+    out = dict(pack)
+    out["tf_pretell_p84"] = lognormal_upper(
+        pack["tf_pretell"], pack["sigma_ln_pretell"]
+    )
+    return out
+
+
 def hallal_geomean_tf(
     *,
     freq: np.ndarray,

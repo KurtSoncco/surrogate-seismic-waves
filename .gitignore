@@ -30,17 +30,9 @@ wandb/
 !experiments/GIFNO/sweep_variants.tsv
 !experiments/GIFNO/sweep_variants_r2.tsv
 !experiments/GIFNO/sweep_variants_r3.tsv
-!experiments/GIFNO-FDO/sweep_variants_arch.tsv
-!experiments/GIFNO-FDO/sweep_variants_combo.tsv
-!experiments/GIFNO-FDO/sweep_variants_opt.tsv
-!experiments/GIFNO-FDO-XT/sweep_variants_xt.tsv
-!experiments/GIFNO-FDO-LG/sweep_variants_lg.tsv
-!experiments/GIFNO-FDO-XT-HFNO/sweep_variants_hfno.tsv
-!experiments/GIFNO-FDO-XT-HFS/sweep_variants_hfs.tsv
-!experiments/GIFNO-FDO-XT-BOOST/sweep_variants_boost.tsv
 !experiments/GIFNO-FDO-XT-LOGLO-POD/sweep_variants_loglo_pod.tsv
+!experiments/GIFNO-FDO-XT-LOGLO-POD/sweep_variants_loglo_pod_stability.tsv
 !experiments/DeepONet-Residual/results/response_variability/**/*.csv
-experiments/GIFNO-FDO-XT/analysis/
 *.json
 !experiments/DeepONet-Residual/results/response_variability/**/*.json
 *.parquet
@@ -65,24 +57,21 @@ logs/
 *.h5
 *.ckpt
 *.npy
+*.npz
 **/cache/
 
-# Publication full-7680 checkpoints (LOGLO-POD + residual DeepONet)
+# Publication full-7680 checkpoints (LOGLO-POD + residual GINO)
 !checkpoints/tier2_pod64_full7680/
 !checkpoints/tier2_pod64_full7680/best_model.pt
 !experiments/DeepONet-Residual/checkpoints/
-!experiments/DeepONet-Residual/checkpoints/single_per_rec_col_full_R_nom_full7680_seed42.pt
-!experiments/DeepONet-Residual/checkpoints/single_resunet_full_R_nom_full7680_seed42.pt
+!experiments/DeepONet-Residual/checkpoints/M7680_gino_rebal_ft.pt
 
-# LOGLO vs DeepONet TF comparison summaries
-!experiments/DeepONet-Residual/results/compare_tf_loglo_vs_deeponet/
-!experiments/DeepONet-Residual/results/compare_tf_loglo_vs_deeponet/**
-!experiments/DeepONet-Residual/results/compare_tf_ood_loglo_vs_deeponet/
-!experiments/DeepONet-Residual/results/compare_tf_ood_loglo_vs_deeponet/**
-!experiments/DeepONet-Residual/results/compare_tf_loglo_vs_deeponet_v2/
-!experiments/DeepONet-Residual/results/compare_tf_loglo_vs_deeponet_v2/**
-!experiments/DeepONet-Residual/results/compare_tf_ood_loglo_vs_deeponet_v2/
-!experiments/DeepONet-Residual/results/compare_tf_ood_loglo_vs_deeponet_v2/**
+# LOGLO vs DeepONet TF comparison (nested tests, shipped GINO)
+!experiments/DeepONet-Residual/results/compare_gino_loglo/
+!experiments/DeepONet-Residual/results/compare_gino_loglo/**
+!experiments/DeepONet-Residual/results/arch_train/
+!experiments/DeepONet-Residual/results/arch_train/M7680_gino_rebal_ft.json
+!experiments/DeepONet-Residual/results/arch_train/M7680_rebal_vs_ship.json
 
 # OS files
 .DS_Store

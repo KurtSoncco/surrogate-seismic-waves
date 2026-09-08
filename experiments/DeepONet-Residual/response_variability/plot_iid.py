@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -28,7 +29,11 @@ from response_variability.names import (  # noqa: E402
     METHOD_LINESTYLES,
     METHOD_ZORDER,
     OPENSEES,
+    PASSERI,
+    PRETELL,
+    PRETELL_P84,
     TF_KEYS,
+    TORO,
 )
 from response_variability.style import (  # noqa: E402
     apply_nature_style,
@@ -69,7 +74,13 @@ def _load_pack(out_dir: Path) -> dict[str, np.ndarray]:
     if not path.is_file():
         raise FileNotFoundError(f"Run eval_iid.py first; missing {path}")
     blob = np.load(path, allow_pickle=True)
-    return {k: blob[k] for k in blob.files}
+    pack = {k: blob[k] for k in blob.files}
+    from response_variability.seiskit_arms import (
+        attach_pretell_p84,
+        upgrade_sigma_ln_from_presentation,
+    )
+
+    return attach_pretell_p84(upgrade_sigma_ln_from_presentation(pack))
 
 
 def attach_geometry_from_cache(
@@ -213,7 +224,7 @@ def _tf_legend_handles(methods: list[str], *, has_spatial: bool) -> list:
                 [0],
                 color=METHOD_COLORS[method],
                 ls=METHOD_LINESTYLES[method],
-                lw=1.6 if method in (OPENSEES, GINO) else 1.15,
+                lw=1.6 if method in (OPENSEES, GINO, PRETELL_P84) else 1.15,
                 label=method,
             )
         )
@@ -221,13 +232,16 @@ def _tf_legend_handles(methods: list[str], *, has_spatial: bool) -> list:
 
 
 def _plot_tf_curve(ax, freq, af, method: str) -> None:
-    lw = 1.45 if method in (OPENSEES, GINO) else 1.05
+    lw = 1.55 if method in (OPENSEES, GINO, PRETELL_P84) else 1.05
+    alpha = 0.40 if method in (HASKELL_COLUMN, TORO, PASSERI) else 1.0
+    y = np.maximum(np.asarray(af, dtype=np.float64), 1e-6)
     ax.plot(
         freq,
-        af,
+        y,
         color=METHOD_COLORS[method],
         ls=METHOD_LINESTYLES[method],
         lw=lw,
+        alpha=alpha,
         zorder=METHOD_ZORDER[method],
     )
 
@@ -260,8 +274,8 @@ def plot_tf_panels(
             p16, _, p84 = spatial_percentiles(ops)
             ax.fill_between(
                 freq,
-                p16,
-                p84,
+                np.maximum(p16, 1e-6),
+                np.maximum(p84, 1e-6),
                 color=METHOD_COLORS[OPENSEES],
                 alpha=0.16,
                 linewidth=0,
@@ -273,19 +287,22 @@ def plot_tf_panels(
                 gp16, _, gp84 = spatial_percentiles(gino)
                 ax.fill_between(
                     freq,
-                    gp16,
-                    gp84,
+                    np.maximum(gp16, 1e-6),
+                    np.maximum(gp84, 1e-6),
                     color=METHOD_COLORS[GINO],
                     alpha=0.14,
                     linewidth=0,
                     zorder=1,
                 )
-        for method in tfs:
+        order = [m for m in tfs if m not in (OPENSEES, GINO, PRETELL, PRETELL_P84)]
+        order.extend(m for m in (PRETELL, PRETELL_P84, GINO, OPENSEES) if m in tfs)
+        for method in order:
             _plot_tf_curve(ax, freq, _curve_at_sample(tfs[method], i), method)
         f0 = float(pack["f0"][i])
         if np.isfinite(f0):
             ax.axvline(f0, color="0.35", ls=":", lw=0.7, zorder=1)
         ax.set_xscale("log")
+        ax.set_yscale("log")
         ax.set_xlim(0.1, 10.0)
         ax.set_xlabel(r"$f$ (Hz)")
         ax.set_title(_panel_title(pack, i), fontsize=6.5, pad=4, linespacing=1.25)
@@ -352,11 +369,14 @@ def _tick_labels(labels: list[str]) -> list[str]:
     wrap = {
         HASKELL_NOMINAL: "1D Base\nCase",
         HASKELL_COLUMN: "Pretell's\napproach",
+        PRETELL_P84: "Pretell\np84",
     }
     return [wrap.get(lab, lab.replace(" (", "\n(")) for lab in labels]
 
 
-def _boxplot_with_points(ax, data: list[np.ndarray], labels: list[str]) -> None:
+def _boxplot_with_points(
+    ax, data: list[np.ndarray], labels: list[str], *, ref_line: float | None = 0.0
+) -> None:
     rng = np.random.default_rng(0)
     ticks = _tick_labels(labels)
     box_kw = dict(
@@ -387,7 +407,8 @@ def _boxplot_with_points(ax, data: list[np.ndarray], labels: list[str]) -> None:
             edgecolors="none",
             zorder=3,
         )
-    ax.axhline(0.0, color="0.5", lw=0.5, ls="--", zorder=0)
+    if ref_line is not None:
+        ax.axhline(ref_line, color="0.5", lw=0.5, ls="--", zorder=0)
 
 
 def _compare_figsize(n_methods: int):
@@ -450,6 +471,36 @@ def plot_band_misfit(misfit: pd.DataFrame, out_dir: Path) -> Path:
     return savefig(fig, out_dir / "tf_band_misfit.png")
 
 
+def plot_band_pearson(misfit: pd.DataFrame, out_dir: Path) -> Path:
+    apply_nature_style()
+    labels = compare_methods_in(misfit)
+    bands = ["low", "mid", "high"]
+    band_labels = ["0.1–0.5 Hz", "0.5–2 Hz", "2–10 Hz"]
+    x = np.arange(len(bands), dtype=float)
+    n = max(len(labels), 1)
+    width = min(0.24, 0.8 / n)
+    fig, ax = plt.subplots(figsize=_compare_figsize(n))
+    for k, method in enumerate(labels):
+        sub = misfit[misfit["method"] == method]
+        means = [float(sub[f"pearson_{b}"].mean()) for b in bands]
+        offset = (k - (n - 1) / 2.0) * width
+        ax.bar(
+            x + offset,
+            means,
+            width=width,
+            color=METHOD_COLORS[method],
+            edgecolor="none",
+            label=method,
+        )
+    ax.set_xticks(x)
+    ax.set_xticklabels(band_labels)
+    ax.set_ylim(0.0, 1.0)
+    ax.set_ylabel(r"Pearson of $|\mathrm{TF}|$ vs OpenSees 2-D")
+    ax.legend(loc="lower left")
+    fig.tight_layout()
+    return savefig(fig, out_dir / "tf_band_pearson.png")
+
+
 def plot_error_vs_params(summary: pd.DataFrame, out_dir: Path) -> Path:
     apply_nature_style()
     gino = summary[summary["method"] == GINO]
@@ -491,6 +542,49 @@ def plot_gof_boxplot(summary: pd.DataFrame, out_dir: Path) -> Path:
     return savefig(fig, out_dir / "tf_gof.png")
 
 
+def plot_pearson_vs_params(summary: pd.DataFrame, out_dir: Path) -> Path:
+    apply_nature_style()
+    gino = summary[summary["method"] == GINO]
+    params = [
+        ("Vs1", r"$V_{s1}$ (m s$^{-1}$)"),
+        ("H", r"$H$ (m)"),
+        ("CoV", r"CoV"),
+        ("Vs2", r"$V_{s2}$ (m s$^{-1}$)"),
+    ]
+    fig, axes = plt.subplots(
+        2, 2, figsize=figsize("double", height_mm=145), sharey=True
+    )
+    for ax, (col, xlab), letter in zip(axes.ravel(), params, "abcd"):
+        ax.scatter(
+            gino[col],
+            gino["pearson"],
+            s=10,
+            c=METHOD_COLORS[GINO],
+            alpha=0.65,
+            edgecolors="none",
+        )
+        ax.set_xlabel(xlab)
+        ax.set_ylim(0.0, 1.02)
+        panel_letter(ax, letter, x=0.02, y=0.98)
+    axes[0, 0].set_ylabel(r"Pearson of $|\mathrm{TF}|$")
+    axes[1, 0].set_ylabel(r"Pearson of $|\mathrm{TF}|$")
+    fig.tight_layout(h_pad=0.8, w_pad=0.6)
+    return savefig(fig, out_dir / "tf_pearson_vs_params.png")
+
+
+def plot_pearson_boxplot(summary: pd.DataFrame, out_dir: Path) -> Path:
+    apply_nature_style()
+    labels = compare_methods_in(summary)
+    fig, ax = plt.subplots(figsize=_compare_figsize(len(labels)))
+    data = [summary.loc[summary["method"] == m, "pearson"].to_numpy() for m in labels]
+    _boxplot_with_points(ax, data, labels, ref_line=1.0)
+    ax.set_ylabel(r"Pearson of $|\mathrm{TF}|$ vs OpenSees 2-D")
+    ax.set_xlabel("")
+    ax.set_ylim(0.0, 1.02)
+    fig.tight_layout()
+    return savefig(fig, out_dir / "tf_pearson.png")
+
+
 def _refresh_method_labels(df: pd.DataFrame) -> pd.DataFrame:
     """Map stored CSV labels onto the current display names."""
     df = df.copy()
@@ -506,29 +600,28 @@ def _refresh_method_labels(df: pd.DataFrame) -> pd.DataFrame:
 def plot_all(out_dir: Path | None = None) -> list[Path]:
     out_dir = Path(out_dir or OUT_DIR)
     pack = attach_geometry_from_cache(_load_pack(out_dir))
-    summary = _refresh_method_labels(pd.read_csv(out_dir / "method_comparison_summary.csv"))
-    peaks = _refresh_method_labels(pd.read_csv(out_dir / "per_sample_peaks.csv"))
-    misfit = _refresh_method_labels(pd.read_csv(out_dir / "tf_band_misfit.csv"))
+    from response_variability.eval_iid import (
+        aggregate_json,
+        band_misfit_table,
+        summarize_methods,
+    )
+
+    summary, peaks = summarize_methods(pack)
+    misfit = band_misfit_table(pack)
     summary.to_csv(out_dir / "method_comparison_summary.csv", index=False)
     peaks.to_csv(out_dir / "per_sample_peaks.csv", index=False)
     misfit.to_csv(out_dir / "tf_band_misfit.csv", index=False)
-    agg_path = out_dir / "aggregate.json"
-    if agg_path.is_file():
-        import json
-
-        agg = json.loads(agg_path.read_text())
-        for old, new in (
-            ("Haskell (nominal)", HASKELL_NOMINAL),
-            ("Haskell (column)", HASKELL_COLUMN),
-        ):
-            if old in agg:
-                agg[new] = agg.pop(old)
-        agg_path.write_text(json.dumps(agg, indent=2))
+    (out_dir / "aggregate.json").write_text(
+        json.dumps(aggregate_json(summary, misfit), indent=2)
+    )
     paths = plot_tf_panel_variants(pack, out_dir)
     paths.extend(plot_peak_bias(peaks, out_dir))
     paths.append(plot_band_misfit(misfit, out_dir))
+    paths.append(plot_band_pearson(misfit, out_dir))
     paths.append(plot_error_vs_params(summary, out_dir))
     paths.append(plot_gof_boxplot(summary, out_dir))
+    paths.append(plot_pearson_vs_params(summary, out_dir))
+    paths.append(plot_pearson_boxplot(summary, out_dir))
     for p in paths:
         print(f"Wrote {p}", flush=True)
     return paths

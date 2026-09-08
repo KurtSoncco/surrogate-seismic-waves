@@ -145,7 +145,6 @@ def predict_deeponet_full_tf(
     device: torch.device,
 ) -> np.ndarray:
     """Return TF_hat = TF1D_nom + R_hat on all frequencies, shape (n_rec, n_freq)."""
-    sys.path.insert(0, str(dn_config.RESIDUAL_DIR))
     from features import fourier_freq_features, spectral_kl_coefficients
 
     h5_path = Path(str(meta["h5_path"][local_i]))
@@ -306,7 +305,7 @@ def main() -> None:
     out_dir = Path(
         os.environ.get(
             "COMPARE_OUT",
-            str(dn_config.RESULTS_DIR / "compare_tf_loglo_vs_deeponet"),
+            str(dn_config.RESULTS_DIR / "compare_gino_loglo"),
         )
     )
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -336,7 +335,7 @@ def main() -> None:
             "DEEPONET_CKPT",
             str(
                 dn_config.CHECKPOINT_DIR
-                / "single_resunet_full_R_nom_full7680_seed42.pt"
+                / "M7680_gino_rebal_ft.pt"
             ),
         )
     )
