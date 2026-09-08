@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -20,20 +19,66 @@ from ood_io import (
     recorder_x_indices,
     soil_nz_from_params,
 )
-
-_RES = config.RESIDUAL_DIR
-if str(_RES) not in sys.path:
-    sys.path.insert(0, str(_RES))
-
-from haskell_baseline import (  # noqa: E402
+from haskell_baseline import (
     haskell_at_columns,
     haskell_nominal_af_within,
     haskell_nominal_layered_af_within,
 )
 
 
+def materialize_signed_from_parent(child_tag: str, parent_tag: str) -> Path:
+    """Slice a larger signed cache onto ``child_tag`` indices (no Haskell)."""
+    src = config.CACHE_DIR / parent_tag
+    dst = config.CACHE_DIR / child_tag
+    need = ["r_nom_signed.npy", "tf1d_nom.npy", "fields.npy", "meta.npz"]
+    if all((dst / k).is_file() for k in need):
+        return dst
+    if not all((src / k).is_file() for k in ("r_nom_signed.npy", "sample_indices.npy")):
+        raise FileNotFoundError(f"need full {parent_tag} cache at {src}")
+    from residual_signed import resolve_sample_indices, write_sample_indices
+
+    child_idx = resolve_sample_indices(child_tag)
+    write_sample_indices(child_tag, child_idx)
+    parent = np.load(src / "sample_indices.npy")
+    loc = {int(s): i for i, s in enumerate(parent)}
+    missing = [int(s) for s in child_idx if int(s) not in loc]
+    if missing:
+        raise KeyError(
+            f"{len(missing)} {child_tag} samples are not in {parent_tag} "
+            f"(e.g. {missing[:5]})"
+        )
+    rows = np.array([loc[int(s)] for s in child_idx], dtype=int)
+    dst.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "r_col_signed.npy",
+        "r_nom_signed.npy",
+        "tf1d_col.npy",
+        "tf1d_nom.npy",
+        "tf1d_nom_xi.npy",
+        "r_nom_xi_signed.npy",
+        "fields.npy",
+        "vs_col.npy",
+        "sample_indices.npy",
+    ):
+        sp = src / name
+        if name == "sample_indices.npy":
+            np.save(dst / name, np.asarray(child_idx, dtype=int))
+            continue
+        if sp.is_file():
+            np.save(dst / name, np.load(sp, mmap_mode="r")[rows])
+    meta = dict(np.load(src / "meta.npz", allow_pickle=True))
+    packed = {k: np.asarray(v)[rows] for k, v in meta.items()}
+    np.savez(dst / "meta.npz", **packed)
+    print(
+        f"[cache] materialized {child_tag} from {parent_tag} rows={len(rows)}",
+        flush=True,
+    )
+    return dst
+
+
 def materialize_n1000_from_n2000() -> Path:
     """Slice the n2000 signed cache onto nested n1000 indices (no Haskell)."""
+    return materialize_signed_from_parent("n1000_seed42", "n2000_seed42")
     src = config.CACHE_DIR / "n2000_seed42"
     dst = config.CACHE_DIR / "n1000_seed42"
     need = ["r_nom_signed.npy", "tf1d_nom.npy", "fields.npy", "meta.npz"]
@@ -123,6 +168,8 @@ def build_ood_signed_cache(name: str, *, force: bool = False) -> Path:
         "tf1d_col": out_dir / "tf1d_col.npy",
         "tf1d_nom": out_dir / "tf1d_nom.npy",
         "tf1d_nom1": out_dir / "tf1d_nom1.npy",
+        "tf1d_nom_xi": out_dir / "tf1d_nom_xi.npy",
+        "r_nom_xi": out_dir / "r_nom_xi_signed.npy",
         "tf2d": out_dir / "tf2d.npy",
         "fields": out_dir / "fields.npy",
         "vs_col": out_dir / "vs_col.npy",
@@ -148,14 +195,18 @@ def build_ood_signed_cache(name: str, *, force: bool = False) -> Path:
     r_col = np.empty((n, n_rec, n_freq), dtype=np.float32)
     r_nom = np.empty((n, n_rec, n_freq), dtype=np.float32)
     r_nom1 = np.empty((n, n_rec, n_freq), dtype=np.float32)
+    r_nom_xi = np.empty((n, n_rec, n_freq), dtype=np.float32)
     tf1d_col = np.empty((n, n_rec, n_freq), dtype=np.float32)
     tf1d_nom = np.empty((n, n_rec, n_freq), dtype=np.float32)
     tf1d_nom1 = np.empty((n, n_rec, n_freq), dtype=np.float32)
+    tf1d_nom_xi = np.empty((n, n_rec, n_freq), dtype=np.float32)
     tf2d_all = np.empty((n, n_rec, n_freq), dtype=np.float32)
     fields = np.empty((n, 3, config.NZ_MAX, n_rec), dtype=np.float32)
     vs_col = np.empty((n, n_rec), dtype=np.float32)
     metas: list[dict[str, Any]] = []
     freq_ref: np.ndarray | None = None
+
+    from residual_signed import soil_mean_xi, xi_per_layer
 
     for i, h5_path in enumerate(tqdm(h5s, desc=f"ood-cache {name}")):
         vs, zeta, params, extra = read_h5_sample(h5_path)
@@ -190,7 +241,11 @@ def build_ood_signed_cache(name: str, *, force: bool = False) -> Path:
         ).astype(np.float32)
         nom1 = np.broadcast_to(nom1_1d[None, :], col.shape).copy()
         true_layers = nom.get("true_layers")
+        layer_H = np.array([float(nom["H"])], dtype=np.float64)
+        layer_Vs = np.array([float(nom["vs1"])], dtype=np.float64)
         if true_layers is not None:
+            layer_H = np.asarray(true_layers["H"], dtype=np.float64)
+            layer_Vs = np.asarray(true_layers["Vs"], dtype=np.float64)
             nom_g_1d = haskell_nominal_layered_af_within(
                 freq_ref,
                 H=true_layers["H"],
@@ -205,14 +260,38 @@ def build_ood_signed_cache(name: str, *, force: bool = False) -> Path:
             nom_g = nom1
             geo_source = nom["source"]
 
+        xi_sample_layers = xi_per_layer(zeta_c, layer_H, dz=config.DZ)
+        if true_layers is not None:
+            nom_xi_1d = haskell_nominal_layered_af_within(
+                freq_ref,
+                H=true_layers["H"],
+                Vs=true_layers["Vs"],
+                vs_rock=float(true_layers["vs_rock"]),
+                xi=xi_sample_layers,
+                rho=config.RHO,
+            ).astype(np.float32)
+        else:
+            nom_xi_1d = haskell_nominal_af_within(
+                freq_ref,
+                vs1=float(nom["vs1"]),
+                H=float(nom["H"]),
+                vs2=vs2,
+                xi=float(soil_mean_xi(zeta_c, soil_nz)),
+                rho=config.RHO,
+            ).astype(np.float32)
+        nom_xi = np.broadcast_to(nom_xi_1d[None, :], col.shape).copy()
+        xi_sample = float(np.mean(xi_sample_layers)) if xi_sample_layers.size else 0.0
+
         tf = np.asarray(tf, dtype=np.float32)
         if tf.shape != col.shape:
             raise ValueError(f"{h5_path}: tf {tf.shape} vs haskell {col.shape}")
         tf1d_col[i], tf1d_nom[i], tf1d_nom1[i] = col, nom_g, nom1
+        tf1d_nom_xi[i] = nom_xi
         tf2d_all[i] = tf
         r_col[i] = tf - col
         r_nom[i] = tf - nom_g
         r_nom1[i] = tf - nom1
+        r_nom_xi[i] = tf - nom_xi
         fld, vc = _fields_vs_col(vs, zeta, rec_i, int(vs_c.shape[0]), soil_nz)
         fields[i], vs_col[i] = fld, vc
         sm = _stoch_meta(params, int(vs_c.shape[0]))
@@ -231,6 +310,9 @@ def build_ood_signed_cache(name: str, *, force: bool = False) -> Path:
                 "soil_nz": int(soil_nz),
                 "nz": int(vs_c.shape[0]),
                 "xi_damp": float(config.DEFAULT_XI_TREND),
+                "xi_sample": xi_sample,
+                "layer_H": layer_H,
+                "layer_Vs": layer_Vs,
                 "geo_source": geo_source,
                 "nom_misspecified": bool(nom["misspecified"]),
                 "stoch_note": sm["stoch_note"],
@@ -245,13 +327,20 @@ def build_ood_signed_cache(name: str, *, force: bool = False) -> Path:
     np.save(paths["tf1d_col"], tf1d_col)
     np.save(paths["tf1d_nom"], tf1d_nom)
     np.save(paths["tf1d_nom1"], tf1d_nom1)
+    np.save(paths["tf1d_nom_xi"], tf1d_nom_xi)
+    np.save(paths["r_nom_xi"], r_nom_xi)
     np.save(paths["tf2d"], tf2d_all)
     np.save(paths["fields"], fields)
     np.save(paths["vs_col"], vs_col)
     np.save(paths["idx"], np.arange(n, dtype=int))
     np.save(paths["freq"], freq_ref.astype(np.float64))
     np.save(paths["recorder_x"], rec.astype(np.int64))
-    packed = {k: np.array([m[k] for m in metas]) for k in metas[0]}
+    packed = {}
+    for k in metas[0]:
+        if k in ("layer_H", "layer_Vs"):
+            packed[k] = np.array([m[k] for m in metas], dtype=object)
+        else:
+            packed[k] = np.array([m[k] for m in metas])
     np.savez(paths["meta"], **packed)
     print(f"Wrote OOD signed cache → {out_dir}", flush=True)
     return out_dir

@@ -38,7 +38,6 @@ def test_write_and_load_indices(tmp_path, monkeypatch):
     import config
 
     monkeypatch.setattr(config, "CACHE_DIR", tmp_path)
-    monkeypatch.setattr(config, "RESIDUAL_CACHE_DIR", tmp_path / "no_residual")
     idx = np.array([1, 4, 9], dtype=int)
     write_sample_indices("n3_seed42", idx)
     loaded = _load_existing_indices("n3_seed42")

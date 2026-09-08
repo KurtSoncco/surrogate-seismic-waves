@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import csv
-import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -17,15 +17,47 @@ except ImportError:
 import config
 import h5py
 
-_RES = config.RESIDUAL_DIR
-if str(_RES) not in sys.path:
-    sys.path.insert(0, str(_RES))
-
 
 def _haskell():
-    from haskell_baseline import haskell_at_columns, haskell_nominal_af_within
+    from haskell_baseline import (
+        haskell_at_columns,
+        haskell_nominal_af_within,
+        haskell_nominal_layered_af_within,
+    )
 
-    return haskell_at_columns, haskell_nominal_af_within
+    return haskell_at_columns, haskell_nominal_af_within, haskell_nominal_layered_af_within
+
+
+def soil_mean_xi(zeta: np.ndarray, soil_nz: int) -> float:
+    """Mean damping over the soil column (x-averaged if 2D)."""
+    z = np.asarray(zeta, dtype=np.float64)
+    if z.ndim == 2:
+        z = z.mean(axis=1)
+    n = max(1, min(int(soil_nz), int(z.shape[0])))
+    return float(np.mean(z[:n]))
+
+
+def xi_per_layer(
+    zeta: np.ndarray,
+    layer_H: Sequence[float] | np.ndarray,
+    *,
+    dz: float,
+) -> np.ndarray:
+    """Mean ζ in each nominal layer (x-averaged if 2D)."""
+    z = np.asarray(zeta, dtype=np.float64)
+    if z.ndim == 2:
+        z = z.mean(axis=1)
+    out: list[float] = []
+    i0 = 0
+    for h in np.asarray(layer_H, dtype=np.float64).ravel():
+        n = max(1, int(round(float(h) / max(float(dz), 1e-12))))
+        i1 = min(int(z.shape[0]), i0 + n)
+        if i1 <= i0:
+            out.append(float(z[min(i0, int(z.shape[0]) - 1)]))
+        else:
+            out.append(float(np.mean(z[i0:i1])))
+        i0 = i1
+    return np.asarray(out, dtype=np.float64)
 
 
 def resolve_h5_path(stored_path: str) -> Path:
@@ -53,9 +85,9 @@ def compute_signed_for_index(
     tf_2d: np.ndarray,
     freq: np.ndarray,
     recorder_x: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict]:
-    """Return signed R_col, R_nom, TF1D_col, TF1D_nom and meta."""
-    haskell_at_columns, haskell_nominal_af_within = _haskell()
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict, np.ndarray, np.ndarray]:
+    """Return signed R_col, R_nom, TF1D_col, TF1D_nom, meta, plus sample-ξ nom extras."""
+    haskell_at_columns, haskell_nominal_af_within, _layered = _haskell()
     h5_path = resolve_h5_path(manifest_row["h5_path"])
     vs, zeta, params = _read_sample(h5_path)
 
@@ -80,14 +112,20 @@ def compute_signed_for_index(
     vs1 = float(params["Vs1"])
     H = float(params.get("H_discretized", params.get("H")))
     xi = float(config.DEFAULT_XI_TREND)
+    xi_sample = soil_mean_xi(zeta_crop, soil_nz)
     tf1d_nom_1d = haskell_nominal_af_within(
         freq, vs1=vs1, H=H, vs2=vs2, xi=xi, rho=config.RHO
     ).astype(np.float32)
     tf1d_nom = np.broadcast_to(tf1d_nom_1d[None, :], tf1d_col.shape).copy()
+    tf1d_nom_xi_1d = haskell_nominal_af_within(
+        freq, vs1=vs1, H=H, vs2=vs2, xi=xi_sample, rho=config.RHO
+    ).astype(np.float32)
+    tf1d_nom_xi = np.broadcast_to(tf1d_nom_xi_1d[None, :], tf1d_col.shape).copy()
 
     tf = tf_2d.astype(np.float64)
     r_col = (tf - tf1d_col.astype(np.float64)).astype(np.float32)
     r_nom = (tf - tf1d_nom.astype(np.float64)).astype(np.float32)
+    r_nom_xi = (tf - tf1d_nom_xi.astype(np.float64)).astype(np.float32)
 
     meta = {
         "sample_idx": int(sample_idx),
@@ -103,17 +141,20 @@ def compute_signed_for_index(
         "soil_nz": soil_nz,
         "nz": int(vs_crop.shape[0]),
         "xi_damp": xi,
+        "xi_sample": xi_sample,
+        "layer_H": np.array([H], dtype=np.float64),
+        "layer_Vs": np.array([vs1], dtype=np.float64),
     }
-    return r_col, r_nom, tf1d_col, tf1d_nom, meta
+    return r_col, r_nom, tf1d_col, tf1d_nom, meta, tf1d_nom_xi, r_nom_xi
 
 
 def sample_indices_from_residual(cache_tag: str) -> np.ndarray:
-    """Reuse Residual experiment sample indices for apples-to-apples splits."""
-    path = config.RESIDUAL_CACHE_DIR / cache_tag / "sample_indices.npy"
+    """Load previously written sample indices for this cache tag."""
+    path = config.CACHE_DIR / cache_tag / "sample_indices.npy"
     if not path.exists():
         raise FileNotFoundError(
-            f"Missing Residual cache indices: {path}. "
-            "Use resolve_sample_indices() (stratified, no RF screen)."
+            f"Missing sample indices: {path}. "
+            "Use resolve_sample_indices() (stratified CoV×H)."
         )
     return np.load(path)
 
@@ -130,10 +171,9 @@ def _nested_parent_tag(cache_tag: str) -> str | None:
 
 
 def _load_existing_indices(cache_tag: str) -> np.ndarray | None:
-    for base in (config.CACHE_DIR, config.RESIDUAL_CACHE_DIR):
-        path = base / cache_tag / "sample_indices.npy"
-        if path.is_file():
-            return np.load(path)
+    path = config.CACHE_DIR / cache_tag / "sample_indices.npy"
+    if path.is_file():
+        return np.load(path)
     return None
 
 
@@ -143,7 +183,7 @@ def resolve_sample_indices(
     allow_stratified: bool = True,
     nest_smaller: bool = True,
 ) -> np.ndarray:
-    """Stratified CoV×H indices (seed from tag). Residual RF screen is optional.
+    """Stratified CoV×H indices (seed from tag).
 
     Nested: n=1000 ⊂ n=2000 ⊂ n=3000 when a smaller cache exists, or when both
     are generated with the same round-robin + seed.
@@ -240,8 +280,14 @@ def build_signed_cache(
     max_samples: int | None = None,
     indices_only: bool = False,
     allow_stratified: bool = True,
+    sample_xi: bool = False,
 ) -> Path:
-    """Write signed residuals + TF1D baselines under this experiment's cache/."""
+    """Write signed residuals + TF1D baselines under this experiment's cache/.
+
+    Default TF_1D_nom still uses ``DEFAULT_XI_TREND``. Sample-ζ extras
+    ``tf1d_nom_xi.npy`` / ``r_nom_xi_signed.npy`` are a separate tag so the
+    shipped control stays comparable.
+    """
     out_dir = config.CACHE_DIR / cache_tag
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = {
@@ -249,6 +295,8 @@ def build_signed_cache(
         "r_nom": out_dir / "r_nom_signed.npy",
         "tf1d_col": out_dir / "tf1d_col.npy",
         "tf1d_nom": out_dir / "tf1d_nom.npy",
+        "tf1d_nom_xi": out_dir / "tf1d_nom_xi.npy",
+        "r_nom_xi": out_dir / "r_nom_xi_signed.npy",
         "meta": out_dir / "meta.npz",
         "idx": out_dir / "sample_indices.npy",
         "fields": out_dir / "fields.npy",
@@ -268,6 +316,10 @@ def build_signed_cache(
 
     core = ("r_col", "r_nom", "tf1d_col", "tf1d_nom", "meta", "idx")
     if not force and all(paths[k].exists() for k in core):
+        if sample_xi and (
+            not paths["tf1d_nom_xi"].exists() or not paths["r_nom_xi"].exists()
+        ):
+            append_sample_xi_nom(cache_tag)
         return out_dir
 
     manifest = load_manifest()
@@ -280,15 +332,17 @@ def build_signed_cache(
     n_freq = int(freq.shape[0])
     r_col = np.empty((n, n_rec, n_freq), dtype=np.float32)
     r_nom = np.empty((n, n_rec, n_freq), dtype=np.float32)
+    r_nom_xi = np.empty((n, n_rec, n_freq), dtype=np.float32)
     tf1d_col = np.empty((n, n_rec, n_freq), dtype=np.float32)
     tf1d_nom = np.empty((n, n_rec, n_freq), dtype=np.float32)
+    tf1d_nom_xi = np.empty((n, n_rec, n_freq), dtype=np.float32)
     fields = np.empty((n, 3, config.NZ_MAX, n_rec), dtype=np.float32)
     vs_col = np.empty((n, n_rec), dtype=np.float32)
     metas: list[dict] = []
 
     for i, sidx in enumerate(tqdm(sample_indices, desc=f"signed {cache_tag}")):
         sidx = int(sidx)
-        rc, rn, tc, tn, meta = compute_signed_for_index(
+        rc, rn, tc, tn, meta, tn_xi, rn_xi = compute_signed_for_index(
             sidx,
             manifest[sidx],
             tf_2d=np.asarray(tf_all[sidx]),
@@ -297,6 +351,7 @@ def build_signed_cache(
         )
         r_col[i], r_nom[i] = rc, rn
         tf1d_col[i], tf1d_nom[i] = tc, tn
+        tf1d_nom_xi[i], r_nom_xi[i] = tn_xi, rn_xi
         fld, vc = _fields_from_h5(
             Path(meta["h5_path"]),
             recorder_x,
@@ -310,6 +365,8 @@ def build_signed_cache(
     np.save(paths["r_nom"], r_nom)
     np.save(paths["tf1d_col"], tf1d_col)
     np.save(paths["tf1d_nom"], tf1d_nom)
+    np.save(paths["tf1d_nom_xi"], tf1d_nom_xi)
+    np.save(paths["r_nom_xi"], r_nom_xi)
     np.save(paths["idx"], np.asarray(sample_indices, dtype=int))
     np.save(paths["fields"], fields)
     np.save(paths["vs_col"], vs_col)
@@ -317,6 +374,56 @@ def build_signed_cache(
     packed = {k: np.array([m[k] for m in metas]) for k in keys}
     np.savez(paths["meta"], **packed)
     print(f"Wrote signed cache → {out_dir}", flush=True)
+    return out_dir
+
+
+def append_sample_xi_nom(cache_tag: str, *, force: bool = False) -> Path:
+    """Write ``tf1d_nom_xi`` extras onto an existing default-ξ cache (no R_nom rewrite)."""
+    out_dir = config.CACHE_DIR / cache_tag
+    tf_path = out_dir / "tf1d_nom_xi.npy"
+    r_path = out_dir / "r_nom_xi_signed.npy"
+    if not force and tf_path.is_file() and r_path.is_file():
+        return out_dir
+    idx_path = out_dir / "sample_indices.npy"
+    if not idx_path.is_file():
+        raise FileNotFoundError(f"need {idx_path} before sample-ξ extras")
+    sample_indices = np.load(idx_path)
+    manifest = load_manifest()
+    tf_all = np.load(config.TF_PER_SAMPLE_PATH, mmap_mode="r")
+    freq = np.load(config.TF_FREQ_PATH)
+    recorder_x = np.load(config.RECORDER_X_IDX_PATH)
+    n = len(sample_indices)
+    n_rec = int(recorder_x.shape[0])
+    n_freq = int(freq.shape[0])
+    tf1d_nom_xi = np.empty((n, n_rec, n_freq), dtype=np.float32)
+    r_nom_xi = np.empty((n, n_rec, n_freq), dtype=np.float32)
+    xi_sample = np.empty(n, dtype=np.float64)
+    layer_H: list[np.ndarray] = []
+    layer_Vs: list[np.ndarray] = []
+    for i, sidx in enumerate(tqdm(sample_indices, desc=f"sample-xi {cache_tag}")):
+        sidx = int(sidx)
+        *_, meta, tn_xi, rn_xi = compute_signed_for_index(
+            sidx,
+            manifest[sidx],
+            tf_2d=np.asarray(tf_all[sidx]),
+            freq=freq,
+            recorder_x=recorder_x,
+        )
+        tf1d_nom_xi[i] = tn_xi
+        r_nom_xi[i] = rn_xi
+        xi_sample[i] = float(meta["xi_sample"])
+        layer_H.append(np.asarray(meta["layer_H"], dtype=np.float64))
+        layer_Vs.append(np.asarray(meta["layer_Vs"], dtype=np.float64))
+    np.save(tf_path, tf1d_nom_xi)
+    np.save(r_path, r_nom_xi)
+    meta_path = out_dir / "meta.npz"
+    if meta_path.is_file():
+        packed = dict(np.load(meta_path, allow_pickle=True))
+        packed["xi_sample"] = xi_sample
+        packed["layer_H"] = np.array(layer_H, dtype=object)
+        packed["layer_Vs"] = np.array(layer_Vs, dtype=object)
+        np.savez(meta_path, **packed)
+    print(f"Wrote sample-ξ nom extras → {out_dir}", flush=True)
     return out_dir
 
 
@@ -337,6 +444,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Fail if Residual cache indices are missing (old behavior).",
     )
+    p.add_argument(
+        "--sample-xi",
+        action="store_true",
+        help="Write tf1d_nom_xi.npy extras using H5 soil-mean ζ (does not rewrite R_nom).",
+    )
     args = p.parse_args()
     build_signed_cache(
         args.cache_tag,
@@ -344,4 +456,5 @@ if __name__ == "__main__":
         max_samples=args.max_samples,
         indices_only=args.indices_only,
         allow_stratified=not args.require_residual_indices,
+        sample_xi=args.sample_xi,
     )

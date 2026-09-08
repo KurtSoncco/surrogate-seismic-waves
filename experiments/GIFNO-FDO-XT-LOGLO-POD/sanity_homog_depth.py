@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib.util
 import json
 import os
 import sys
@@ -39,12 +40,13 @@ import config
 
 config.setup_import_paths()
 
-# Residual Haskell lives one experiment up
-_RESIDUAL = Path(__file__).resolve().parents[1] / "Residual"
-if str(_RESIDUAL) not in sys.path:
-    sys.path.insert(0, str(_RESIDUAL))
-
-from haskell_baseline import haskell_af_within  # noqa: E402
+_hs_path = Path(__file__).resolve().parents[1] / "DeepONet-Residual" / "haskell_baseline.py"
+_hs_spec = importlib.util.spec_from_file_location("haskell_baseline", _hs_path)
+if _hs_spec is None or _hs_spec.loader is None:
+    raise ImportError(f"Cannot load haskell_baseline from {_hs_path}")
+_hs_mod = importlib.util.module_from_spec(_hs_spec)
+_hs_spec.loader.exec_module(_hs_mod)
+haskell_af_within = _hs_mod.haskell_af_within
 
 from capability_check import (  # noqa: E402
     build_input_from_h5,

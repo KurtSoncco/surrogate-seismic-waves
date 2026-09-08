@@ -16,11 +16,8 @@ import numpy as np
 from tqdm import tqdm
 
 _EXP = Path(__file__).resolve().parents[1]
-_RES = _EXP.parent / "Residual"
-# DeepONet-Residual must win over Residual/config.py
-for p in (_RES, _EXP):
-    if str(p) not in sys.path:
-        sys.path.insert(0, str(p))
+if str(_EXP) not in sys.path:
+    sys.path.insert(0, str(_EXP))
 
 import config  # noqa: E402
 from residual_signed import resolve_h5_path  # noqa: E402
@@ -71,9 +68,9 @@ def add_seiskit_arms(
     tf_toro = np.empty((n, n_freq), dtype=np.float64)
     tf_passeri = np.empty((n, n_freq), dtype=np.float64)
     tf_pretell = np.empty((n, n_freq), dtype=np.float64)
-    sig_toro = np.empty(n, dtype=np.float64)
-    sig_passeri = np.empty(n, dtype=np.float64)
-    sig_pretell = np.empty(n, dtype=np.float64)
+    sig_toro = np.empty((n, n_freq), dtype=np.float64)
+    sig_passeri = np.empty((n, n_freq), dtype=np.float64)
+    sig_pretell = np.empty((n, n_freq), dtype=np.float64)
 
     for i, loc in enumerate(tqdm(local, desc="seiskit Hallal+Pretell")):
         h5_path = resolve_h5_path(str(meta["h5_path"][int(loc)]))
@@ -117,9 +114,9 @@ def add_seiskit_arms(
             dz=config.DZ,
             n_samples=n_pretell,
         )
-        tf_toro[i], sig_toro[i] = geo_t, float(np.mean(sig_t))
-        tf_passeri[i], sig_passeri[i] = geo_p, float(np.mean(sig_p))
-        tf_pretell[i], sig_pretell[i] = geo_pr, float(np.mean(sig_pr))
+        tf_toro[i], sig_toro[i] = geo_t, np.asarray(sig_t, dtype=np.float64)
+        tf_passeri[i], sig_passeri[i] = geo_p, np.asarray(sig_p, dtype=np.float64)
+        tf_pretell[i], sig_pretell[i] = geo_pr, np.asarray(sig_pr, dtype=np.float64)
 
     pack = dict(pack)
     pack["tf_toro"] = tf_toro
@@ -130,7 +127,9 @@ def add_seiskit_arms(
     pack["sigma_ln_pretell"] = sig_pretell
     pack["n_hallal_seeds"] = np.array(n_hallal_seeds)
     pack["n_pretell"] = np.array(n_pretell)
-    return pack
+    from response_variability.seiskit_arms import attach_pretell_p84
+
+    return attach_pretell_p84(pack)
 
 
 def main() -> None:
@@ -154,6 +153,12 @@ def main() -> None:
     if args.skip_arms and pred_out.is_file():
         blob = np.load(pred_out, allow_pickle=True)
         pack = {k: blob[k] for k in blob.files}
+        from response_variability.seiskit_arms import (
+            attach_pretell_p84,
+            upgrade_sigma_ln_from_presentation,
+        )
+
+        pack = attach_pretell_p84(upgrade_sigma_ln_from_presentation(pack))
     else:
         blob = np.load(args.predictions, allow_pickle=True)
         pack = {k: blob[k] for k in blob.files}

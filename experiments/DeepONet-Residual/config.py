@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 
 EXPERIMENT_DIR = Path(__file__).resolve().parent
-RESIDUAL_DIR = EXPERIMENT_DIR.parent / "Residual"
 
 _BOX_DATA_ROOT = Path("/mnt/box/GIG Lab - UC Berkeley/Projects/Neural Operator/data")
 _LEGACY_BOX_ROOT = Path("/mnt/box_lab/Projects/Neural Operator/data")
@@ -50,13 +49,11 @@ TF_FREQ_PATH = TF_RESULTS_DIR / "freq.npy"
 MANIFEST_PATH = TF_RESULTS_DIR / "manifest.csv"
 RECORDER_X_IDX_PATH = TF_RESULTS_DIR / "recorder_x_idx.npy"
 
-# Reuse Residual magnitude caches / sample indices when present
-RESIDUAL_CACHE_DIR = RESIDUAL_DIR / "cache"
 CACHE_DIR = EXPERIMENT_DIR / "cache"
 RESULTS_DIR = EXPERIMENT_DIR / "results"
 CHECKPOINT_DIR = EXPERIMENT_DIR / "checkpoints"
 
-# Grid (match GIFNO / Residual)
+# Grid (match GIFNO)
 NZ_MAX: int = 128
 NX_FULL: int = 1500
 LX_VARIABILITY: int = 500
@@ -72,6 +69,7 @@ N_LATERAL: int = 21
 N_FREQ: int = 1000
 FREQ_START_HZ: float = 0.1
 FREQ_END_HZ: float = 10.0
+BAND2_SPLIT_HZ: float = 2.0  # Wave C2 hard mask: low [0.1, 2) / high [2, 10]
 N_FREQ_TRAIN: int = 200  # log-spaced trunk queries (P3/serial recipe)
 N_FREQ_EVAL: int = 1000  # always score on the full frequency grid
 SMOOTH_COEFF: float = 500.0  # Konno–Ohmachi; match GIFNO TF cache
@@ -87,7 +85,7 @@ BRANCH_HIDDEN: int = 256
 TRUNK_HIDDEN: int = 256
 TRUNK_LAYERS: int = 5
 
-# Train defaults (ship: geometry-aware R_nom, ResUNet, serial TF1D, mix ckpt)
+# Train defaults (ship: M7680 rebal FT, freeze-GNO, geometry-aware R_nom)
 BATCH_SIZE: int = 8
 LR: float = 1e-3
 WEIGHT_DECAY: float = 1e-5
@@ -104,7 +102,7 @@ NUM_WORKERS: int = 0
 DEFAULT_TARGET: str = "R_nom"
 DEFAULT_FIELD_ENCODER: str = "resunet"
 DEFAULT_SERIAL_TF1D: bool = True
-DEFAULT_CHECKPOINT: Path = CHECKPOINT_DIR / "M700_gino.pt"
+DEFAULT_CHECKPOINT: Path = CHECKPOINT_DIR / "M7680_gino_rebal_ft.pt"
 
 WANDB_PROJECT: str = os.environ.get("WANDB_PROJECT", "deeponet-residual")
 WANDB_DEFAULT: bool = True
@@ -114,12 +112,29 @@ FNO_WIDTH: int = 32
 FNO_N_MODES: tuple[int, int] = (8, 16)  # (recorders, freq); 8 < 21/2
 FNO_N_LAYERS: int = 4
 GNO_N_LAYERS: int = 3
+COL_ENC_DEPTH_TOKENS: int = 1  # ship: AdaptiveAvgPool1d(1); Wave D >1 keeps depth bins
 
 # Aux TF losses (0 = off)
 AUX_TF_REL_L2: float = 0.0
 AUX_PEAK_BAND: float = 0.0
 PEAK_BAND_HZ: tuple[float, float] = (0.5, 2.0)
 IID_RESAMPLE_FRAC: float | None = None  # e.g. 0.5 → 50% IID per epoch
+
+# Unified 1D + leftover (OrbitAll-style gate / physics tokens)
+GATE_SPARSITY: float = 0.05
+LEFTOVER_GATE_TAU: float = 0.15  # ||R||/||TF1D|| below this → penalize gate
+LEARNED_1D_WEIGHT: float = 1.0
+LEARNED_1D_PEARSON_KILL: float = 0.98
+GEOM_FLAG_DIM: int = 2  # [dip, three_layer]
+LOG_RESIDUAL: bool = False
+RADIAL_LOSS_WEIGHT: float = 0.25
+POD_NUM_MODES: int = 32
+LOGLO_PATCH: tuple[int, int] = (3, 8)
+BOOST_SHRINK: float = 0.5
+THREE_LAYER_KILL_REL_L2: float = 0.533
+FREQ_BAND_LOW: tuple[float, float] = (0.1, 0.5)
+FREQ_BAND_MID: tuple[float, float] = (0.5, 2.0)
+FREQ_BAND_HIGH: tuple[float, float] = (2.0, 10.0)
 
 for d in (CACHE_DIR, RESULTS_DIR, CHECKPOINT_DIR):
     d.mkdir(parents=True, exist_ok=True)

@@ -9,25 +9,21 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
 import config
 import numpy as np
+import torch
 from tqdm import tqdm
 from wandb_util import finish_wandb, init_wandb, log_wandb, summary_wandb
 
-_RES = config.RESIDUAL_DIR
-if str(_RES) not in sys.path:
-    sys.path.insert(0, str(_RES))
-
-from haskell_baseline import (  # noqa: E402
+from haskell_baseline import (
     haskell_at_columns,
     haskell_nominal_af_within,
     haskell_nominal_layered_af_within,
 )
-from ood_io import (  # noqa: E402
+from ood_io import (
     clamp_residual,
     crop_variability,
     default_ood_roots,
@@ -110,8 +106,11 @@ def _aggregate(rows: list[dict[str, float]], prefix: str) -> dict[str, float]:
     return out
 
 
-def _ood_stoch(params: dict[str, Any], nz: int) -> tuple[np.ndarray, str]:
-    """Map OOD attrs onto the IID stochastic branch (ξ, rH, aHV, CoV, ξ_damp)."""
+def _ood_stoch(
+    params: dict[str, Any], nz: int, *, layout: str = "xi_cov"
+) -> tuple[np.ndarray, str]:
+    """Map OOD attrs onto the IID stochastic branch (ξ + CoV, or legacy 20-d)."""
+    from data import build_stoch_vector
     from features import spectral_kl_coefficients
 
     if "rf_seed" in params:
@@ -127,6 +126,16 @@ def _ood_stoch(params: dict[str, Any], nz: int) -> tuple[np.ndarray, str]:
         cov = float(params.get("CoV1", params.get("CoV", 0.0)))
         note = "three_layer_layer1_standin"
     xi_damp = float(config.DEFAULT_XI_TREND)
+    if layout == "cov_only":
+        stoch = build_stoch_vector(
+            xi_vals=np.zeros(0, dtype=np.float32),
+            rH=rH,
+            aHV=aHV,
+            CoV=cov,
+            xi_damp=xi_damp,
+            layout=layout,
+        )
+        return stoch, note
     xi_vals, _ = spectral_kl_coefficients(
         rf_seed=rf_seed,
         rH=rH,
@@ -137,9 +146,14 @@ def _ood_stoch(params: dict[str, Any], nz: int) -> tuple[np.ndarray, str]:
         dz=config.DZ,
         k=config.K_XI,
     )
-    stoch = np.concatenate(
-        [xi_vals, np.array([rH, aHV, cov, xi_damp], dtype=np.float32)]
-    ).astype(np.float32)
+    stoch = build_stoch_vector(
+        xi_vals=xi_vals,
+        rH=rH,
+        aHV=aHV,
+        CoV=cov,
+        xi_damp=xi_damp,
+        layout=layout,
+    )
     return stoch, note
 
 
@@ -167,32 +181,37 @@ def _ood_fields(
 
 def _load_residual_model(ckpt_path: Path, device):
     import torch
-    from model import build_model
+    from model import build_from_checkpoint_blob
 
-    from data import stoch_dim, trunk_feature_names
+    from data import infer_trunk_scales, stoch_dim, stoch_layout_from_blob, trunk_feature_names, trunk_in_features_from_state
 
     blob = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     trunk_set = blob.get("trunk_set", "full")
     serial = bool(blob.get("serial_tf1d", False))
-    trunk_dim = len(trunk_feature_names(trunk_set)) + (1 if serial else 0)
-    model = build_model(
-        blob.get("branch_mode", "single"),
+    trunk_scales = infer_trunk_scales(
+        trunk_set=trunk_set,
+        serial=serial,
+        recorded=int(blob.get("trunk_scales", 1) or 1),
+        trunk_in_features=trunk_in_features_from_state(blob.get("model") or {}),
+    )
+    blob["trunk_scales"] = int(trunk_scales)
+    layout = stoch_layout_from_blob(blob)
+    blob["stoch_layout"] = layout
+    sdim = stoch_dim(layout=layout)
+    blob["stoch_dim"] = int(sdim)
+    trunk_dim = len(trunk_feature_names(trunk_set, trunk_scales)) + (
+        1 if serial else 0
+    )
+    model = build_from_checkpoint_blob(
+        blob,
         field_channels=config.FIELD_CHANNELS,
-        stoch_dim=stoch_dim(),
+        stoch_dim=sdim,
         trunk_dim=trunk_dim,
         latent_dim=config.LATENT_DIM,
         field_hidden=config.FIELD_HIDDEN,
         branch_hidden=config.BRANCH_HIDDEN,
         trunk_hidden=config.TRUNK_HIDDEN,
         trunk_layers=config.TRUNK_LAYERS,
-        field_encoder=blob.get("field_encoder", "conv"),
-        residual_fno=bool(blob.get("residual_fno", False)),
-        n_rec=int(blob.get("n_rec", config.N_LATERAL)),
-        fno_width=int(blob.get("fno_width", config.FNO_WIDTH)),
-        fno_n_modes=tuple(blob.get("fno_n_modes", config.FNO_N_MODES)),
-        fno_n_layers=int(blob.get("fno_n_layers", config.FNO_N_LAYERS)),
-        n_gno_layers=int(blob.get("n_gno_layers", config.GNO_N_LAYERS)),
-        fno_kind=blob.get("fno_kind", "vanilla"),
     )
     model.load_state_dict(blob["model"])
     model.to(device)
@@ -220,13 +239,30 @@ def _predict_rhat(
     recorder_x: np.ndarray,
     device,
     tf1d: np.ndarray | None = None,
+    geom_flags: torch.Tensor | None = None,
+    layer_H: np.ndarray | None = None,
+    layer_Vs: np.ndarray | None = None,
+    vs_rock: float | None = None,
 ) -> np.ndarray:
     import torch
     from features import fourier_freq_features
     from train import _forward
+    from model import apply_query_freq
 
-    from data import append_serial_tf1d, build_trunk_queries, trunk_feature_names
+    apply_query_freq(model, freq)
 
+    from data import (
+        append_serial_tf1d,
+        build_trunk_queries,
+        dataset_kwargs_from_blob,
+        multiscale_freq_features,
+        trunk_feature_names,
+    )
+
+    ds_kw = dataset_kwargs_from_blob(blob)
+    fstar_kind = str(ds_kw.get("fstar_kind", "legacy"))
+    x_coord = str(ds_kw.get("x_coord", "x_over_lambda"))
+    trunk_scales = int(blob.get("trunk_scales", 1) or 1)
     sin_f, cos_f = fourier_freq_features(
         freq, f_min=config.FREQ_START_HZ, f_max=config.FREQ_END_HZ
     )
@@ -237,7 +273,17 @@ def _predict_rhat(
         freq_s=freq,
         sin_f=sin_f,
         cos_f=cos_f,
-        trunk_names=trunk_feature_names(trunk_set),
+        trunk_names=trunk_feature_names(trunk_set, trunk_scales, x_coord=x_coord),
+        extra_freq_feats=multiscale_freq_features(
+            freq,
+            n_scales=trunk_scales,
+            f_min=config.FREQ_START_HZ,
+            f_max=config.FREQ_END_HZ,
+        ),
+        fstar_kind=fstar_kind,
+        layer_H=layer_H,
+        layer_Vs=layer_Vs,
+        vs_rock=vs_rock,
     )
     if blob.get("serial_tf1d") and tf1d is not None:
         trunk = append_serial_tf1d(trunk, tf1d)
@@ -248,7 +294,12 @@ def _predict_rhat(
         stoch_t = stoch_t.unsqueeze(0).to(device)
         trunk_t = trunk_t.unsqueeze(0).to(device)
         pred_n = _forward(
-            model, fields_t, stoch_t, trunk_t, blob.get("branch_mode", "single")
+            model,
+            fields_t,
+            stoch_t,
+            trunk_t,
+            blob.get("branch_mode", "single"),
+            geom_flags=geom_flags,
         )
         pred = pred_n * stats["target_std"].to(device) + stats["target_mean"].to(device)
         n_rec = len(recorder_x)
@@ -347,8 +398,13 @@ def eval_one_h5(
     if model_pack is not None:
         model, blob, stats, trunk_set = model_pack
         fields, vs_col = _ood_fields(vs, zeta, rec, int(vs_c.shape[0]), soil_nz)
-        stoch, stoch_note = _ood_stoch(params, int(vs_c.shape[0]))
+        stoch, stoch_note = _ood_stoch(
+            params, int(vs_c.shape[0]), layout=str(blob.get("stoch_layout", "xi_cov"))
+        )
         row["stoch_note"] = stoch_note
+        from data import geom_flags_from_name
+
+        flags = geom_flags_from_name(str(h5_path))
         r_hat = _predict_rhat(
             model,
             blob,
@@ -364,6 +420,16 @@ def eval_one_h5(
             tf1d=tf1d_nom3
             if (blob.get("serial_tf1d") and tf1d_nom3 is not None)
             else tf1d_nom,
+            geom_flags=flags.unsqueeze(0),
+            layer_H=np.asarray(true_layers["H"], dtype=np.float64)
+            if true_layers is not None
+            else np.array([float(nom["H"])], dtype=np.float64),
+            layer_Vs=np.asarray(true_layers["Vs"], dtype=np.float64)
+            if true_layers is not None
+            else np.array([float(nom["vs1"])], dtype=np.float64),
+            vs_rock=float(true_layers["vs_rock"])
+            if true_layers is not None
+            else (float(nom["vs2"]) if nom.get("vs2") else None),
         )
         r_hat = clamp_residual(r_hat, clamp_mode)
         prior = (
@@ -371,14 +437,24 @@ def eval_one_h5(
             if (blob.get("serial_tf1d") and tf1d_nom3 is not None)
             else tf1d_nom
         )
-        tf_hat = prior + np.asarray(r_hat, dtype=np.float64)
+        from unified_metrics import tf_from_residual
+
+        tf_hat = tf_from_residual(
+            prior,
+            np.asarray(r_hat, dtype=np.float64),
+            log_residual=bool(blob.get("log_residual", False)),
+        )
         m_plus = _metrics(tf, tf_hat, n_rec=n_rec, n_freq=n_freq)
         row.update({f"nom_plus_Rhat_{k}": v for k, v in m_plus.items()})
         row["delta_rel_l2_vs_nom"] = float(m_nom["rel_l2"] - m_plus["rel_l2"])
         row["delta_r2_vs_nom"] = float(m_plus["r2"] - m_nom["r2"])
         row["delta_rel_l2_vs_col"] = float(m_col["rel_l2"] - m_plus["rel_l2"])
         if tf1d_nom3 is not None:
-            tf_hat3 = tf1d_nom3 + np.asarray(r_hat, dtype=np.float64)
+            tf_hat3 = tf_from_residual(
+                tf1d_nom3,
+                np.asarray(r_hat, dtype=np.float64),
+                log_residual=bool(blob.get("log_residual", False)),
+            )
             m_plus3 = _metrics(tf, tf_hat3, n_rec=n_rec, n_freq=n_freq)
             row.update({f"nom3_plus_Rhat_{k}": v for k, v in m_plus3.items()})
             row["delta_rel_l2_nom3R_vs_nom3"] = float(

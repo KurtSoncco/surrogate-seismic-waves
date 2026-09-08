@@ -46,3 +46,14 @@ def test_layered_nom_matches_two_layer_column():
         freq, vs1=vs1, H=h1 + h2, vs2=vs_rock, xi=xi, rho=2000.0
     )
     assert float(np.linalg.norm(nom3 - one)) > 0.1
+
+
+def test_layered_nom_respects_per_layer_xi():
+    freq = np.logspace(-1, 1, 32)
+    uniform = haskell_nominal_layered_af_within(
+        freq, H=[10.0, 12.0], Vs=[180.0, 420.0], vs_rock=900.0, xi=0.05, rho=2000.0
+    )
+    varied = haskell_nominal_layered_af_within(
+        freq, H=[10.0, 12.0], Vs=[180.0, 420.0], vs_rock=900.0, xi=[0.02, 0.08], rho=2000.0
+    )
+    assert float(np.linalg.norm(uniform - varied)) > 0.01

@@ -132,6 +132,56 @@ def spectral_kl_coefficients(
     return values.astype(np.float32), names
 
 
+def spectral_kl_from_field(
+    vs_field: np.ndarray,
+    *,
+    rH: float,
+    aHV: float,
+    dx: float = 1.0,
+    dz: float = 1.0,
+    k: int = 8,
+    soil_nz: int | None = None,
+) -> Tuple[np.ndarray, List[str]]:
+    """FFT/KL of a provided Vs section (fallback if cov_only loses ≥5% rel L1).
+
+    Not the training default. Demeans ln(Vs) on the soil, colors by the same
+    exponential PSD ranking as ``spectral_kl_coefficients``, and returns 2K
+    real/imag coeffs so a ``xi_cov`` checkpoint can ingest a field instead of
+    a seed replay.
+    """
+    vs = np.asarray(vs_field, dtype=np.float64)
+    if vs.ndim != 2:
+        raise ValueError(f"vs_field must be (nz, nx); got {vs.shape}")
+    nz, nx = vs.shape
+    n_soil = nz if soil_nz is None else max(1, min(int(soil_nz), nz))
+    soil = np.maximum(vs[:n_soil], _EPS)
+    ln_dev = np.log(soil) - np.log(soil).mean()
+    padded = np.zeros((nz, nx), dtype=np.float64)
+    padded[:n_soil] = ln_dev
+    spec = np.fft.fft2(padded)
+    psd = exponential_psd(nx, nz, dx, dz, float(rH), float(aHV))
+    order = np.argsort(psd.ravel())[::-1]
+    picked: list[int] = []
+    for idx in order:
+        if idx == 0:
+            continue
+        picked.append(int(idx))
+        if len(picked) >= k:
+            break
+    while len(picked) < k:
+        picked.append(0)
+    values = np.empty(2 * k, dtype=np.float64)
+    names: List[str] = []
+    flat = spec.ravel()
+    for i, idx in enumerate(picked):
+        c = flat[idx]
+        values[2 * i] = float(np.real(c))
+        values[2 * i + 1] = float(np.imag(c))
+        names.append(f"xi_{i + 1}_re")
+        names.append(f"xi_{i + 1}_im")
+    return values.astype(np.float32), names
+
+
 def log_freq_hat(
     freq: np.ndarray,
     *,
