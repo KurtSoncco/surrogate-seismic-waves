@@ -1,0 +1,70 @@
+{
+  "ckpt": "/home/kurt-/surrogate-seismic-waves/experiments/DeepONet-Residual/checkpoints/M7680_gino_rebal_ft.pt",
+  "ckpt_present": 1,
+  "loglo_contrast": 0,
+  "claim_downgrade_if_no_loglo": "off-support the model reverts to its training mean, which in this formulation is near-1D",
+  "iid_mean_R": {
+    "mean_R": 0.17240564761754362,
+    "mean_abs_R": 0.634044772152103,
+    "near_zero": 0
+  },
+  "iid_dct": {
+    "cutoff": 16.0,
+    "n_freq": 1000.0,
+    "ratio_mean_below": 0.8668726551775401,
+    "ratio_mean_above": 0.16354490627585444,
+    "note": "Learned spectral bias lives below cutoff; above-cutoff energy is architecture (skip/pointwise only). Residual R is high-pass vs TF."
+  },
+  "invariance_groups": {
+    "impedance_preserved_cv": 1,
+    "f0_scales_cv": 1,
+    "f0_scales_cl": 1,
+    "alpha_vs1_H_breaks_impedance": 1,
+    "c_v": 1.2,
+    "c_l": 1.2
+  },
+  "prior_collapse_proxy": {
+    "r_norm_inside": 0.5487759062503318,
+    "r_norm_far": 0.6927793126741543,
+    "shape": "smooth_or_flat",
+    "no_ground_truth": 1,
+    "claim": "off-support the model reverts to its training mean; if E[R]\u22480 that mean is near-1D. Residual-specific 1D prior needs a direct-TF contrast."
+  },
+  "scalar_probe_control": {
+    "r2_ridge": 0.7875167203642655,
+    "r2_mlp": 0.495740426827038,
+    "injection_mse_drop": 730.906400168079,
+    "not_represented": 0,
+    "represented_but_unused": 1,
+    "represented_and_used": 0,
+    "n_train": 105.0,
+    "n_test": 45.0
+  },
+  "gno_latent_probes": {
+    "f0": {
+      "r2_ridge": 0.6836064922164138,
+      "r2_mlp": 0.5693984546218324,
+      "injection_mse_drop": 0.0014640615004220701,
+      "not_represented": 0,
+      "represented_but_unused": 1,
+      "represented_and_used": 0,
+      "n_train": 105.0,
+      "n_test": 45.0
+    },
+    "CoV": {
+      "r2_ridge": 0.8736747594324663,
+      "r2_mlp": -1.253464733115122,
+      "injection_mse_drop": 1.983811566926702e-05,
+      "not_represented": 0,
+      "represented_but_unused": 0,
+      "represented_and_used": 1,
+      "n_train": 105.0,
+      "n_test": 45.0
+    },
+    "node_var_vs_cov_spearman": 0.6549713320592027,
+    "n": 150.0,
+    "latent_dim": 128.0
+  },
+  "prior_collapse_synthetic_fields": "not run: needs RF synthesis past the hull; pack proxy is in prior_collapse_proxy. LOGLO contrast not stood up \u2014 claim downgraded.",
+  "invariance_orbits_on_fields": "group maps checked in invariance_groups; full c_v/c_l field re-encode orbits need a generator that scales all lengths"
+}

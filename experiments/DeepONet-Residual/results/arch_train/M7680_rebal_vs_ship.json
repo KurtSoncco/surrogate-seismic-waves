@@ -1,0 +1,51 @@
+{
+  "ship_rel_l2_TF": {
+    "iid": 0.371,
+    "ood_dipping": 0.335,
+    "ood_three_layer": 0.533
+  },
+  "gates": {
+    "iid_max": 0.371,
+    "dipping_max": 0.35,
+    "three_layer_lt": 0.533
+  },
+  "missing": [],
+  "runs": [
+    {
+      "name": "M7680_gino_rebal_ft",
+      "path": "/global/home/users/kurtwal98/surrogate-seismic-waves/experiments/DeepONet-Residual/results/arch_train/M7680_gino_rebal_ft.json",
+      "iid": 0.3531011205952311,
+      "dipping": 0.32234265061264394,
+      "three_layer": 0.5250580771771803,
+      "iid_gate": true,
+      "dip_gate": true,
+      "beats_ship_3l": true,
+      "ship": true,
+      "three_layer_kill": false,
+      "vs_ship": {
+        "iid": -0.01789887940476892,
+        "dipping": -0.012657349387356076,
+        "three_layer": -0.007941922822819691
+      }
+    },
+    {
+      "name": "M7680_gino_tf_ft",
+      "path": "/global/home/users/kurtwal98/surrogate-seismic-waves/experiments/DeepONet-Residual/results/arch_train/M7680_gino_tf_ft.json",
+      "iid": 0.3479487130816799,
+      "dipping": 0.35937441459796476,
+      "three_layer": 0.5377546074166327,
+      "iid_gate": true,
+      "dip_gate": false,
+      "beats_ship_3l": false,
+      "ship": false,
+      "three_layer_kill": true,
+      "vs_ship": {
+        "iid": -0.02305128691832009,
+        "dipping": 0.024374414597964744,
+        "three_layer": 0.004754607416632695
+      }
+    }
+  ],
+  "winner": "M7680_gino_rebal_ft",
+  "ship_decision": true
+}

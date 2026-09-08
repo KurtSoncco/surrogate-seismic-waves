@@ -1,0 +1,22 @@
+{
+  "primary": "undercorrection_slope",
+  "kind": "observational_wave0",
+  "confirmatory_only": 1,
+  "reasons": [
+    "iid R\u0302-on-R slope b=0.557 < 0.9"
+  ],
+  "estimand": "Delta(on) - Delta(off) vs ship; never intervention-on vs ship",
+  "no_op": {
+    "required_if_trained": 1,
+    "placebo": "same recipe, same seed budget, knob off",
+    "wobble": "second seed of the control; off-target = below control wobble"
+  },
+  "cannot_smoke": [
+    "FNO mode count",
+    "FiLM / CBN",
+    "high-k or peak-amp losses"
+  ],
+  "offline_done": "TF_alt = TF_1D_alt + R\u0302 on presentation packs",
+  "smoke": "wiring tests only; no scientific claim",
+  "single_seed": "exploratory diagnostic of this checkpoint"
+}

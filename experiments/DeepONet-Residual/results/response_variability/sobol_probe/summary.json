@@ -1,0 +1,280 @@
+{
+  "covering": [
+    {
+      "mix": "M700",
+      "n_files": 2044,
+      "n_unique_4d": 306,
+      "n_unique_6d": 306,
+      "n_unique_6d_iid": 242
+    },
+    {
+      "mix": "M1400",
+      "n_files": 2744,
+      "n_unique_4d": 318,
+      "n_unique_6d": 318,
+      "n_unique_6d_iid": 254
+    },
+    {
+      "mix": "M2100",
+      "n_files": 3444,
+      "n_unique_4d": 320,
+      "n_unique_6d": 320,
+      "n_unique_6d_iid": 256
+    }
+  ],
+  "published_rel_l2": {
+    "M700 GINO": {
+      "iid": 0.371,
+      "dipping": 0.335,
+      "three_layer": 0.533
+    },
+    "Unweighted M7680": {
+      "iid": 0.31,
+      "dipping": 0.333,
+      "three_layer": 0.538
+    },
+    "Rebal FT (ship)": {
+      "iid": 0.353,
+      "dipping": 0.322,
+      "three_layer": 0.525
+    }
+  },
+  "published_pearson": {
+    "M700 GINO": {
+      "iid": 0.915,
+      "dipping": 0.896,
+      "three_layer": 0.866
+    },
+    "Rebal FT (ship)": {
+      "iid": 0.926,
+      "dipping": 0.903,
+      "three_layer": 0.869
+    }
+  },
+  "n_freq_train": 200,
+  "n_freq_eval": 1000,
+  "rv": {
+    "n": 64,
+    "frac_inside_aabb_4d": 0.96875,
+    "frac_inside_aabb_6d": 0.0,
+    "n_outside_aabb_6d": 64,
+    "train_rH_range": [
+      10.258174268528819,
+      99.69656446017325
+    ],
+    "train_aHV_range": [
+      10.115475338616532,
+      48.30898897753266
+    ],
+    "rH_below_train_min": true,
+    "aHV_above_train_max": true,
+    "unit_rH_mean": 0.0,
+    "unit_aHV_mean": 0.995,
+    "knn_6d_mean": 2.149694276144875,
+    "proxy_nn_rel_l2_gino_mean": 0.29514509530230104,
+    "proxy_nn_rel_l2_1d_mean": 0.5132665613905651,
+    "proxy_nn_pearson_gino_mean": 0.9295723068845441,
+    "proxy_nn_pearson_1d_mean": 0.745467376984458
+  },
+  "spearman": {
+    "iid": {
+      "knn4d": [
+        0.10600154299810087,
+        0.1966937667839194
+      ],
+      "knn4d_pearson": [
+        -0.03833058896748177,
+        0.6414331539244023
+      ],
+      "knn6d": [
+        0.1062024418562985,
+        0.19584187513488308
+      ],
+      "knn6d_pearson": [
+        -0.045170281912483276,
+        0.5830925792789383
+      ]
+    },
+    "dipping": {
+      "knn4d": [
+        0.13671958908008947,
+        0.10225494385508833
+      ],
+      "knn4d_pearson": [
+        0.002680736824013875,
+        0.9745609435696403
+      ],
+      "knn6d": [
+        0.11373322606547691,
+        0.1746819642555095
+      ],
+      "knn6d_pearson": [
+        -0.04532315514088575,
+        0.5896004945660246
+      ]
+    },
+    "three_layer": {
+      "knn4d": [
+        -0.2040115132123688,
+        0.01418067160281235
+      ],
+      "knn4d_pearson": [
+        0.010692781465327662,
+        0.8987831306775212
+      ],
+      "knn6d": [
+        -0.25701086674579837,
+        0.0018730326983316871
+      ],
+      "knn6d_pearson": [
+        0.06572732304519541,
+        0.43380292486153493
+      ]
+    }
+  },
+  "aabb_frac_inside": {
+    "iid": {
+      "4d": 1.0,
+      "6d": 1.0
+    },
+    "dipping": {
+      "4d": 1.0,
+      "6d": 1.0
+    },
+    "three_layer": {
+      "4d": 0.7638888888888888,
+      "6d": 0.7638888888888888
+    }
+  },
+  "freq": {
+    "iid": {
+      "gino_train_bins_mean": 0.2949258383766683,
+      "gino_heldout_bins_mean": 0.295863880044489,
+      "gino_low_mean": 0.09974842718415762,
+      "gino_mid_mean": 0.2512208272609925,
+      "gino_high_mean": 0.39004924820172837,
+      "haskell_high_mean": 0.5754796844943066,
+      "gino_train_bins_pearson": 0.9265563044949702,
+      "gino_heldout_bins_pearson": 0.9261360193885905,
+      "gino_low_pearson": 0.7513239527833239,
+      "gino_mid_pearson": 0.9385326420616424,
+      "gino_high_pearson": 0.7939733077031791,
+      "haskell_high_pearson": 0.5339055347472197
+    },
+    "dipping": {
+      "gino_train_bins_mean": 0.3003699343286805,
+      "gino_heldout_bins_mean": 0.3003522075512406,
+      "gino_low_mean": 0.10844776153537539,
+      "gino_mid_mean": 0.21632517980534766,
+      "gino_high_mean": 0.38924745228230556,
+      "haskell_high_mean": 0.6785694912649044,
+      "gino_train_bins_pearson": 0.9033845086564857,
+      "gino_heldout_bins_pearson": 0.9034685185441137,
+      "gino_low_pearson": 0.6150135028466113,
+      "gino_mid_pearson": 0.9566448999520691,
+      "gino_high_pearson": 0.7419561021098833,
+      "haskell_high_pearson": 0.20704938134554318
+    },
+    "three_layer": {
+      "gino_train_bins_mean": 0.4676413142738977,
+      "gino_heldout_bins_mean": 0.47245827098831733,
+      "gino_low_mean": 0.1390511114284078,
+      "gino_mid_mean": 0.1106906805409865,
+      "gino_high_mean": 0.4817197253508583,
+      "haskell_high_mean": 0.7076982576185059,
+      "gino_train_bins_pearson": 0.8707000387434434,
+      "gino_heldout_bins_pearson": 0.8692043499332358,
+      "gino_low_pearson": 0.07308788573284328,
+      "gino_mid_pearson": 0.7504881027700692,
+      "gino_high_pearson": 0.8237910483504511,
+      "haskell_high_pearson": 0.555372414042671
+    }
+  },
+  "fill": {
+    "iid_4d": {
+      "n_unique": [
+        16,
+        32,
+        64,
+        128,
+        242
+      ],
+      "fill_distance": [
+        1.1509370155622147,
+        0.8748304904230141,
+        0.665454889320983,
+        0.34662278869653856,
+        0.028183484451312094
+      ]
+    },
+    "iid_6d": {
+      "n_unique": [
+        16,
+        32,
+        64,
+        128,
+        242
+      ],
+      "fill_distance": [
+        1.8170195202136528,
+        1.4663051153867483,
+        1.1494415374427578,
+        0.6483572573000859,
+        0.07678629874102541
+      ]
+    },
+    "dipping": {
+      "n_unique": [
+        16,
+        32
+      ],
+      "fill_distance": [
+        0.6479184162640357,
+        4.019358669289493e-08
+      ]
+    },
+    "dipping_vs_iid": {
+      "n_unique": [
+        16,
+        32,
+        64,
+        128,
+        242
+      ],
+      "fill_distance": [
+        1.224292934927662,
+        0.9527380965920647,
+        0.8144735744790298,
+        0.7167942153617085,
+        0.5789253308573126
+      ]
+    },
+    "three_layer": {
+      "n_unique": [
+        16,
+        32
+      ],
+      "fill_distance": [
+        0.4830639594554542,
+        3.9682885305745885e-08
+      ]
+    },
+    "three_layer_vs_iid": {
+      "n_unique": [
+        16,
+        32,
+        64,
+        128,
+        242
+      ],
+      "fill_distance": [
+        1.6639689593072777,
+        1.0359559310675017,
+        0.9593464722673856,
+        0.7216381978636224,
+        0.5764874304904362
+      ]
+    }
+  },
+  "note": "n1000 already covers ~all GIFNO Sobol IDs; extra mix files are mostly RF replicates. RV 64 is a different 4D sequence with (rH, aHV) at the 6D cube corner. Frequency held-out bins are in-band interpolation (0.1\u201310 Hz), not f outside the training band."
+}

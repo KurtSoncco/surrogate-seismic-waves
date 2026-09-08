@@ -1,0 +1,41 @@
+{
+  "split": "nested seed-42 tests (IID 150 / dipping 144 / three-layer 144)",
+  "note": "Apples-to-apples on the residual mix tests. LOGLO screen metrics (~0.30 on the 2000-row prefix) use a different population and are not comparable.",
+  "models": {
+    "haskell_nom": {
+      "iid": {"rel_l2_TF": 0.565, "pearson_TF_freq": 0.745},
+      "ood_dipping": {"rel_l2_TF": 0.601, "pearson_TF_freq": 0.630},
+      "ood_three_layer": {"rel_l2_TF": 0.730, "pearson_TF_freq": 0.665}
+    },
+    "loglo_pod_full7680": {
+      "iid": {"rel_l2_TF": 0.3377535343170166},
+      "ood_dipping": {"rel_l2_TF": 0.9299348592758179},
+      "ood_three_layer": {"rel_l2_TF": 0.8428387641906738},
+      "source": "rerun of GIFNO-FDO-XT-LOGLO-POD full checkpoint on residual nested tests"
+    },
+    "gino_rebal_ft": {
+      "iid": {
+        "rel_l2_TF": 0.3531011205952311,
+        "pearson_TF_freq": 0.9261801430169881,
+        "r2_TF": 0.7808371333719827,
+        "harm_rate": 0.02,
+        "rel_l2_TF_1d_only": 0.5647780299186707
+      },
+      "ood_dipping": {
+        "rel_l2_TF": 0.32234265061264394,
+        "pearson_TF_freq": 0.9034017953527594,
+        "r2_TF": 0.7879898984507743,
+        "harm_rate": 0.006944444444444444,
+        "rel_l2_TF_1d_only": 0.6013846397399902
+      },
+      "ood_three_layer": {
+        "rel_l2_TF": 0.5250580771771803,
+        "pearson_TF_freq": 0.8691927286823143,
+        "r2_TF": 0.6296419201016271,
+        "harm_rate": 0.0625,
+        "rel_l2_TF_1d_only": 0.7297272682189941
+      },
+      "source": "experiments/DeepONet-Residual/results/arch_train/M7680_gino_rebal_ft.json"
+    }
+  }
+}
