@@ -21,7 +21,9 @@ from response_variability.gino_bias import (
 from response_variability.plots.plot_presentation import make_synthetic_pack
 
 
-def _leftover_pack(*, b: float = 0.5, n: int = 24, n_rec: int = 7, n_freq: int = 64, seed: int = 0):
+def _leftover_pack(
+    *, b: float = 0.5, n: int = 24, n_rec: int = 7, n_freq: int = 64, seed: int = 0
+):
     rng = np.random.default_rng(seed)
     freq = np.logspace(-1, 1, n_freq)
     nom = 2.0 + 0.3 * rng.standard_normal((n, n_rec, n_freq))
@@ -189,7 +191,10 @@ def test_eval_bias_leftover_and_ranking_figures(tmp_path):
         plot_quartile_forest,
     )
     from response_variability.evals.eval_iid import band_misfit_table, summarize_methods
-    from response_variability.plots.plot_presentation import DOMAIN_SPECS, make_synthetic_pack
+    from response_variability.plots.plot_presentation import (
+        DOMAIN_SPECS,
+        make_synthetic_pack,
+    )
 
     from response_variability.seiskit_arms import attach_pretell_p84
 
@@ -244,7 +249,9 @@ def test_bias_csv_includes_rh_ahv_and_campaign_extras():
     from response_variability.covariates import attach_h5_covariates, present_covariates
     from response_variability.plots.plot_presentation import make_synthetic_pack
 
-    iid = attach_h5_covariates(make_synthetic_pack(domain="iid", n=12, seed=0), domain="iid")
+    iid = attach_h5_covariates(
+        make_synthetic_pack(domain="iid", n=12, seed=0), domain="iid"
+    )
     dip = attach_h5_covariates(
         make_synthetic_pack(domain="dipping", n=12, seed=1), domain="dipping"
     )
@@ -296,7 +303,10 @@ def test_ops_ops_pearson_identical_is_one():
 
 
 def test_array_mean_pearson_differs_from_central_when_edges_differ():
-    from response_variability.diagnostics.tail_a_vs_b import array_pearson, central_pearson
+    from response_variability.diagnostics.tail_a_vs_b import (
+        array_pearson,
+        central_pearson,
+    )
 
     rng = np.random.default_rng(1)
     n, n_rec, n_f = 4, 7, 48
@@ -310,4 +320,3 @@ def test_array_mean_pearson_differs_from_central_when_edges_differ():
     assert np.all(c > 0.99)
     assert np.all(a < c)
     assert np.all(a < 0.95)
-

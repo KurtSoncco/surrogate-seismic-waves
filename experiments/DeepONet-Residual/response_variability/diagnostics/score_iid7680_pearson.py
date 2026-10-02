@@ -49,7 +49,9 @@ def _open(path: Path, shape: tuple[int, ...], dtype: np.dtype) -> np.ndarray:
     if path.is_file():
         mm = np.load(path, mmap_mode="r+")
         if mm.shape != shape or mm.dtype != dtype:
-            raise RuntimeError(f"{path} has {mm.shape} {mm.dtype}, expected {shape} {dtype}")
+            raise RuntimeError(
+                f"{path} has {mm.shape} {mm.dtype}, expected {shape} {dtype}"
+            )
         return mm
     return np.lib.format.open_memmap(path, mode="w+", dtype=dtype, shape=shape)
 
@@ -115,8 +117,12 @@ def build_cache() -> None:
                 rho=config.RHO,
             ).astype(np.float32)
         tf1d[g] = nom_cache[key][None, :]
-        soil_nz = int(params.get("soil_layer_count", params.get("H_discretized", vs.shape[0])))
-        fld, vc = stack_field_columns(vs, zeta, rec, soil_nz=soil_nz, nz=int(vs.shape[0]))
+        soil_nz = int(
+            params.get("soil_layer_count", params.get("H_discretized", vs.shape[0]))
+        )
+        fld, vc = stack_field_columns(
+            vs, zeta, rec, soil_nz=soil_nz, nz=int(vs.shape[0])
+        )
         fields[g] = fld
         vs_col[g] = vc
         meta["sample_idx"][g] = g
@@ -180,7 +186,11 @@ def predict_center(*, batch_size: int = 8, chunk: int = 64) -> np.ndarray:
             apply_query_freq(model, getattr(ds, "freq_s", None))
             hats = []
             for b0 in range(0, len(ds), batch_size):
-                batch = ds[b0] if batch_size == 1 else _collate(ds, b0, min(len(ds), b0 + batch_size))
+                batch = (
+                    ds[b0]
+                    if batch_size == 1
+                    else _collate(ds, b0, min(len(ds), b0 + batch_size))
+                )
                 pred_n = _forward(
                     model,
                     batch["fields"].to(device),

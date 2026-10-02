@@ -86,7 +86,12 @@ def ols_ab(x: np.ndarray, y: np.ndarray) -> dict[str, float]:
     yc = y - y.mean()
     den = float(np.dot(xc, xc))
     if den < _EPS:
-        return {"a": float(y.mean()), "b": float("nan"), "r2": float("nan"), "n": float(n)}
+        return {
+            "a": float(y.mean()),
+            "b": float("nan"),
+            "r2": float("nan"),
+            "n": float(n),
+        }
     b = float(np.dot(xc, yc) / den)
     a = float(y.mean() - b * x.mean())
     yhat = a + b * x
@@ -174,8 +179,12 @@ def rhat_on_r_slope(
         "b_hi": boot["b_hi"],
         "n_boot": boot["n_boot"],
         "b_median": float(np.nanmedian(per)) if np.any(finite) else float("nan"),
-        "b_p16": float(np.nanpercentile(per[finite], 16)) if np.any(finite) else float("nan"),
-        "b_p84": float(np.nanpercentile(per[finite], 84)) if np.any(finite) else float("nan"),
+        "b_p16": float(np.nanpercentile(per[finite], 16))
+        if np.any(finite)
+        else float("nan"),
+        "b_p84": float(np.nanpercentile(per[finite], 84))
+        if np.any(finite)
+        else float("nan"),
         "reading": _slope_reading(pooled["b"], boot["b_lo"], boot["b_hi"]),
         "per_sample_b": per,
     }
@@ -252,17 +261,27 @@ def _safe_corr(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.corrcoef(a, b)[0, 1])
 
 
-def effective_rank(matrix: np.ndarray, *, energy: float = ENERGY_RANK) -> dict[str, float]:
+def effective_rank(
+    matrix: np.ndarray, *, energy: float = ENERGY_RANK
+) -> dict[str, float]:
     x = np.asarray(matrix, dtype=np.float64)
     x = x - np.nanmean(x, axis=0, keepdims=True)
     x = np.nan_to_num(x, nan=0.0)
     if x.size == 0 or min(x.shape) < 2:
-        return {"rank_energy": float("nan"), "n_modes": 0.0, "n_samples": float(x.shape[0])}
+        return {
+            "rank_energy": float("nan"),
+            "n_modes": 0.0,
+            "n_samples": float(x.shape[0]),
+        }
     s = np.linalg.svd(x, compute_uv=False)
     energy_s = s**2
     tot = float(np.sum(energy_s))
     if tot < _EPS:
-        return {"rank_energy": 0.0, "n_modes": float(s.size), "n_samples": float(x.shape[0])}
+        return {
+            "rank_energy": 0.0,
+            "n_modes": float(s.size),
+            "n_samples": float(x.shape[0]),
+        }
     cdf = np.cumsum(energy_s) / tot
     k = int(np.searchsorted(cdf, energy) + 1)
     return {
@@ -270,7 +289,9 @@ def effective_rank(matrix: np.ndarray, *, energy: float = ENERGY_RANK) -> dict[s
         "n_modes": float(s.size),
         "n_samples": float(x.shape[0]),
         "energy": float(energy),
-        "frac_at_latent": float(cdf[min(LATENT_DIM, s.size) - 1]) if s.size else float("nan"),
+        "frac_at_latent": float(cdf[min(LATENT_DIM, s.size) - 1])
+        if s.size
+        else float("nan"),
     }
 
 
@@ -453,7 +474,9 @@ def quartile_bins(
     return rows
 
 
-def _boot_mean_ci(x: np.ndarray, rng: np.random.Generator, n_boot: int) -> tuple[float, float]:
+def _boot_mean_ci(
+    x: np.ndarray, rng: np.random.Generator, n_boot: int
+) -> tuple[float, float]:
     n = x.size
     if n < 2:
         return float("nan"), float("nan")
@@ -478,7 +501,9 @@ def trough_safe_log_bias(tf_gino: np.ndarray, tf_ops: np.ndarray) -> np.ndarray:
     return out
 
 
-def peak_signed_bias(tf_gino: np.ndarray, tf_ops: np.ndarray, freq: np.ndarray) -> dict[str, np.ndarray]:
+def peak_signed_bias(
+    tf_gino: np.ndarray, tf_ops: np.ndarray, freq: np.ndarray
+) -> dict[str, np.ndarray]:
     g = central_slice(tf_gino)
     o = central_slice(tf_ops)
     n = g.shape[0]
@@ -492,7 +517,9 @@ def peak_signed_bias(tf_gino: np.ndarray, tf_ops: np.ndarray, freq: np.ndarray) 
     return {"delta_f_peak": df, "delta_ln_A_peak": dln}
 
 
-def spatial_dispersion(tf_gino: np.ndarray, tf_ops: np.ndarray, cov: np.ndarray) -> dict[str, Any]:
+def spatial_dispersion(
+    tf_gino: np.ndarray, tf_ops: np.ndarray, cov: np.ndarray
+) -> dict[str, Any]:
     g = _as_3d(tf_gino)
     o = _as_3d(tf_ops)
     n = g.shape[0]
@@ -750,15 +777,12 @@ def crossed_f0_cov(
     rows = []
     for i, flab in enumerate(("f0_low", "f0_high")):
         for j, clab in enumerate(("cov_low", "cov_high")):
-            sel = (
-                (f0 > fe[i])
-                & (f0 <= fe[i + 1])
-                & (cov > ce[j])
-                & (cov <= ce[j + 1])
-            )
+            sel = (f0 > fe[i]) & (f0 <= fe[i + 1]) & (cov > ce[j]) & (cov <= ce[j + 1])
             mm = metric[sel]
             n = int(mm.size)
-            lo, hi = _boot_mean_ci(mm, rng, n_boot) if n else (float("nan"), float("nan"))
+            lo, hi = (
+                _boot_mean_ci(mm, rng, n_boot) if n else (float("nan"), float("nan"))
+            )
             rows.append(
                 {
                     "cell": f"{flab}|{clab}",
@@ -803,7 +827,9 @@ def phase3_protocol(summary: dict[str, Any]) -> dict[str, Any]:
             primary = "fno_wraparound"
             kind = "observational_wave0"
             reasons.append(f"IID edge−center rel L2 = {wrap:.3f}")
-        coll = float((iid.get("scalar_floor") or {}).get("collapse_ratio", float("nan")))
+        coll = float(
+            (iid.get("scalar_floor") or {}).get("collapse_ratio", float("nan"))
+        )
         if primary == "wait_wave1_spectral" and np.isfinite(coll) and coll < 0.5:
             primary = "field_blind_collapse"
             kind = "future_retrain"

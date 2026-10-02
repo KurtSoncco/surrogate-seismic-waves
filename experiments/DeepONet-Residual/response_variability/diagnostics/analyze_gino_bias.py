@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Wave 0 GINO inductive-bias audit on nested presentation packs.
 
-    uv run python experiments/DeepONet-Residual/response_variability/diagnostics/analyze_gino_bias.py
+uv run python experiments/DeepONet-Residual/response_variability/diagnostics/analyze_gino_bias.py
 """
 
 from __future__ import annotations
@@ -37,7 +37,12 @@ from response_variability.plots.plot_presentation import (  # noqa: E402
 
 PACK_DIR = config.RESULTS_DIR / "presentation"
 OUT_DIR = config.RESULTS_DIR / "response_variability" / "gino_bias"
-KNN_CSV = config.RESULTS_DIR / "response_variability" / "sobol_probe" / "test_error_vs_knn.csv"
+KNN_CSV = (
+    config.RESULTS_DIR
+    / "response_variability"
+    / "sobol_probe"
+    / "test_error_vs_knn.csv"
+)
 
 
 def _load_inside_hull(domain: str, n: int) -> np.ndarray | None:
@@ -63,7 +68,9 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Wave 0 GINO bias audit on presentation packs")
+    p = argparse.ArgumentParser(
+        description="Wave 0 GINO bias audit on presentation packs"
+    )
     p.add_argument("--pack-dir", type=Path, default=PACK_DIR)
     p.add_argument("--out-dir", type=Path, default=OUT_DIR)
     p.add_argument("--n-boot", type=int, default=N_BOOT)
@@ -72,9 +79,7 @@ def main() -> None:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     missing = [d for d in DOMAIN_SPECS if not pack_path(args.pack_dir, d).is_file()]
     if missing:
-        raise FileNotFoundError(
-            "Missing presentation packs for: " + ", ".join(missing)
-        )
+        raise FileNotFoundError("Missing presentation packs for: " + ", ".join(missing))
     domains: dict[str, Any] = {}
     bin_rows: list[dict[str, Any]] = []
     sample_rows: list[dict[str, Any]] = []
@@ -134,7 +139,11 @@ def main() -> None:
                             "band": band,
                             "spearman": _spearman(
                                 vals,
-                                per[f"pearson_{band}" if prefix == "pearson" else f"gof_{band}"],
+                                per[
+                                    f"pearson_{band}"
+                                    if prefix == "pearson"
+                                    else f"gof_{band}"
+                                ],
                             ),
                         }
                     )
@@ -209,7 +218,9 @@ def main() -> None:
     }
     summary["phase3"] = phase3_protocol(summary)
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    (args.out_dir / "summary.json").write_text(json.dumps(to_jsonable(summary), indent=2))
+    (args.out_dir / "summary.json").write_text(
+        json.dumps(to_jsonable(summary), indent=2)
+    )
     (args.out_dir / "phase3_protocol.json").write_text(
         json.dumps(to_jsonable(summary["phase3"]), indent=2)
     )
@@ -218,7 +229,9 @@ def main() -> None:
     _write_csv(args.out_dir / "covariate_spearman.csv", spearman_rows)
     _write_csv(args.out_dir / "aleatoric_floor.csv", floor_rows)
     print(f"Wrote {args.out_dir / 'summary.json'}", flush=True)
-    print(f"Phase 3 primary: {summary['phase3']['primary']} ({summary['phase3']['kind']})")
+    print(
+        f"Phase 3 primary: {summary['phase3']['primary']} ({summary['phase3']['kind']})"
+    )
 
 
 if __name__ == "__main__":

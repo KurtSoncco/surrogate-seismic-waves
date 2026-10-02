@@ -77,14 +77,21 @@ def main() -> None:
         rows.append(score_one(path))
     report = {
         "ship_rel_l2_TF": SHIP_REL_L2,
-        "gates": {"iid_max": IID_GATE, "dipping_max": DIP_GATE, "three_layer_lt": TL_SHIP},
+        "gates": {
+            "iid_max": IID_GATE,
+            "dipping_max": DIP_GATE,
+            "three_layer_lt": TL_SHIP,
+        },
         "missing": missing,
         "runs": rows,
         "winner": None,
     }
     qualified = [r for r in rows if r["iid_gate"] and r["dip_gate"]]
     if qualified:
-        winner = min(qualified, key=lambda r: r["three_layer"] if r["three_layer"] is not None else 9e9)
+        winner = min(
+            qualified,
+            key=lambda r: r["three_layer"] if r["three_layer"] is not None else 9e9,
+        )
         report["winner"] = winner["name"]
         report["ship_decision"] = bool(winner["ship"])
     else:

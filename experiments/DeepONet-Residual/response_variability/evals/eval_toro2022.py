@@ -138,7 +138,9 @@ def _opensees_spatial_sigma_ln(pack: dict[str, np.ndarray]) -> np.ndarray:
     )
 
 
-def domain_summary(summary: pd.DataFrame, misfit: pd.DataFrame, pack: dict) -> dict[str, Any]:
+def domain_summary(
+    summary: pd.DataFrame, misfit: pd.DataFrame, pack: dict
+) -> dict[str, Any]:
     rec: dict[str, Any] = {"n": int(summary["sample"].nunique())}
     rec["opensees_spatial_sigma_ln"] = median_iqr(_opensees_spatial_sigma_ln(pack))
     if "sigma_ln_toro" in pack:
@@ -153,9 +155,15 @@ def domain_summary(summary: pd.DataFrame, misfit: pd.DataFrame, pack: dict) -> d
             "anderson": median_iqr(sub["gof_af"].to_numpy()),
             "delta_ln_A_peak": median_iqr(sub["delta_ln_A_peak"].to_numpy()),
             "delta_f_peak": median_iqr(sub["delta_f_peak"].to_numpy()),
-            "gof_low": median_iqr(mis["gof_low"].to_numpy()) if "gof_low" in mis else {},
-            "gof_mid": median_iqr(mis["gof_mid"].to_numpy()) if "gof_mid" in mis else {},
-            "gof_high": median_iqr(mis["gof_high"].to_numpy()) if "gof_high" in mis else {},
+            "gof_low": median_iqr(mis["gof_low"].to_numpy())
+            if "gof_low" in mis
+            else {},
+            "gof_mid": median_iqr(mis["gof_mid"].to_numpy())
+            if "gof_mid" in mis
+            else {},
+            "gof_high": median_iqr(mis["gof_high"].to_numpy())
+            if "gof_high" in mis
+            else {},
         }
     return rec
 
@@ -335,9 +343,13 @@ def main() -> None:
     p.add_argument("--pack-dir", type=Path, default=PACK_DIR)
     p.add_argument("--out-dir", type=Path, default=OUT_DIR)
     p.add_argument("--n-hallal-seeds", type=int, default=40)
-    p.add_argument("--domains", nargs="+", default=list(SCORE_DOMAINS), choices=list(DOMAIN_SPECS))
+    p.add_argument(
+        "--domains", nargs="+", default=list(SCORE_DOMAINS), choices=list(DOMAIN_SPECS)
+    )
     p.add_argument("--skip-if-present", action="store_true")
-    p.add_argument("--synthetic", action="store_true", help="Use make_synthetic_pack (no H5).")
+    p.add_argument(
+        "--synthetic", action="store_true", help="Use make_synthetic_pack (no H5)."
+    )
     p.add_argument("--synthetic-n", type=int, default=8)
     p.add_argument("--plot", action=argparse.BooleanOptionalAction, default=True)
     args = p.parse_args()
@@ -370,7 +382,9 @@ def main() -> None:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     csv_path = args.out_dir / "toro2022_vs_2d.csv"
     pd.concat(rows_s, ignore_index=True).to_csv(csv_path, index=False)
-    pd.concat(rows_m, ignore_index=True).to_csv(args.out_dir / "toro2022_vs_2d_bands.csv", index=False)
+    pd.concat(rows_m, ignore_index=True).to_csv(
+        args.out_dir / "toro2022_vs_2d_bands.csv", index=False
+    )
     json_path = args.out_dir / "toro2022_vs_2d_summary.json"
     json_path.write_text(json.dumps(agg, indent=2))
     write_markdown(agg, args.out_dir / "TORO2022.md", synthetic=bool(args.synthetic))

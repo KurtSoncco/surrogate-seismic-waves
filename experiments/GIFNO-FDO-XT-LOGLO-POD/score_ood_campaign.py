@@ -192,9 +192,7 @@ def stratify_summary(rows: list[dict[str, Any]], key: str, n_bins: int = 4) -> d
         if len(edges) < 2:
             return {}
         bin_ids = np.clip(np.digitize(arr, edges[1:-1], right=True), 0, len(edges) - 2)
-        labels = [
-            f"[{edges[i]:.3g},{edges[i + 1]:.3g})" for i in range(len(edges) - 1)
-        ]
+        labels = [f"[{edges[i]:.3g},{edges[i + 1]:.3g})" for i in range(len(edges) - 1)]
     by_bin: dict[str, list[dict]] = {lab: [] for lab in labels}
     # Remap rows that had the key
     j = 0
@@ -318,9 +316,7 @@ def score_campaign(
         np.save(case_dir / "tf_pred.npy", tf_pred)
         m = metrics_from_tfs(tf_pred, tf_true, freq)
         if write_plots and i < 5:
-            compare_tfs(
-                tf_pred, tf_true, freq, case_name=slug, out_dir=case_dir
-            )
+            compare_tfs(tf_pred, tf_true, freq, case_name=slug, out_dir=case_dir)
         # Align by index from path
         idx = int(Path(case_dir_str).name.split("_")[1])
         man_row = next((r for r in manifest if int(r["index"]) == idx), {})
@@ -350,7 +346,14 @@ def score_campaign(
     strat_keys = (
         ["dip_angle_deg", "H_discretized", "CoV", "rH", "Vs1"]
         if name == "dipping"
-        else ["H1_discretized", "H2_discretized", "CoV1", "rH1", "Vs_contrast", "Vs_mid"]
+        else [
+            "H1_discretized",
+            "H2_discretized",
+            "CoV1",
+            "rH1",
+            "Vs_contrast",
+            "Vs_mid",
+        ]
     )
     stratified = {k: stratify_summary(rows_out, k) for k in strat_keys}
     summary = {

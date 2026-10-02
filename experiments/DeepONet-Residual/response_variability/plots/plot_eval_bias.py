@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Nature figures: leftover calibration, covariate Pearson/Anderson, SOTA ranking.
 
-    uv run python experiments/DeepONet-Residual/response_variability/plots/plot_eval_bias.py
+uv run python experiments/DeepONet-Residual/response_variability/plots/plot_eval_bias.py
 """
 
 from __future__ import annotations
@@ -99,7 +99,9 @@ def _merge_classical(pack: dict[str, np.ndarray], domain: str, out_dir: Path) ->
     return merge_classical_into_pack(pack, domain, out_dir=out_dir)
 
 
-def _median_ci(x: np.ndarray, rng: np.random.Generator, n_boot: int = 400) -> tuple[float, float, float]:
+def _median_ci(
+    x: np.ndarray, rng: np.random.Generator, n_boot: int = 400
+) -> tuple[float, float, float]:
     x = np.asarray(x, dtype=float)
     x = x[np.isfinite(x)]
     if x.size == 0:
@@ -172,7 +174,11 @@ def plot_leftover_vs_freq(
     apply_nature_style()
     fig, axes = plt.subplots(2, 3, figsize=figsize("double", height_mm=120))
     for col, domain in enumerate(DOMAIN_SPECS):
-        pack = attach_extracted_f0(packs[domain]) if "f0_calc" not in packs[domain] else packs[domain]
+        pack = (
+            attach_extracted_f0(packs[domain])
+            if "f0_calc" not in packs[domain]
+            else packs[domain]
+        )
         freq = np.asarray(pack["freq"], dtype=float)
         n = int(pack["tf_opensees"].shape[0])
         r_stack = []
@@ -188,8 +194,12 @@ def plot_leftover_vs_freq(
                 fn = freq / f0
                 order = np.argsort(fn)
                 grid = np.logspace(-1, 1, 80)
-                r_fn.append(np.interp(grid, fn[order], r_true[order], left=np.nan, right=np.nan))
-                rh_fn.append(np.interp(grid, fn[order], r_hat[order], left=np.nan, right=np.nan))
+                r_fn.append(
+                    np.interp(grid, fn[order], r_true[order], left=np.nan, right=np.nan)
+                )
+                rh_fn.append(
+                    np.interp(grid, fn[order], r_hat[order], left=np.nan, right=np.nan)
+                )
         r_m = np.nanmean(np.vstack(r_stack), axis=0)
         rh_m = np.nanmean(np.vstack(rh_stack), axis=0)
         ax = axes[0, col]
@@ -298,7 +308,9 @@ def plot_bias_vs_covariates(
         ax.set_visible(False)
     handles, labels = axes[0, 0].get_legend_handles_labels()
     if handles:
-        fig.legend(handles, labels, loc="upper center", ncol=3, bbox_to_anchor=(0.5, 1.02))
+        fig.legend(
+            handles, labels, loc="upper center", ncol=3, bbox_to_anchor=(0.5, 1.02)
+        )
     fig.tight_layout()
     return savefig(fig, out_path)
 
@@ -348,7 +360,11 @@ def plot_bias_vs_covariates_bands(
                 )
                 xs.append(np.asarray(pack[key], dtype=float))
                 ys.append(np.asarray(y, dtype=float))
-            rho = _spearman(np.concatenate(xs), np.concatenate(ys)) if xs else float("nan")
+            rho = (
+                _spearman(np.concatenate(xs), np.concatenate(ys))
+                if xs
+                else float("nan")
+            )
             rho_s = f", $\\rho$={rho:.2f}" if np.isfinite(rho) else ""
             ax.set_title(f"{band} {lo:g}–{hi:g} Hz{rho_s}", fontsize=6.5)
             if row == len(bands) - 1:
@@ -359,7 +375,9 @@ def plot_bias_vs_covariates_bands(
             letter_i += 1
     handles, labels = axes[0, 0].get_legend_handles_labels()
     if handles:
-        fig.legend(handles, labels, loc="upper center", ncol=3, bbox_to_anchor=(0.5, 1.02))
+        fig.legend(
+            handles, labels, loc="upper center", ncol=3, bbox_to_anchor=(0.5, 1.02)
+        )
     fig.tight_layout()
     return savefig(fig, out_path)
 
@@ -436,7 +454,9 @@ def plot_pearson_boxes_heldout(
     for ax, (domain, title), letter in zip(axes, panels, _LETTERS):
         summary = summaries[domain]
         labels = _rank_methods_in(summary)
-        data = [summary.loc[summary["method"] == m, "pearson"].to_numpy() for m in labels]
+        data = [
+            summary.loc[summary["method"] == m, "pearson"].to_numpy() for m in labels
+        ]
         n = int(max((len(v) for v in data), default=0))
         _boxplot_with_points(ax, data, labels, ref_line=1.0)
         if label_rotation:
@@ -462,9 +482,7 @@ def plot_pearson_boxes_corner(
     summaries: dict[str, pd.DataFrame], out_path: Path | None = None
 ) -> Path:
     out_path = Path(out_path or (OUT_DIR / "method_ranking_pearson_corner.png"))
-    return plot_pearson_boxes_heldout(
-        summaries, out_path, panels=CORNER_PEARSON_PANELS
-    )
+    return plot_pearson_boxes_heldout(summaries, out_path, panels=CORNER_PEARSON_PANELS)
 
 
 def load_heldout_summaries(atlas_dir: Path | None = None) -> dict[str, pd.DataFrame]:
@@ -485,7 +503,9 @@ def plot_pearson_boxes_from_atlas(
     return plot_pearson_boxes_heldout(load_heldout_summaries(atlas_dir), out_path)
 
 
-def plot_method_ranking_iid(summary: pd.DataFrame, misfit: pd.DataFrame, out_path: Path) -> Path:
+def plot_method_ranking_iid(
+    summary: pd.DataFrame, misfit: pd.DataFrame, out_path: Path
+) -> Path:
     import matplotlib.pyplot as plt
 
     apply_nature_style()
@@ -584,9 +604,15 @@ def plot_method_ranking_ood_compact(
         for k, method in enumerate(methods):
             sub = df[df["method"] == method].set_index("domain")
             yy = y + (k - (len(methods) - 1) / 2.0) * h
-            med = [float(sub.loc[d, col]) if d in sub.index else np.nan for d in domains]
-            lo = [float(sub.loc[d, lo_c]) if d in sub.index else np.nan for d in domains]
-            hi = [float(sub.loc[d, hi_c]) if d in sub.index else np.nan for d in domains]
+            med = [
+                float(sub.loc[d, col]) if d in sub.index else np.nan for d in domains
+            ]
+            lo = [
+                float(sub.loc[d, lo_c]) if d in sub.index else np.nan for d in domains
+            ]
+            hi = [
+                float(sub.loc[d, hi_c]) if d in sub.index else np.nan for d in domains
+            ]
             ax.errorbar(
                 med,
                 yy,
@@ -631,7 +657,9 @@ def plot_all(
     paths = [
         plot_leftover_calibration(packs, out_dir / "leftover_calibration.png"),
         plot_leftover_vs_freq(packs, out_dir / "leftover_vs_freq.png"),
-        plot_bias_vs_covariates(packs, out_dir / "bias_vs_covariates.png", metric="pearson"),
+        plot_bias_vs_covariates(
+            packs, out_dir / "bias_vs_covariates.png", metric="pearson"
+        ),
         plot_bias_vs_covariates(
             packs, out_dir / "bias_vs_covariates_anderson.png", metric="gof_af"
         ),
@@ -651,13 +679,19 @@ def plot_all(
     (out_dir / "iid_aggregate.json").write_text(
         json.dumps(aggregate_json(summary, misfit), indent=2)
     )
-    paths.append(plot_method_ranking_iid(summary, misfit, out_dir / "method_ranking_iid.png"))
     paths.append(
-        plot_method_ranking_ood_compact(packs, out_dir / "method_ranking_ood_compact.png")
+        plot_method_ranking_iid(summary, misfit, out_dir / "method_ranking_iid.png")
+    )
+    paths.append(
+        plot_method_ranking_ood_compact(
+            packs, out_dir / "method_ranking_ood_compact.png"
+        )
     )
     try:
         paths.append(
-            plot_pearson_boxes_from_atlas(out_dir / "method_ranking_pearson_heldout.png")
+            plot_pearson_boxes_from_atlas(
+                out_dir / "method_ranking_pearson_heldout.png"
+            )
         )
     except FileNotFoundError:
         pass

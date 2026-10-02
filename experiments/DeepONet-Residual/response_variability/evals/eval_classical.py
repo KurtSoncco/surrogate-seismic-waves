@@ -35,7 +35,9 @@ from response_variability.seiskit_arms import (  # noqa: E402
 
 OUT_DIR = config.RESULTS_DIR / "response_variability" / "eval_bias"
 PACK_DIR = config.RESULTS_DIR / "presentation"
-SEISKIT_PRED = config.RESULTS_DIR / "response_variability" / "seiskit" / "predictions.npz"
+SEISKIT_PRED = (
+    config.RESULTS_DIR / "response_variability" / "seiskit" / "predictions.npz"
+)
 
 
 def add_classical_1d_arms(
@@ -86,9 +88,7 @@ def add_classical_1d_arms(
             n_seeds=n_hallal_seeds,
             kind="passeri",
         )
-        geo_d, sig_d = hallal_dmin_geomean_tf(
-            freq=freq, vs1=vs1, H=H, cov=cov, vs2=vs2
-        )
+        geo_d, sig_d = hallal_dmin_geomean_tf(freq=freq, vs1=vs1, H=H, cov=cov, vs2=vs2)
         tf_toro[i], sig_toro[i] = geo_t, np.asarray(sig_t, dtype=np.float64)
         tf_passeri[i], sig_passeri[i] = geo_p, np.asarray(sig_p, dtype=np.float64)
         tf_dmult[i], sig_dmult[i] = geo_d, np.asarray(sig_d, dtype=np.float64)
@@ -169,7 +169,9 @@ def run_domain(
     from response_variability.covariates import attach_h5_covariates
 
     pack = attach_h5_covariates(pack, domain=domain)
-    pack = add_classical_1d_arms(pack, n_hallal_seeds=n_hallal_seeds, skip_if_present=False)
+    pack = add_classical_1d_arms(
+        pack, n_hallal_seeds=n_hallal_seeds, skip_if_present=False
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(dest, **{k: pack[k] for k in pack})
     print(f"Wrote {dest}", flush=True)

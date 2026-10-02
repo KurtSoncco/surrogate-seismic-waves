@@ -86,9 +86,27 @@ ATLAS_CURVE_STYLE = {
         "zorder": 3,
     },
     GINO: {"color": "#0077BB", "ls": "-", "lw": 2.3, "alpha": 1.0, "zorder": 6},
-    TORO: {"color": "#CC3311", "ls": (0, (7, 2.4)), "lw": 1.9, "alpha": 1.0, "zorder": 4},
-    TORO_FIXED: {"color": "#CC3311", "ls": (0, (7, 2.4)), "lw": 1.7, "alpha": 1.0, "zorder": 4},
-    TORO_DIP: {"color": "#EE6677", "ls": (0, (2.2, 1.4)), "lw": 2.0, "alpha": 1.0, "zorder": 4},
+    TORO: {
+        "color": "#CC3311",
+        "ls": (0, (7, 2.4)),
+        "lw": 1.9,
+        "alpha": 1.0,
+        "zorder": 4,
+    },
+    TORO_FIXED: {
+        "color": "#CC3311",
+        "ls": (0, (7, 2.4)),
+        "lw": 1.7,
+        "alpha": 1.0,
+        "zorder": 4,
+    },
+    TORO_DIP: {
+        "color": "#EE6677",
+        "ls": (0, (2.2, 1.4)),
+        "lw": 2.0,
+        "alpha": 1.0,
+        "zorder": 4,
+    },
     PASSERI: {
         "color": "#AA4499",
         "ls": (0, (9, 2.2, 2.2, 2.2)),
@@ -110,7 +128,13 @@ ATLAS_CURVE_STYLE = {
         "alpha": 1.0,
         "zorder": 4,
     },
-    PRETELL: {"color": "#7A7A7A", "ls": (0, (0.8, 1.6)), "lw": 1.5, "alpha": 0.95, "zorder": 2},
+    PRETELL: {
+        "color": "#7A7A7A",
+        "ls": (0, (0.8, 1.6)),
+        "lw": 1.5,
+        "alpha": 0.95,
+        "zorder": 2,
+    },
 }
 ATLAS_LABELS = {
     TORO: "Toro geomean",
@@ -220,7 +244,9 @@ def atlas_panel_title(pack: dict[str, np.ndarray], i: int) -> str:
     return "\n".join(lines)
 
 
-def attach_atlas_geometry(pack: dict[str, np.ndarray], domain: str) -> dict[str, np.ndarray]:
+def attach_atlas_geometry(
+    pack: dict[str, np.ndarray], domain: str
+) -> dict[str, np.ndarray]:
     """Restore rH / aHV (and dipping angle) from cache meta onto a held-out pack."""
     from mix_ladder import mix_test_parts
 
@@ -364,7 +390,9 @@ def build_val_pack(
     pack = attach_vs_and_pretell(pack, domain=domain, n_pretell=n_pretell)
     from response_variability.evals.eval_classical import add_classical_1d_arms
 
-    pack = add_classical_1d_arms(pack, n_hallal_seeds=n_hallal_seeds, skip_if_present=False)
+    pack = add_classical_1d_arms(
+        pack, n_hallal_seeds=n_hallal_seeds, skip_if_present=False
+    )
     if domain == "dipping":
         pack = attach_dipping_manifest(pack)
     pack = attach_extracted_f0(pack)
@@ -488,7 +516,9 @@ def plot_tf_grid_4x4(
                 ax.set_visible(False)
                 continue
             i = int(idx[k])
-            order = [m for m in methods if m not in (OPENSEES, GINO, PRETELL, PRETELL_P84)]
+            order = [
+                m for m in methods if m not in (OPENSEES, GINO, PRETELL, PRETELL_P84)
+            ]
             order.extend(m for m in (PRETELL, GINO, OPENSEES) if m in tfs)
             for method in order:
                 _plot_atlas_curve(ax, freq, _curve_at_sample(tfs[method], i), method)
@@ -499,7 +529,9 @@ def plot_tf_grid_4x4(
             ax.set_yscale("log")
             ax.set_xlim(0.1, 10.0)
             ax.set_ylim(*ATLAS_YLIM)
-            ax.set_title(atlas_panel_title(pack, i), fontsize=7.5, pad=4, linespacing=1.1)
+            ax.set_title(
+                atlas_panel_title(pack, i), fontsize=7.5, pad=4, linespacing=1.1
+            )
             panel_letter(ax, _LETTERS[k], x=0.02, y=0.93)
             if show_gino_rho:
                 rho = band_pearson(
@@ -636,10 +668,15 @@ def run(
     iid_csv = out_dir / "iid_heldout_summary.csv"
     dip_csv = out_dir / "dipping_heldout_summary.csv"
     if iid_csv.is_file() and dip_csv.is_file():
-        from response_variability.plots.plot_eval_bias import plot_pearson_boxes_from_atlas
+        from response_variability.plots.plot_eval_bias import (
+            plot_pearson_boxes_from_atlas,
+        )
 
         boxes = plot_pearson_boxes_from_atlas(
-            config.RESULTS_DIR / "response_variability" / "eval_bias" / "method_ranking_pearson_heldout.png",
+            config.RESULTS_DIR
+            / "response_variability"
+            / "eval_bias"
+            / "method_ranking_pearson_heldout.png",
             atlas_dir=out_dir,
         )
         print(f"Wrote {boxes}", flush=True)
@@ -691,7 +728,9 @@ def _pearson_by_split(pack: dict[str, np.ndarray], summary_path: Path) -> Path:
     return dest
 
 
-def run_ood_dipping_box(*, out_dir: Path = OUT_DIR, skip_plot: bool = False) -> list[Path]:
+def run_ood_dipping_box(
+    *, out_dir: Path = OUT_DIR, skip_plot: bool = False
+) -> list[Path]:
     """Val+test atlas using Box ``ood_dipping`` Toro and Passeri geomeans."""
     from response_variability.ood_dipping_box import apply_ood_dipping_toro_passeri
 
@@ -712,8 +751,10 @@ def run_ood_dipping_box(*, out_dir: Path = OUT_DIR, skip_plot: bool = False) -> 
         f"test={int(np.sum(split == 'test'))} methods={atlas_methods_in(pack)}",
         flush=True,
     )
-    paths = [] if skip_plot else plot_atlas_pages(
-        pack, out_dir, "dipping", page_dir_name="ood_dipping"
+    paths = (
+        []
+        if skip_plot
+        else plot_atlas_pages(pack, out_dir, "dipping", page_dir_name="ood_dipping")
     )
     if (out_dir / "iid_heldout_summary.csv").is_file():
         boxes = plot_ood_dipping_pearson(out_dir)
@@ -746,7 +787,9 @@ def main() -> None:
     p.add_argument("--batch-size", type=int, default=config.BATCH_SIZE)
     p.add_argument("--n-pretell", type=int, default=N_PRETELL_DEFAULT)
     p.add_argument("--n-hallal-seeds", type=int, default=40)
-    p.add_argument("--domains", nargs="+", default=list(ATLAS_DOMAINS), choices=ATLAS_DOMAINS)
+    p.add_argument(
+        "--domains", nargs="+", default=list(ATLAS_DOMAINS), choices=ATLAS_DOMAINS
+    )
     p.add_argument("--skip-predict", action="store_true")
     p.add_argument("--skip-plot", action="store_true")
     p.add_argument(

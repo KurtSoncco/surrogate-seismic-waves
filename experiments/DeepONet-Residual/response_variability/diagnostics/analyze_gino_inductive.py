@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Wave 1 instruments. Pack DCT runs without a ckpt; collapse/orbits/probes need fields.
 
-    uv run python experiments/DeepONet-Residual/response_variability/diagnostics/analyze_gino_inductive.py
+uv run python experiments/DeepONet-Residual/response_variability/diagnostics/analyze_gino_inductive.py
 """
 
 from __future__ import annotations
@@ -64,11 +64,11 @@ def main() -> None:
         dct.pop("ratio", None)
         out["iid_dct"] = dct
         vs1 = np.asarray(pack["vs1"], dtype=float)
-        out["invariance_groups"] = invariance_orbit_check(
-            vs1, pack["vs2"], pack["H"]
-        )
+        out["invariance_groups"] = invariance_orbit_check(vs1, pack["vs2"], pack["H"])
         # Label-only proxy collapse: leftover magnitude vs 4D distance to centroid.
-        x = np.column_stack([pack["vs1"], pack["H"], pack["cov"], pack["vs2"]]).astype(float)
+        x = np.column_stack([pack["vs1"], pack["H"], pack["cov"], pack["vs2"]]).astype(
+            float
+        )
         z = (x - x.mean(0)) / np.clip(x.std(0), 1e-8, None)
         dist = np.linalg.norm(z, axis=1)
         r_norm = np.linalg.norm(r.reshape(r.shape[0], -1), axis=1)
@@ -79,7 +79,9 @@ def main() -> None:
             1e-12,
             None,
         )
-        out["prior_collapse_proxy"] = prior_collapse_curve(dist, r_norm, hull=float(np.median(dist)))
+        out["prior_collapse_proxy"] = prior_collapse_curve(
+            dist, r_norm, hull=float(np.median(dist))
+        )
         rng = np.random.default_rng(0)
         # Pack-level represent-vs-use on 4D scalars as a *negative control* for the
         # probe plumbing (not a latent probe). Real GNO latents need the ckpt.
@@ -99,7 +101,9 @@ def main() -> None:
         out["invariance_orbits_on_fields"] = "skipped_no_checkpoint"
     else:
         cache = config.CACHE_DIR / "n1000_seed42"
-        fields_ok = (cache / "fields.npy").is_file() and (cache / "r_nom_signed.npy").is_file()
+        fields_ok = (cache / "fields.npy").is_file() and (
+            cache / "r_nom_signed.npy"
+        ).is_file()
         if not fields_ok:
             out["wave1_model_probes"] = "skipped_no_iid_cache"
         else:

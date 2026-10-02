@@ -34,7 +34,10 @@ import config
 config.setup_import_paths()
 
 _POD_SCRIPT = (
-    Path(__file__).resolve().parents[1] / "GIFNO" / "preprocess" / "compute_pod_basis.py"
+    Path(__file__).resolve().parents[1]
+    / "GIFNO"
+    / "preprocess"
+    / "compute_pod_basis.py"
 )
 _spec = importlib.util.spec_from_file_location("compute_pod_basis", _POD_SCRIPT)
 if _spec is None or _spec.loader is None:
@@ -65,9 +68,7 @@ def _pearson(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.corrcoef(a, b)[0, 1])
 
 
-def reconstruct(
-    tf: np.ndarray, modes: np.ndarray, mean: np.ndarray
-) -> np.ndarray:
+def reconstruct(tf: np.ndarray, modes: np.ndarray, mean: np.ndarray) -> np.ndarray:
     """tf (R,F), modes (R,K,F), mean (R,F) -> recon (R,F)."""
     centered = tf - mean
     # coeffs[r,k] = <centered[r], mode[r,k]>

@@ -146,7 +146,10 @@ def test_slice_support_from_parent(tmp_path, monkeypatch):
     child.mkdir()
     np.save(parent / "sample_indices.npy", np.arange(8, dtype=int))
     np.save(child / "sample_indices.npy", np.array([1, 4, 7], dtype=int))
-    np.save(parent / "fields_support.npy", np.arange(8 * 3 * 2 * 4, dtype=np.float32).reshape(8, 3, 2, 4))
+    np.save(
+        parent / "fields_support.npy",
+        np.arange(8 * 3 * 2 * 4, dtype=np.float32).reshape(8, 3, 2, 4),
+    )
     np.save(parent / "support_x.npy", np.linspace(0, 1, 4, dtype=np.float32))
     np.save(parent / "support_cols.npy", np.arange(4, dtype=np.int64))
     rs.slice_support_fields_from_parent("n1000_seed42", "n7680_seed42")

@@ -94,7 +94,10 @@ def caches_ready() -> bool:
         cache = Path(cache)
         if not all((cache / k).is_file() for k in need):
             return False
-        if not (cache / "tf2d.npy").is_file() and not config.TF_PER_SAMPLE_PATH.is_file():
+        if (
+            not (cache / "tf2d.npy").is_file()
+            and not config.TF_PER_SAMPLE_PATH.is_file()
+        ):
             return False
     return True
 
@@ -214,7 +217,9 @@ def nominal_vs_stairs(
     return np.asarray(vs, dtype=np.float64), np.asarray(z, dtype=np.float64)
 
 
-def _meta_col(meta: dict[str, Any], key: str, idx: np.ndarray, default: float | None = None):
+def _meta_col(
+    meta: dict[str, Any], key: str, idx: np.ndarray, default: float | None = None
+):
     if key not in meta:
         if default is None:
             raise KeyError(key)
@@ -227,7 +232,9 @@ def load_domain_arrays(cache_dir: Path, test_idx: np.ndarray) -> dict[str, np.nd
     meta = dict(np.load(cache_dir / "meta.npz", allow_pickle=True))
     tf2d_path = cache_dir / "tf2d.npy"
     if tf2d_path.is_file():
-        tf_ops = np.asarray(np.load(tf2d_path, mmap_mode="r")[test_idx], dtype=np.float64)
+        tf_ops = np.asarray(
+            np.load(tf2d_path, mmap_mode="r")[test_idx], dtype=np.float64
+        )
     else:
         tf_all = np.load(config.TF_PER_SAMPLE_PATH, mmap_mode="r")
         sidx = np.load(cache_dir / "sample_indices.npy")[test_idx]
@@ -244,7 +251,8 @@ def load_domain_arrays(cache_dir: Path, test_idx: np.ndarray) -> dict[str, np.nd
     return {
         "tf_opensees": tf_ops,
         "tf_haskell_nominal": np.asarray(
-            np.load(cache_dir / "tf1d_nom.npy", mmap_mode="r")[test_idx], dtype=np.float64
+            np.load(cache_dir / "tf1d_nom.npy", mmap_mode="r")[test_idx],
+            dtype=np.float64,
         ),
         "freq": np.asarray(freq, dtype=float),
         "vs1": np.asarray(_meta_col(meta, "Vs1", test_idx), dtype=float),
@@ -253,7 +261,9 @@ def load_domain_arrays(cache_dir: Path, test_idx: np.ndarray) -> dict[str, np.nd
         "cov": np.asarray(_meta_col(meta, "CoV", test_idx, 0.0), dtype=float),
         "rH": np.asarray(_meta_col(meta, "rH", test_idx, float("nan")), dtype=float),
         "aHV": np.asarray(_meta_col(meta, "aHV", test_idx, float("nan")), dtype=float),
-        "soil_nz": np.asarray(_meta_col(meta, "soil_nz", test_idx, config.NZ_MAX), dtype=int),
+        "soil_nz": np.asarray(
+            _meta_col(meta, "soil_nz", test_idx, config.NZ_MAX), dtype=int
+        ),
         "sample_idx": np.asarray(_meta_col(meta, "sample_idx", test_idx), dtype=int),
         "rf_seed": np.asarray(_meta_col(meta, "rf_seed", test_idx, -1), dtype=int),
         "local_idx": np.asarray(test_idx, dtype=int),
@@ -309,7 +319,12 @@ def attach_vs_and_pretell(
     n_pretell: int = N_PRETELL_DEFAULT,
 ) -> dict[str, np.ndarray]:
     """Load cropped Vs/ζ from H5; optional Pretell geomean × exp(±σ_ln)."""
-    from ood_io import crop_variability, nominal_layer_params, read_h5_sample, soil_nz_from_params
+    from ood_io import (
+        crop_variability,
+        nominal_layer_params,
+        read_h5_sample,
+        soil_nz_from_params,
+    )
     from response_variability.seiskit_arms import pretell_haskell_tf
     from tqdm import tqdm
 
@@ -706,7 +721,9 @@ def _plot_tf_panel(ax, pack: dict[str, np.ndarray], i: int) -> None:
     ax.set_ylabel(r"$|\mathrm{TF}|$")
 
 
-def leftover_central(pack: dict[str, np.ndarray], i: int) -> tuple[np.ndarray, np.ndarray]:
+def leftover_central(
+    pack: dict[str, np.ndarray], i: int
+) -> tuple[np.ndarray, np.ndarray]:
     """Return (R_true, R_hat) on the central recorder: TF_2D − TF_1D vs GINO − TF_1D."""
     ops = central_recorder(pack["tf_opensees"][i])
     nom = central_recorder(pack["tf_haskell_nominal"][i])
@@ -742,7 +759,9 @@ def _plot_diff_panel(ax, pack: dict[str, np.ndarray], i: int) -> None:
     ax.set_ylabel(r"$R$")
 
 
-def attach_stoch_from_cache(pack: dict[str, np.ndarray], domain: str) -> dict[str, np.ndarray]:
+def attach_stoch_from_cache(
+    pack: dict[str, np.ndarray], domain: str
+) -> dict[str, np.ndarray]:
     """Fill rH / aHV from the signed-cache meta when a saved pack omitted them."""
     if "rH" in pack and "aHV" in pack:
         return pack
@@ -779,7 +798,13 @@ def _case_title(pack: dict[str, np.ndarray], i: int, q: float, domain: str) -> s
     h1 = float(pack["H1"][i]) if "H1" in pack else float("nan")
     h2 = float(pack["H2"][i]) if "H2" in pack else float("nan")
     vs_mid = float(pack["vs_mid"][i]) if "vs_mid" in pack else float("nan")
-    if np.isfinite(h1) and np.isfinite(h2) and np.isfinite(vs_mid) and h1 > 0.0 and h2 > 0.0:
+    if (
+        np.isfinite(h1)
+        and np.isfinite(h2)
+        and np.isfinite(vs_mid)
+        and h1 > 0.0
+        and h2 > 0.0
+    ):
         line2 = (
             rf"$V_{{s1}}$={vs1:.0f}, $H_1$={h1:.0f} m, "
             rf"$V_{{s,\mathrm{{mid}}}}$={vs_mid:.0f}, $H_2$={h2:.0f} m, "
@@ -887,9 +912,10 @@ def _compare_legend(pack: dict[str, np.ndarray] | None = None) -> list:
                         ls=style["ls"] if style else METHOD_LINESTYLES[method],
                         lw=style["lw"] if style else 0.9,
                         alpha=0.85,
-                        label={"Toro Vs": "Toro geomean", "Passeri tts": "Passeri geomean"}.get(
-                            method, method
-                        ),
+                        label={
+                            "Toro Vs": "Toro geomean",
+                            "Passeri tts": "Passeri geomean",
+                        }.get(method, method),
                     )
                 )
     return handles
@@ -1049,7 +1075,11 @@ def plot_vs_mosaic(
         idx = pick_pearson_quantile_indices(pack["pearson_gino"])
         q_idx = pick_pearson_quantile_indices(pack["pearson_gino"], MOSAIC_QUANTILES)
         # Prefer the same cases as the 2×3 pages (q=50 and q=85 → slots 2 and 4).
-        picks = (int(idx[2]), int(idx[4])) if len(idx) >= 5 else (int(q_idx[0]), int(q_idx[-1]))
+        picks = (
+            (int(idx[2]), int(idx[4]))
+            if len(idx) >= 5
+            else (int(q_idx[0]), int(q_idx[-1]))
+        )
         for row, i in enumerate(picks):
             nz = _stored_nz(pack["vs_2d"][i])
             img = np.asarray(pack["vs_2d"][i, :nz], dtype=np.float64)
@@ -1125,7 +1155,9 @@ def run(
                 continue
             path = pack_path(out_dir, domain)
             if path.is_file():
-                packs[domain] = finalize_pearson(_merge_sota_arms(load_pack(path), domain))
+                packs[domain] = finalize_pearson(
+                    _merge_sota_arms(load_pack(path), domain)
+                )
     if set(packs) != set(domains):
         missing = [d for d in domains if d not in packs]
         raise FileNotFoundError(f"need packs for {missing} to write the gallery")

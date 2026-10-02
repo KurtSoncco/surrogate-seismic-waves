@@ -35,7 +35,9 @@ def test_sigma_y_is_sigma_L_times_abs_sin():
     s = np.linspace(0.0, L, 500)
     y = s * np.sin(np.deg2rad(theta))
     assert sigma_y(L_h, theta, n=500) == pytest.approx(float(np.std(y, ddof=0)))
-    assert sigma_y(L_h, theta) == pytest.approx(sigma_L(L) * abs(np.sin(np.deg2rad(theta))))
+    assert sigma_y(L_h, theta) == pytest.approx(
+        sigma_L(L) * abs(np.sin(np.deg2rad(theta)))
+    )
     assert sigma_y(L_h, theta) == sigma_y(L_h, -theta)
     assert depth_range(L_h, theta) == pytest.approx(L * abs(np.sin(np.deg2rad(theta))))
 

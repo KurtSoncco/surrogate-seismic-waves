@@ -37,7 +37,11 @@ from response_variability.plots.plot_iid import (
     select_f0_quantile_indices,
     select_impedance_indices,
 )
-from response_variability.seiskit_arms import hallal_config, lognormal_upper, pretell_strip_columns
+from response_variability.seiskit_arms import (
+    hallal_config,
+    lognormal_upper,
+    pretell_strip_columns,
+)
 
 
 def test_peak_af_finds_resonance():
@@ -133,7 +137,10 @@ def test_dmult_multipliers_match_seiskit():
 
 
 def test_leftover_panel_is_r_not_prediction_error():
-    from response_variability.plots.plot_presentation import leftover_central, make_synthetic_pack
+    from response_variability.plots.plot_presentation import (
+        leftover_central,
+        make_synthetic_pack,
+    )
 
     pack = make_synthetic_pack(n=4, seed=1)
     i = 0
@@ -438,7 +445,10 @@ def test_nominal_vs_profile_two_and_three_layer():
 
 
 def test_case_title_includes_rh_ahv_cov():
-    from response_variability.plots.plot_presentation import _case_title, make_synthetic_pack
+    from response_variability.plots.plot_presentation import (
+        _case_title,
+        make_synthetic_pack,
+    )
 
     pack = make_synthetic_pack(n=4, seed=0)
     title = _case_title(pack, 0, 0.10, "iid")
@@ -449,7 +459,10 @@ def test_case_title_includes_rh_ahv_cov():
 
 
 def test_stored_nz_includes_bedrock_below_soil():
-    from response_variability.plots.plot_presentation import _stored_nz, make_synthetic_pack
+    from response_variability.plots.plot_presentation import (
+        _stored_nz,
+        make_synthetic_pack,
+    )
 
     pack = make_synthetic_pack(n=4, nz=40)
     i = 0

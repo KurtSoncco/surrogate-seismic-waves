@@ -86,9 +86,19 @@ def add_seiskit_arms(
         H = float(pack["H"][i])
         cov = float(pack["cov"][i])
         vs2 = float(pack["vs2"][i])
-        xi = float(meta["xi_damp"][int(loc)]) if "xi_damp" in meta else config.DEFAULT_XI_TREND
-        soil_nz = int(meta["soil_nz"][int(loc)]) if "soil_nz" in meta else int(
-            params.get("soil_layer_count", params.get("H_discretized", vs_strip.shape[0]))
+        xi = (
+            float(meta["xi_damp"][int(loc)])
+            if "xi_damp" in meta
+            else config.DEFAULT_XI_TREND
+        )
+        soil_nz = (
+            int(meta["soil_nz"][int(loc)])
+            if "soil_nz" in meta
+            else int(
+                params.get(
+                    "soil_layer_count", params.get("H_discretized", vs_strip.shape[0])
+                )
+            )
         )
         geo_t, sig_t = hallal_geomean_tf(
             freq=freq,
@@ -172,7 +182,9 @@ def main() -> None:
             upgrade_sigma_ln_from_presentation,
         )
 
-        pack = attach_dmult_p84(attach_pretell_p84(upgrade_sigma_ln_from_presentation(pack)))
+        pack = attach_dmult_p84(
+            attach_pretell_p84(upgrade_sigma_ln_from_presentation(pack))
+        )
     else:
         blob = np.load(args.predictions, allow_pickle=True)
         pack = {k: blob[k] for k in blob.files}

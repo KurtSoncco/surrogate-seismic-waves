@@ -31,7 +31,12 @@ from response_variability.dip_depth import (  # noqa: E402
 from response_variability.metrics import central_recorder  # noqa: E402
 from response_variability.names import HASKELL_NOMINAL, METHOD_COLORS, PASSERI, TORO  # noqa: E402
 from response_variability.seiskit_arms import ensure_seiskit, hallal_config  # noqa: E402
-from response_variability.style import apply_nature_style, figsize, panel_letter, savefig  # noqa: E402
+from response_variability.style import (  # noqa: E402
+    apply_nature_style,
+    figsize,
+    panel_letter,
+    savefig,
+)
 from response_variability.plots.tf_atlas import OUT_DIR, atlas_panel_title  # noqa: E402
 
 PACK = OUT_DIR / "dipping_uniform_pack.npz"
@@ -65,7 +70,11 @@ def _draw_kind(
         generate_vs_randomized_profile,
     )
 
-    gen = generate_vs_randomized_profile if kind == "toro" else generate_tts_randomized_profile
+    gen = (
+        generate_vs_randomized_profile
+        if kind == "toro"
+        else generate_tts_randomized_profile
+    )
     z_rows: list[np.ndarray] = []
     vs_rows: list[np.ndarray] = []
     tt_rows: list[np.ndarray] = []
@@ -90,7 +99,11 @@ def _draw_kind(
 
 def _case_fields(pack: dict[str, np.ndarray], i: int) -> dict[str, float]:
     xi = config.DEFAULT_XI_TREND
-    if "xi_mean" in pack and np.isfinite(pack["xi_mean"][i]) and pack["split"][i] == "test":
+    if (
+        "xi_mean" in pack
+        and np.isfinite(pack["xi_mean"][i])
+        and pack["split"][i] == "test"
+    ):
         xi = float(pack["xi_mean"][i])
     return {
         "vs1": float(pack["vs1"][i]),
@@ -102,7 +115,9 @@ def _case_fields(pack: dict[str, np.ndarray], i: int) -> dict[str, float]:
     }
 
 
-def _plot_profiles(ax, z_rows, vs_rows, *, color: str, H: float, vs1: float, vs2: float) -> None:
+def _plot_profiles(
+    ax, z_rows, vs_rows, *, color: str, H: float, vs1: float, vs2: float
+) -> None:
     for z, vs in zip(z_rows, vs_rows):
         ax.step(vs, z, color=color, alpha=0.28, lw=0.7, where="mid")
         z_iface = float(z[-1] + 0.5 * DZ)
@@ -131,7 +146,9 @@ def _plot_profiles(ax, z_rows, vs_rows, *, color: str, H: float, vs1: float, vs2
     ax.set_xlim(0.0, vs2 * 1.08)
 
 
-def _plot_tf(ax, freq, tf_rows, pack, i, *, color: str, geomean_key: str, label: str) -> None:
+def _plot_tf(
+    ax, freq, tf_rows, pack, i, *, color: str, geomean_key: str, label: str
+) -> None:
     ops = np.asarray(pack["tf_opensees"][i], dtype=np.float64)
     for r in range(ops.shape[0]):
         ax.loglog(
@@ -143,7 +160,9 @@ def _plot_tf(ax, freq, tf_rows, pack, i, *, color: str, geomean_key: str, label:
             label="2D stations" if r == 0 else None,
         )
     for row in tf_rows:
-        ax.loglog(freq, np.maximum(row, 1e-6), color=color, alpha=0.22, lw=0.55, zorder=2)
+        ax.loglog(
+            freq, np.maximum(row, 1e-6), color=color, alpha=0.22, lw=0.55, zorder=2
+        )
     geo = np.maximum(np.asarray(pack[geomean_key][i], dtype=np.float64), 1e-6)
     nom = np.maximum(central_recorder(pack["tf_haskell_nominal"][i]), 1e-6)
     ax.loglog(freq, geo, color=color, lw=1.6, zorder=4, label=label)
@@ -170,13 +189,30 @@ def plot_toro(pack, i: int, freq, fields, z_rows, vs_rows, tf_rows, dest: Path) 
     color = METHOD_COLORS[TORO]
     fig, (ax_vs, ax_tf) = plt.subplots(1, 2, figsize=figsize("double", height_mm=78))
     _plot_profiles(
-        ax_vs, z_rows, vs_rows, color=color, H=fields["H"], vs1=fields["vs1"], vs2=fields["vs2"]
+        ax_vs,
+        z_rows,
+        vs_rows,
+        color=color,
+        H=fields["H"],
+        vs1=fields["vs1"],
+        vs2=fields["vs2"],
     )
     half = 0.5 * depth_range(DIP_SPAN_M, fields["theta"])
-    ax_vs.axhspan(fields["H"] - half, fields["H"] + half, color=color, alpha=0.08, lw=0, zorder=0)
+    ax_vs.axhspan(
+        fields["H"] - half, fields["H"] + half, color=color, alpha=0.08, lw=0, zorder=0
+    )
     ax_vs.set_title(f"seiskit frozen-H Toro, NHPP off (n={len(z_rows)})")
     panel_letter(ax_vs, "a")
-    _plot_tf(ax_tf, freq, tf_rows, pack, i, color=color, geomean_key="tf_toro", label=f"{TORO} geomean")
+    _plot_tf(
+        ax_tf,
+        freq,
+        tf_rows,
+        pack,
+        i,
+        color=color,
+        geomean_key="tf_toro",
+        label=f"{TORO} geomean",
+    )
     ax_tf.set_title("Transfer function")
     panel_letter(ax_tf, "b")
     sig = sigma_y(DIP_SPAN_M, fields["theta"], n=500)
@@ -190,14 +226,24 @@ def plot_toro(pack, i: int, freq, fields, z_rows, vs_rows, tf_rows, dest: Path) 
     savefig(fig, dest)
 
 
-def plot_passeri(pack, i: int, freq, fields, z_rows, vs_rows, tt_rows, tf_rows, dest: Path) -> None:
+def plot_passeri(
+    pack, i: int, freq, fields, z_rows, vs_rows, tt_rows, tf_rows, dest: Path
+) -> None:
     import matplotlib.pyplot as plt
 
     apply_nature_style()
     color = METHOD_COLORS[PASSERI]
-    fig, (ax_vs, ax_tt, ax_tf) = plt.subplots(1, 3, figsize=figsize("double", height_mm=78))
+    fig, (ax_vs, ax_tt, ax_tf) = plt.subplots(
+        1, 3, figsize=figsize("double", height_mm=78)
+    )
     _plot_profiles(
-        ax_vs, z_rows, vs_rows, color=color, H=fields["H"], vs1=fields["vs1"], vs2=fields["vs2"]
+        ax_vs,
+        z_rows,
+        vs_rows,
+        color=color,
+        H=fields["H"],
+        vs1=fields["vs1"],
+        vs2=fields["vs2"],
     )
     ax_vs.set_title(f"Uniform depths, one Passeri $V_s$ each (n={len(z_rows)})")
     panel_letter(ax_vs, "a")
@@ -222,12 +268,20 @@ def plot_passeri(pack, i: int, freq, fields, z_rows, vs_rows, tt_rows, tf_rows, 
     panel_letter(ax_tt, "b")
 
     _plot_tf(
-        ax_tf, freq, tf_rows, pack, i, color=color, geomean_key="tf_passeri", label=f"{PASSERI} geomean"
+        ax_tf,
+        freq,
+        tf_rows,
+        pack,
+        i,
+        color=color,
+        geomean_key="tf_passeri",
+        label=f"{PASSERI} geomean",
     )
     ax_tf.set_title("Transfer function")
     panel_letter(ax_tf, "c")
     fig.suptitle(
-        "Passeri, uniform dip depth — " + atlas_panel_title(pack, i).replace("\n", ", "),
+        "Passeri, uniform dip depth — "
+        + atlas_panel_title(pack, i).replace("\n", ", "),
         fontsize=7.5,
     )
     fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.90))

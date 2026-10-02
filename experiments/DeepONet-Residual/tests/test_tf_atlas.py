@@ -174,24 +174,32 @@ def test_ood_dipping_overlay_maps_sobol_and_drops_dmult(tmp_path):
             "toro_fixed_geomean",
             data=np.array([[1, 1, 1, 1], [2, 2, 2, 2]], dtype=np.float32),
         )
-        handle.create_dataset("toro_fixed_sigma_ln", data=np.zeros((2, 4), dtype=np.float32))
+        handle.create_dataset(
+            "toro_fixed_sigma_ln", data=np.zeros((2, 4), dtype=np.float32)
+        )
         handle.create_dataset(
             "toro_dip_geomean",
             data=np.array([[3, 3, 3, 3], [4, 4, 4, 4]], dtype=np.float32),
         )
-        handle.create_dataset("toro_dip_sigma_ln", data=np.ones((2, 4), dtype=np.float32))
+        handle.create_dataset(
+            "toro_dip_sigma_ln", data=np.ones((2, 4), dtype=np.float32)
+        )
     with h5py.File(root / "passeri_comparison" / "ensembles.h5", "w") as handle:
         handle.create_dataset("sobol_id", data=np.array([0, 1], dtype=np.int32))
         handle.create_dataset(
             "passeri_fixed_geomean",
             data=np.array([[5, 5, 5, 5], [6, 6, 6, 6]], dtype=np.float32),
         )
-        handle.create_dataset("passeri_fixed_sigma_ln", data=np.zeros((2, 4), dtype=np.float32))
+        handle.create_dataset(
+            "passeri_fixed_sigma_ln", data=np.zeros((2, 4), dtype=np.float32)
+        )
         handle.create_dataset(
             "passeri_dip_geomean",
             data=np.array([[7, 7, 7, 7], [8, 8, 8, 8]], dtype=np.float32),
         )
-        handle.create_dataset("passeri_dip_sigma_ln", data=np.ones((2, 4), dtype=np.float32))
+        handle.create_dataset(
+            "passeri_dip_sigma_ln", data=np.ones((2, 4), dtype=np.float32)
+        )
     center = np.arange(12, dtype=np.float32).reshape(3, 4)
     with h5py.File(root / "toro_comparison" / "tf_2d_center.h5", "w") as handle:
         handle.create_dataset("tf_center", data=center)

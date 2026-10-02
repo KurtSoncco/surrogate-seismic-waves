@@ -404,9 +404,15 @@ def score_leftover_batch(
         lo = lev <= q20
         mid = (lev > q20) & (lev <= q80)
         hi = lev > q80
-        out["harm_rate_small_leftover"] = float(np.mean(harmed[lo])) if np.any(lo) else 0.0
-        out["harm_rate_mid_leftover"] = float(np.mean(harmed[mid])) if np.any(mid) else 0.0
-        out["harm_rate_large_leftover"] = float(np.mean(harmed[hi])) if np.any(hi) else 0.0
+        out["harm_rate_small_leftover"] = (
+            float(np.mean(harmed[lo])) if np.any(lo) else 0.0
+        )
+        out["harm_rate_mid_leftover"] = (
+            float(np.mean(harmed[mid])) if np.any(mid) else 0.0
+        )
+        out["harm_rate_large_leftover"] = (
+            float(np.mean(harmed[hi])) if np.any(hi) else 0.0
+        )
     if freq is not None and n_s:
         f = np.asarray(freq, dtype=np.float64).ravel()
         f0c = (

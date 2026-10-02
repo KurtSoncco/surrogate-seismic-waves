@@ -139,7 +139,9 @@ def rel_l2_per_sample(tf_true: np.ndarray, tf_pred: np.ndarray) -> np.ndarray:
     return num / den
 
 
-def delta_pack(base: np.ndarray, treat: np.ndarray, *, higher_better: bool) -> dict[str, Any]:
+def delta_pack(
+    base: np.ndarray, treat: np.ndarray, *, higher_better: bool
+) -> dict[str, Any]:
     a = np.asarray(base, dtype=np.float64)
     b = np.asarray(treat, dtype=np.float64)
     n = min(a.size, b.size)
@@ -192,8 +194,10 @@ def stoch_weight_profile(model) -> dict[str, Any] | None:
     linear = mlp[0]
     w = linear.weight.detach().float().cpu().abs()
     col = w.mean(0).numpy()
-    layout = "legacy20" if int(col.size) == 2 * config.K_XI + 4 else (
-        "cov_only" if int(col.size) == 1 else "xi_cov"
+    layout = (
+        "legacy20"
+        if int(col.size) == 2 * config.K_XI + 4
+        else ("cov_only" if int(col.size) == 1 else "xi_cov")
     )
     names = stoch_channel_names(layout=layout)
     if col.size != len(names):
@@ -295,14 +299,22 @@ def score_ckpt_domain(
         rec = _metrics_from_hats(freq, tf_ops, hats)
         public = _public_metrics(rec)
         if kind == "identity":
-            baseline_raw = {"pearson": rec["_pearson"], "gof": rec["_gof"], "rel": rec["_rel"]}
+            baseline_raw = {
+                "pearson": rec["_pearson"],
+                "gof": rec["_gof"],
+                "rel": rec["_rel"],
+            }
         elif baseline_raw is not None:
             public["delta_vs_baseline"] = {
                 "pearson_freq": delta_pack(
                     baseline_raw["pearson"], rec["_pearson"], higher_better=True
                 ),
-                "gof_af": delta_pack(baseline_raw["gof"], rec["_gof"], higher_better=False),
-                "rel_l2_TF": delta_pack(baseline_raw["rel"], rec["_rel"], higher_better=False),
+                "gof_af": delta_pack(
+                    baseline_raw["gof"], rec["_gof"], higher_better=False
+                ),
+                "rel_l2_TF": delta_pack(
+                    baseline_raw["rel"], rec["_rel"], higher_better=False
+                ),
             }
         ops_out[op_name] = public
         p, g = rec["pearson_freq"], rec["gof_af"]
@@ -350,7 +362,11 @@ def run(*, ckpts: dict[str, Path], batch_size: int) -> dict[str, Any]:
         del model
         if str(device).startswith("cuda"):
             torch.cuda.empty_cache()
-        arms_out[name] = {"ckpt": str(ckpt), "stoch_weight": weights, "domains": domains_out}
+        arms_out[name] = {
+            "ckpt": str(ckpt),
+            "stoch_weight": weights,
+            "domains": domains_out,
+        }
     return {
         "k_xi": int(config.K_XI),
         "stoch_dim": int(2 * config.K_XI + 4),

@@ -49,7 +49,9 @@ from response_variability.style import (  # noqa: E402
 OUT_DIR = config.RESULTS_DIR / "presentation"
 DZ = 0.5
 LN_STD_Z = 1.0  # +/- 1 log-std envelope
-BEDROCK_VIEW_M = 20.0  # visualization only -- vary_bedrock_vs=False, so it never affects the TF
+BEDROCK_VIEW_M = (
+    20.0  # visualization only -- vary_bedrock_vs=False, so it never affects the TF
+)
 
 
 def pick_case(pack: dict[str, np.ndarray], index: int | None) -> dict[str, float | int]:
@@ -153,20 +155,47 @@ def plot_vs_and_tf(
     fig, (ax_vs, ax_tf) = plt.subplots(1, 2, figsize=figsize("double", height_mm=70))
 
     rng_show = np.random.default_rng(0)
-    show_idx = rng_show.choice(vs_rows.shape[0], size=min(n_show, vs_rows.shape[0]), replace=False)
+    show_idx = rng_show.choice(
+        vs_rows.shape[0], size=min(n_show, vs_rows.shape[0]), replace=False
+    )
     for i in show_idx:
         ax_vs.step(vs_rows[i], depth_mid, color=color, alpha=0.15, lw=0.6, where="mid")
-    ax_vs.fill_betweenx(depth_mid, vs_lo, vs_hi, color=color, alpha=0.25, lw=0, label=r"median $\pm\,1\sigma_{\ln}$")
-    ax_vs.step(vs_median, depth_mid, color=color, lw=1.4, where="mid", label="median (randomized)")
+    ax_vs.fill_betweenx(
+        depth_mid,
+        vs_lo,
+        vs_hi,
+        color=color,
+        alpha=0.25,
+        lw=0,
+        label=r"median $\pm\,1\sigma_{\ln}$",
+    )
+    ax_vs.step(
+        vs_median,
+        depth_mid,
+        color=color,
+        lw=1.4,
+        where="mid",
+        label="median (randomized)",
+    )
     nominal_vs = np.where(depth_mid <= case["H"], case["vs1"], case["vs2"])
     ax_vs.step(
-        nominal_vs, depth_mid, color=base_color, ls="-.", lw=1.2, where="mid",
+        nominal_vs,
+        depth_mid,
+        color=base_color,
+        ls="-.",
+        lw=1.2,
+        where="mid",
         label=f"{HASKELL_NOMINAL} ($V_{{s1}}$/$V_{{s2}}$)",
     )
     ax_vs.axhline(case["H"], color="0.6", ls=":", lw=0.7)
     ax_vs.annotate(
-        "soil / bedrock", (0.02, case["H"]), xycoords=("axes fraction", "data"),
-        textcoords="offset points", xytext=(0, 3), fontsize=5.5, color="0.4",
+        "soil / bedrock",
+        (0.02, case["H"]),
+        xycoords=("axes fraction", "data"),
+        textcoords="offset points",
+        xytext=(0, 3),
+        fontsize=5.5,
+        color="0.4",
     )
     # Zoom on the soil range -- Vs2 is ~5x Vs1 here, so a shared linear axis would
     # crush the soil variability that is the actual story. The nominal step still
@@ -178,7 +207,10 @@ def plot_vs_and_tf(
     ax_vs.annotate(
         f"bedrock $V_{{s2}}$={case['vs2']:.0f} m/s →",
         (0.98, case["H"] + 0.06 * (depth_mid[-1] - depth_mid[0])),
-        xycoords=("axes fraction", "data"), ha="right", fontsize=5.5, color=base_color,
+        xycoords=("axes fraction", "data"),
+        ha="right",
+        fontsize=5.5,
+        color=base_color,
     )
     ax_vs.set_ylim(depth_mid[-1] + DZ, 0.0)
     ax_vs.set_xlabel(r"$V_s$ (m/s)")
@@ -188,14 +220,28 @@ def plot_vs_and_tf(
     panel_letter(ax_vs, "a")
 
     for i in show_idx:
-        ax_tf.loglog(freq, np.maximum(tf_rows[i], 1e-6), color=color, alpha=0.12, lw=0.5)
+        ax_tf.loglog(
+            freq, np.maximum(tf_rows[i], 1e-6), color=color, alpha=0.12, lw=0.5
+        )
     ax_tf.fill_between(
-        freq, np.maximum(tf_lo, 1e-6), np.maximum(tf_hi, 1e-6),
-        color=color, alpha=0.25, lw=0, label=r"median $\pm\,1\sigma_{\ln}$",
+        freq,
+        np.maximum(tf_lo, 1e-6),
+        np.maximum(tf_hi, 1e-6),
+        color=color,
+        alpha=0.25,
+        lw=0,
+        label=r"median $\pm\,1\sigma_{\ln}$",
     )
-    ax_tf.loglog(freq, np.maximum(tf_geomean, 1e-6), color=color, lw=1.4, label=f"{TORO} geomean")
     ax_tf.loglog(
-        freq, np.maximum(nominal_tf, 1e-6), color=base_color, ls="-.", lw=1.2, label=HASKELL_NOMINAL
+        freq, np.maximum(tf_geomean, 1e-6), color=color, lw=1.4, label=f"{TORO} geomean"
+    )
+    ax_tf.loglog(
+        freq,
+        np.maximum(nominal_tf, 1e-6),
+        color=base_color,
+        ls="-.",
+        lw=1.2,
+        label=HASKELL_NOMINAL,
     )
     ax_tf.set_xlabel("Frequency (Hz)")
     ax_tf.set_ylabel(r"$|\mathrm{TF}|$")
@@ -225,7 +271,10 @@ def plot_params(
 ) -> None:
     import matplotlib.pyplot as plt
 
-    from seiskit.profile_randomization import toro_adjacent_correlation, toro_sigma_ln_vs
+    from seiskit.profile_randomization import (
+        toro_adjacent_correlation,
+        toro_sigma_ln_vs,
+    )
 
     apply_nature_style()
     color = METHOD_COLORS[TORO]
@@ -252,7 +301,9 @@ def plot_params(
     z_scores = (np.log(vs_rows[:, 0]) - np.log(case["vs1"])) / sigma_eff
 
     fig, axes = plt.subplots(
-        2, 2, figsize=figsize("double", height_mm=140),
+        2,
+        2,
+        figsize=figsize("double", height_mm=140),
         gridspec_kw={"hspace": 0.65, "wspace": 0.3},
     )
     ax_sig, ax_rho, ax_hist, ax_tab = axes.ravel()
@@ -260,17 +311,25 @@ def plot_params(
     ax_sig.plot(sigma_z, z_grid, color=color, lw=1.4)
     ax_sig.axhline(cfg.sigma_ln_vs_depth_m, color="0.5", ls=":", lw=0.8)
     ax_sig.scatter(
-        [cfg.sigma_ln_vs_surface, cfg.sigma_ln_vs], [0.0, cfg.sigma_ln_vs_depth_m],
-        color=color, s=14, zorder=5,
+        [cfg.sigma_ln_vs_surface, cfg.sigma_ln_vs],
+        [0.0, cfg.sigma_ln_vs_depth_m],
+        color=color,
+        s=14,
+        zorder=5,
     )
     ax_sig.annotate(
-        f"surface {cfg.sigma_ln_vs_surface:.2f}", (cfg.sigma_ln_vs_surface, 0.0),
-        textcoords="offset points", xytext=(4, -8), fontsize=6,
+        f"surface {cfg.sigma_ln_vs_surface:.2f}",
+        (cfg.sigma_ln_vs_surface, 0.0),
+        textcoords="offset points",
+        xytext=(4, -8),
+        fontsize=6,
     )
     ax_sig.annotate(
         f"{cfg.sigma_ln_vs_depth_m:.0f} m: {cfg.sigma_ln_vs:.2f}",
         (cfg.sigma_ln_vs, cfg.sigma_ln_vs_depth_m),
-        textcoords="offset points", xytext=(4, 4), fontsize=6,
+        textcoords="offset points",
+        xytext=(4, 4),
+        fontsize=6,
     )
     ax_sig.set_ylim(depth_mid[-1], 0.0)
     ax_sig.set_xlabel(r"SPID $\sigma_{\ln V}(z)$")
@@ -278,19 +337,47 @@ def plot_params(
     ax_sig.set_title("Depth taper (before 1.16x inflation)")
     panel_letter(ax_sig, "a")
 
-    ax_rho.plot(0.5 * (depth_mid[:-1] + depth_mid[1:]), rho_z, color=color, lw=1.4, marker="o", ms=2)
+    ax_rho.plot(
+        0.5 * (depth_mid[:-1] + depth_mid[1:]),
+        rho_z,
+        color=color,
+        lw=1.4,
+        marker="o",
+        ms=2,
+    )
     ax_rho.set_xlabel("Depth of adjacent pair (m)")
     ax_rho.set_ylabel(r"Adjacent-layer $\rho$")
     ax_rho.set_ylim(0.0, 1.02)
-    ax_rho.set_title(r"AR(1) correlation: $\rho_0$ e$^{-\Delta z/\delta}$ blended to $\rho_{200}$")
+    ax_rho.set_title(
+        r"AR(1) correlation: $\rho_0$ e$^{-\Delta z/\delta}$ blended to $\rho_{200}$"
+    )
     panel_letter(ax_rho, "b")
 
     bins = np.linspace(-3.0, 3.0, 25)
-    ax_hist.hist(z_scores, bins=bins, density=True, color=color, alpha=0.55, label="drawn $Z$ (surface)")
+    ax_hist.hist(
+        z_scores,
+        bins=bins,
+        density=True,
+        color=color,
+        alpha=0.55,
+        label="drawn $Z$ (surface)",
+    )
     zz = np.linspace(-3.0, 3.0, 400)
-    ax_hist.plot(zz, np.exp(-0.5 * zz**2) / np.sqrt(2 * np.pi), color="0.2", lw=1.0, label=r"$N(0,1)$")
+    ax_hist.plot(
+        zz,
+        np.exp(-0.5 * zz**2) / np.sqrt(2 * np.pi),
+        color="0.2",
+        lw=1.0,
+        label=r"$N(0,1)$",
+    )
     ax_hist.axvline(cfg.clip_std, color="0.3", ls="--", lw=0.8)
-    ax_hist.axvline(-cfg.clip_std, color="0.3", ls="--", lw=0.8, label=f"clip $|Z|\\leq${cfg.clip_std:g}")
+    ax_hist.axvline(
+        -cfg.clip_std,
+        color="0.3",
+        ls="--",
+        lw=0.8,
+        label=f"clip $|Z|\\leq${cfg.clip_std:g}",
+    )
     ax_hist.set_xlabel(r"$Z = \ln(V_s/V_{s1}) / (1.16\,\sigma_{\ln V})$ at surface")
     ax_hist.set_ylabel("Density")
     ax_hist.set_title(f"Surface-sample marginal, n={n_seeds} seeds")
@@ -300,14 +387,26 @@ def plot_params(
     ax_tab.axis("off")
     rows = [
         ("case / n seeds", f"index {case['index']} / {n_seeds}"),
-        (r"$V_{s1}, H, V_{s2}$", f"{case['vs1']:.0f} m/s, {case['H']:.0f} m, {case['vs2']:.0f} m/s"),
+        (
+            r"$V_{s1}, H, V_{s2}$",
+            f"{case['vs1']:.0f} m/s, {case['H']:.0f} m, {case['vs2']:.0f} m/s",
+        ),
         (r"$\xi$, dz", f"{case['xi']:.3f}, {cfg.dz:g} m"),
         ("cov (unused by Toro)", f"{case['cov']:.3f}"),
-        (r"$\sigma_{\ln V}$ surf / at depth", f"{cfg.sigma_ln_vs_surface:.2f} / {cfg.sigma_ln_vs:.2f}"),
+        (
+            r"$\sigma_{\ln V}$ surf / at depth",
+            f"{cfg.sigma_ln_vs_surface:.2f} / {cfg.sigma_ln_vs:.2f}",
+        ),
         (r"$\sigma_{\ln V}$ taper depth", f"{cfg.sigma_ln_vs_depth_m:.0f} m"),
-        (r"inflation, clip $|Z|$", f"{cfg.toro_sigma_inflate:.2f}$\\times$, $\\leq${cfg.clip_std:g}"),
+        (
+            r"inflation, clip $|Z|$",
+            f"{cfg.toro_sigma_inflate:.2f}$\\times$, $\\leq${cfg.clip_std:g}",
+        ),
         (r"$\rho_0,\ \delta$", f"{cfg.toro_rho_0:.2f}, {cfg.toro_delta:.2f} m"),
-        (r"$\rho_{200},\ b,\ h_0$", f"{cfg.toro_rho_200:.2f}, {cfg.toro_b:.3f}, {cfg.toro_h0:.0f} m"),
+        (
+            r"$\rho_{200},\ b,\ h_0$",
+            f"{cfg.toro_rho_200:.2f}, {cfg.toro_b:.3f}, {cfg.toro_h0:.0f} m",
+        ),
         ("Hallal flags", "frozen H, fixed layers/bedrock"),
     ]
     tab = ax_tab.table(
@@ -354,10 +453,22 @@ def main() -> None:
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     plot_vs_and_tf(
-        freq, case, depth_mid, vs_rows, tf_rows, soil_nz, args.out_dir / "toro_vs_tf_demo.png"
+        freq,
+        case,
+        depth_mid,
+        vs_rows,
+        tf_rows,
+        soil_nz,
+        args.out_dir / "toro_vs_tf_demo.png",
     )
     plot_params(
-        case, cfg, depth_mid, vs_rows, soil_nz, args.n_seeds, args.out_dir / "toro_params_demo.png"
+        case,
+        cfg,
+        depth_mid,
+        vs_rows,
+        soil_nz,
+        args.n_seeds,
+        args.out_dir / "toro_params_demo.png",
     )
     print(f"Wrote {args.out_dir / 'toro_vs_tf_demo.png'}")
     print(f"Wrote {args.out_dir / 'toro_params_demo.png'}")

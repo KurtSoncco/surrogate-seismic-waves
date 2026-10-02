@@ -38,7 +38,12 @@ from response_variability.plots.plot_presentation import (  # noqa: E402
     make_synthetic_pack,
     pack_path,
 )
-from response_variability.style import apply_nature_style, figsize, panel_letter, savefig  # noqa: E402
+from response_variability.style import (  # noqa: E402
+    apply_nature_style,
+    figsize,
+    panel_letter,
+    savefig,
+)
 
 OUT_DIR = config.RESULTS_DIR / "response_variability" / "eval_bias"
 PACK_DIR = config.RESULTS_DIR / "presentation"
@@ -122,7 +127,9 @@ def spatial_pattern_pearson_one(pred: np.ndarray, true: np.ndarray) -> float:
     return float(np.nanmean(cor))
 
 
-def attach_toro(pack: dict[str, np.ndarray], domain: str, out_dir: Path) -> dict[str, np.ndarray]:
+def attach_toro(
+    pack: dict[str, np.ndarray], domain: str, out_dir: Path
+) -> dict[str, np.ndarray]:
     src = toro2022_path(out_dir, domain)
     if not src.is_file():
         return pack
@@ -170,8 +177,12 @@ def score_arm(
     p3 = _as_3d(pred, n_rec)
     mid = n_rec // 2
     central = pearson_rows(p3[:, mid], ops[:, mid])
-    array = pearson_rows(p3.reshape(-1, n_freq), ops.reshape(-1, n_freq)).reshape(n, n_rec)
-    spatial_sig = np.array([mean_spatial_sigma_ln(p3[i]) for i in range(n)], dtype=np.float64)
+    array = pearson_rows(p3.reshape(-1, n_freq), ops.reshape(-1, n_freq)).reshape(
+        n, n_rec
+    )
+    spatial_sig = np.array(
+        [mean_spatial_sigma_ln(p3[i]) for i in range(n)], dtype=np.float64
+    )
     spat_pat = np.array(
         [spatial_pattern_pearson_one(p3[i], ops[i]) for i in range(n)], dtype=np.float64
     )
@@ -191,7 +202,9 @@ def _quartile_table(cov: np.ndarray, values: np.ndarray) -> dict[str, Any]:
     if int(finite.sum()) < 8:
         return out
     try:
-        labels = pd.qcut(c[finite], 4, labels=["Q1", "Q2", "Q3", "Q4"], duplicates="drop")
+        labels = pd.qcut(
+            c[finite], 4, labels=["Q1", "Q2", "Q3", "Q4"], duplicates="drop"
+        )
     except ValueError:
         return out
     sub_v = v[finite]
@@ -205,19 +218,29 @@ def _quartile_table(cov: np.ndarray, values: np.ndarray) -> dict[str, Any]:
     return out
 
 
-def score_domain(domain: str, pack: dict[str, np.ndarray]) -> tuple[pd.DataFrame, dict[str, Any]]:
+def score_domain(
+    domain: str, pack: dict[str, np.ndarray]
+) -> tuple[pd.DataFrame, dict[str, Any]]:
     ops = np.asarray(pack["tf_opensees"], dtype=np.float64)
     n, n_rec, _n_freq = ops.shape
     mid = n_rec // 2
     edge = 0
     adj = min(mid + 1, n_rec - 1)
-    cov = np.asarray(pack["cov"], dtype=np.float64) if "cov" in pack else np.full(n, np.nan)
-    rH = np.asarray(pack["rH"], dtype=np.float64) if "rH" in pack else np.full(n, np.nan)
+    cov = (
+        np.asarray(pack["cov"], dtype=np.float64)
+        if "cov" in pack
+        else np.full(n, np.nan)
+    )
+    rH = (
+        np.asarray(pack["rH"], dtype=np.float64) if "rH" in pack else np.full(n, np.nan)
+    )
     nom = np.asarray(pack["tf_haskell_nominal"], dtype=np.float64)
     gino = np.asarray(pack["tf_gino"], dtype=np.float64) if "tf_gino" in pack else None
     left = leftover_metrics(ops, nom, gino)
 
-    ops_sig = np.array([mean_spatial_sigma_ln(ops[i]) for i in range(n)], dtype=np.float64)
+    ops_sig = np.array(
+        [mean_spatial_sigma_ln(ops[i]) for i in range(n)], dtype=np.float64
+    )
     ops_edge = pearson_rows(ops[:, edge], ops[:, mid])
     ops_adj = pearson_rows(ops[:, mid], ops[:, adj])
 
@@ -261,7 +284,9 @@ def score_domain(domain: str, pack: dict[str, np.ndarray]) -> tuple[pd.DataFrame
                     "central_pearson": float(scored["central_pearson"][i]),
                     "array_pearson": float(scored["array_pearson"][i]),
                     "spatial_sigma_ln": float(scored["spatial_sigma_ln"][i]),
-                    "spatial_pattern_pearson": float(scored["spatial_pattern_pearson"][i]),
+                    "spatial_pattern_pearson": float(
+                        scored["spatial_pattern_pearson"][i]
+                    ),
                     "ops_spatial_sigma_ln": float(ops_sig[i]),
                     "ops_edge_center_pearson": float(ops_edge[i]),
                     "ops_adjacent_pearson": float(ops_adj[i]),
@@ -291,11 +316,15 @@ def score_domain(domain: str, pack: dict[str, np.ndarray]) -> tuple[pd.DataFrame
             "opensees_spatial_sigma_ln": _quartile_table(cov, ops_sig),
             "one_d_central_pearson": _quartile_table(
                 cov,
-                score_arm(nom, ops)["central_pearson"] if HASKELL_NOMINAL in present else np.array([]),
+                score_arm(nom, ops)["central_pearson"]
+                if HASKELL_NOMINAL in present
+                else np.array([]),
             ),
             "gino_central_pearson": _quartile_table(
                 cov,
-                score_arm(gino, ops)["central_pearson"] if gino is not None else np.array([]),
+                score_arm(gino, ops)["central_pearson"]
+                if gino is not None
+                else np.array([]),
             ),
         },
     }
@@ -344,19 +373,25 @@ def plot_cov(
         nom = sub[sub["method"] == HASKELL_NOMINAL]
         if not nom.empty and nom["cov"].notna().sum() >= 8:
             try:
-                q = pd.qcut(nom["cov"], 4, labels=["Q1", "Q2", "Q3", "Q4"], duplicates="drop")
+                q = pd.qcut(
+                    nom["cov"], 4, labels=["Q1", "Q2", "Q3", "Q4"], duplicates="drop"
+                )
             except ValueError:
                 q = None
         else:
             q = None
         if q is not None:
             labels = list(q.cat.categories)
-            data_1d = [nom.loc[q == lab, "central_pearson"].to_numpy() for lab in labels]
+            data_1d = [
+                nom.loc[q == lab, "central_pearson"].to_numpy() for lab in labels
+            ]
             if not gino.empty:
                 gq = pd.qcut(
                     gino["cov"], 4, labels=["Q1", "Q2", "Q3", "Q4"], duplicates="drop"
                 )
-                data_g = [gino.loc[gq == lab, "central_pearson"].to_numpy() for lab in labels]
+                data_g = [
+                    gino.loc[gq == lab, "central_pearson"].to_numpy() for lab in labels
+                ]
             else:
                 data_g = None
             pos = np.arange(len(labels), dtype=float)
@@ -386,7 +421,9 @@ def plot_cov(
         ax1.set_ylim(0.4, 1.02)
         ax1.set_title(domain)
         panel_letter(ax1, "bd"[row] if len(domains) == 2 else "b")
-        ax1.plot([], [], color=METHOD_COLORS[HASKELL_NOMINAL], lw=4, label=HASKELL_NOMINAL)
+        ax1.plot(
+            [], [], color=METHOD_COLORS[HASKELL_NOMINAL], lw=4, label=HASKELL_NOMINAL
+        )
         ax1.plot([], [], color=METHOD_COLORS[GINO], lw=4, label=GINO)
         if row == 0:
             ax1.legend(loc="lower left")
@@ -510,7 +547,9 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--pack-dir", type=Path, default=PACK_DIR)
     p.add_argument("--out-dir", type=Path, default=OUT_DIR)
-    p.add_argument("--domains", nargs="+", default=list(SCORE_DOMAINS), choices=list(DOMAIN_SPECS))
+    p.add_argument(
+        "--domains", nargs="+", default=list(SCORE_DOMAINS), choices=list(DOMAIN_SPECS)
+    )
     p.add_argument("--synthetic", action="store_true")
     p.add_argument("--synthetic-n", type=int, default=8)
     p.add_argument("--plot", action=argparse.BooleanOptionalAction, default=True)

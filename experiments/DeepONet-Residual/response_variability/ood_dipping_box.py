@@ -38,14 +38,18 @@ def _rows_for_runs(ens_path: Path, sobol_ids: np.ndarray) -> np.ndarray:
     return rows
 
 
-def _take(ens_path: Path, rows: np.ndarray, keys: tuple[str, ...]) -> dict[str, np.ndarray]:
+def _take(
+    ens_path: Path, rows: np.ndarray, keys: tuple[str, ...]
+) -> dict[str, np.ndarray]:
     import h5py
 
     with h5py.File(ens_path) as f:
         return {key: np.asarray(f[key], dtype=np.float64)[rows] for key in keys}
 
 
-def sobol_ids_for_runs(runs: np.ndarray, *, box_root: Path = BOX_OOD_DIPPING) -> np.ndarray:
+def sobol_ids_for_runs(
+    runs: np.ndarray, *, box_root: Path = BOX_OOD_DIPPING
+) -> np.ndarray:
     """Map corpus run index to Sobol physics id via ``toro_comparison/pearson.h5``."""
     import h5py
 
@@ -57,7 +61,11 @@ def sobol_ids_for_runs(runs: np.ndarray, *, box_root: Path = BOX_OOD_DIPPING) ->
         raise ValueError("pearson.h5 index and sobol_id differ in length")
     sobol_of_run = np.full(int(index.max()) + 1, -1, dtype=int)
     sobol_of_run[index] = sobol
-    if np.any(runs < 0) or np.any(runs >= sobol_of_run.shape[0]) or np.any(sobol_of_run[runs] < 0):
+    if (
+        np.any(runs < 0)
+        or np.any(runs >= sobol_of_run.shape[0])
+        or np.any(sobol_of_run[runs] < 0)
+    ):
         raise KeyError("sample_idx is outside the ood_dipping pearson index")
     return sobol_of_run[runs]
 
@@ -87,7 +95,12 @@ def apply_ood_dipping_toro_passeri(
     toro = _take(
         toro_path,
         toro_rows,
-        ("toro_fixed_geomean", "toro_fixed_sigma_ln", "toro_dip_geomean", "toro_dip_sigma_ln"),
+        (
+            "toro_fixed_geomean",
+            "toro_fixed_sigma_ln",
+            "toro_dip_geomean",
+            "toro_dip_sigma_ln",
+        ),
     )
     pas = _take(
         pas_path,

@@ -58,7 +58,12 @@ from response_variability.plots.plot_presentation import (  # noqa: E402
     load_pack,
     pack_path,
 )
-from response_variability.style import apply_nature_style, figsize, panel_letter, savefig  # noqa: E402
+from response_variability.style import (  # noqa: E402
+    apply_nature_style,
+    figsize,
+    panel_letter,
+    savefig,
+)
 
 OUT_DIR = config.RESULTS_DIR / "response_variability" / "eval_bias"
 PACK_DIR = config.RESULTS_DIR / "presentation"
@@ -127,7 +132,10 @@ def cache_matches(path: Path, spec: dict[str, Any]) -> bool:
             return False
         if abs(float(z[k]) - float(spec[k])) > 1e-8:
             return False
-    return all(n in z.files for n in ("freq", "af_within_iface", "af_within_packbase", "af_outcrop"))
+    return all(
+        n in z.files
+        for n in ("freq", "af_within_iface", "af_within_packbase", "af_outcrop")
+    )
 
 
 def read_run_params(h5_path: Path) -> dict[str, float]:
@@ -233,7 +241,9 @@ def _load_center_accels(run_dir: Path) -> tuple[np.ndarray, dict[float, np.ndarr
     return t, by_y
 
 
-def _nearest_y(by_y: dict[float, np.ndarray], target: float) -> tuple[float, np.ndarray]:
+def _nearest_y(
+    by_y: dict[float, np.ndarray], target: float
+) -> tuple[float, np.ndarray]:
     y = min(by_y, key=lambda v: abs(v - target))
     return y, by_y[y]
 
@@ -311,7 +321,9 @@ def run_one_column(spec: dict[str, Any]) -> dict[str, Any]:
     run_id = f"{spec['domain']}_s{int(spec['sample']):04d}"
     raw_root = Path(spec["raw_dir"])
     raw_root.mkdir(parents=True, exist_ok=True)
-    model = build_model_data(cfg, vs, rho, nu, bedrock_mask=(vs >= float(spec["vs2"]) * 0.99))
+    model = build_model_data(
+        cfg, vs, rho, nu, bedrock_mask=(vs >= float(spec["vs2"]) * 0.99)
+    )
     run_dir = raw_root / run_id
     try:
         old_fds = _silence_fds()
@@ -343,7 +355,9 @@ def run_one_column(spec: dict[str, Any]) -> dict[str, Any]:
             dz=hx,
             smooth_coeff=int(config.SMOOTH_COEFF),
         )
-        a_inc = compute_ricker(motion_freq, float(spec["motion_t_shift"]), duration_eff, dt)
+        a_inc = compute_ricker(
+            motion_freq, float(spec["motion_t_shift"]), duration_eff, dt
+        )
         n = min(len(surf), len(a_inc))
         freq_o, af_out = TTF(
             surf[:n],
@@ -407,11 +421,19 @@ def collect_specs(
     limit: int | None,
     dt: float,
 ) -> list[dict[str, Any]]:
-    n = int(pack["tf_opensees"].shape[0]) if limit is None else min(limit, int(pack["tf_opensees"].shape[0]))
+    n = (
+        int(pack["tf_opensees"].shape[0])
+        if limit is None
+        else min(limit, int(pack["tf_opensees"].shape[0]))
+    )
     specs: list[dict[str, Any]] = []
     for i in range(n):
         h5 = resolve_h5(str(pack["h5_path"][i]), domain)
-        soil_nz = int(pack["soil_nz"][i]) if "soil_nz" in pack else int(round(float(pack["H"][i])))
+        soil_nz = (
+            int(pack["soil_nz"][i])
+            if "soil_nz" in pack
+            else int(round(float(pack["H"][i])))
+        )
         xi_soil, _ = read_soil_xi(h5, soil_nz)
         params = read_run_params(h5)
         vs1 = float(pack["vs1"][i])
@@ -419,7 +441,11 @@ def collect_specs(
         f0 = theoretical_f0(vs1, H)
         f1 = params["damping_freq_first"]
         if not np.isfinite(f1):
-            f1 = min(f0, params["motion_freq"]) if np.isfinite(f0) else params["motion_freq"]
+            f1 = (
+                min(f0, params["motion_freq"])
+                if np.isfinite(f0)
+                else params["motion_freq"]
+            )
         spec = {
             "domain": domain,
             "sample": i,
@@ -445,7 +471,11 @@ def collect_specs(
 
 
 def run_specs(specs: list[dict[str, Any]], *, n_workers: int) -> list[dict[str, Any]]:
-    todo = [s for s in specs if s.get("force") or not cache_matches(Path(s["cache_path"]), s)]
+    todo = [
+        s
+        for s in specs
+        if s.get("force") or not cache_matches(Path(s["cache_path"]), s)
+    ]
     done = [
         {
             "ok": True,
@@ -478,13 +508,19 @@ def run_specs(specs: list[dict[str, Any]], *, n_workers: int) -> list[dict[str, 
     return out
 
 
-def _load_cached_tf(spec: dict[str, Any], freq: np.ndarray) -> dict[str, np.ndarray] | None:
+def _load_cached_tf(
+    spec: dict[str, Any], freq: np.ndarray
+) -> dict[str, np.ndarray] | None:
     path = Path(spec["cache_path"])
     if not cache_matches(path, spec):
         return None
     z = np.load(path)
     freq_w = np.asarray(z["freq"], dtype=float)
-    freq_o = np.asarray(z["freq_outcrop"], dtype=float) if "freq_outcrop" in z.files else freq_w
+    freq_o = (
+        np.asarray(z["freq_outcrop"], dtype=float)
+        if "freq_outcrop" in z.files
+        else freq_w
+    )
     return {
         "within_iface": interp_af(freq_w, z["af_within_iface"], freq),
         "within_packbase": interp_af(freq_w, z["af_within_packbase"], freq),
@@ -554,15 +590,29 @@ def score_domain(
     for method in SCORE_ARMS:
         sub = df[df["method"] == method] if not df.empty else df
         block: dict[str, Any] = {
-            "pearson": median_iqr(sub["pearson"].to_numpy()) if not sub.empty else median_iqr(np.array([])),
-            "anderson": median_iqr(sub["gof_af"].to_numpy()) if not sub.empty else median_iqr(np.array([])),
-            "delta_ln_A_peak": median_iqr(sub["delta_ln_A_peak"].to_numpy()) if not sub.empty else median_iqr(np.array([])),
+            "pearson": median_iqr(sub["pearson"].to_numpy())
+            if not sub.empty
+            else median_iqr(np.array([])),
+            "anderson": median_iqr(sub["gof_af"].to_numpy())
+            if not sub.empty
+            else median_iqr(np.array([])),
+            "delta_ln_A_peak": median_iqr(sub["delta_ln_A_peak"].to_numpy())
+            if not sub.empty
+            else median_iqr(np.array([])),
         }
         for k in range(1, N_MODES + 1):
             col = f"delta_ln_A_mode{k}"
             pcol = f"pearson_mode{k}"
-            block[col] = median_iqr(sub[col].to_numpy()) if not sub.empty and col in sub else median_iqr(np.array([]))
-            block[pcol] = median_iqr(sub[pcol].to_numpy()) if not sub.empty and pcol in sub else median_iqr(np.array([]))
+            block[col] = (
+                median_iqr(sub[col].to_numpy())
+                if not sub.empty and col in sub
+                else median_iqr(np.array([]))
+            )
+            block[pcol] = (
+                median_iqr(sub[pcol].to_numpy())
+                if not sub.empty and pcol in sub
+                else median_iqr(np.array([]))
+            )
         rec["methods"][method] = block
     arrays = {
         "freq": freq,
@@ -587,7 +637,7 @@ def write_markdown(agg: dict[str, Any], dest: Path) -> None:
         "(Rayleigh, not hysteretic Haskell). Isolates damping *model shape* "
         "the same way that note isolated the ξ *value*.",
         "",
-        "Setup: `boundary_condition_type=\"1D\"` simple-shear column, "
+        'Setup: `boundary_condition_type="1D"` simple-shear column, '
         "`uniform_soil_only` with ζ = H5 soil-mean `Damping_zeta`, Rayleigh "
         "matched at `(damping_freq_first, 10 Hz)` — the 2-D data-gen convention, "
         "not the 1-D validation `(f_0, 3f_0)`. Analysis `dt = 0.01` s (2-D "
@@ -684,7 +734,13 @@ def plot_opensees1d(
             ax.set_visible(False)
             continue
         freq = arr["freq"]
-        ax.semilogx(freq, geomean_af(arr["tf_opensees2d"]), color="#000000", lw=1.2, label="OpenSees 2-D")
+        ax.semilogx(
+            freq,
+            geomean_af(arr["tf_opensees2d"]),
+            color="#000000",
+            lw=1.2,
+            label="OpenSees 2-D",
+        )
         ax.semilogx(
             freq,
             geomean_af(arr["tf_os1d_within_packbase"]),
@@ -722,7 +778,13 @@ def plot_opensees1d(
                 rec["methods"][method][f"delta_ln_A_mode{k}"]["median"]
                 for k in range(1, N_MODES + 1)
             ]
-            axb.bar(x + (j - 1) * width, meds, width=width, color=color, label=_lab if col == 0 else None)
+            axb.bar(
+                x + (j - 1) * width,
+                meds,
+                width=width,
+                color=color,
+                label=_lab if col == 0 else None,
+            )
         axb.axhline(0.0, color="0.6", lw=0.6)
         axb.set_xticks(x)
         axb.set_xticklabels(["1", "2", "3"])
@@ -747,7 +809,9 @@ def main() -> None:
     p.add_argument("--pack-dir", type=Path, default=PACK_DIR)
     p.add_argument("--out-dir", type=Path, default=OUT_DIR)
     p.add_argument("--cache-dir", type=Path, default=CACHE_DIR)
-    p.add_argument("--domains", nargs="+", default=list(SCORE_DOMAINS), choices=list(DOMAIN_SPECS))
+    p.add_argument(
+        "--domains", nargs="+", default=list(SCORE_DOMAINS), choices=list(DOMAIN_SPECS)
+    )
     p.add_argument("--n-workers", type=int, default=8)
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--force", action="store_true")
@@ -782,7 +846,9 @@ def main() -> None:
             run_reports.extend(run_specs(specs, n_workers=args.n_workers))
         df, rec, arrays = score_domain(domain, pack, specs)
         rec["n_failed"] = sum(
-            1 for r in run_reports if r.get("domain") == domain and not r.get("ok", True)
+            1
+            for r in run_reports
+            if r.get("domain") == domain and not r.get("ok", True)
         )
         frames.append(df)
         agg[domain] = rec
@@ -799,7 +865,9 @@ def main() -> None:
     n_fail = sum(1 for r in run_reports if not r.get("ok", True))
     if n_fail:
         err_path = args.out_dir / "opensees1d_failures.json"
-        err_path.write_text(json.dumps([r for r in run_reports if not r.get("ok", True)], indent=2))
+        err_path.write_text(
+            json.dumps([r for r in run_reports if not r.get("ok", True)], indent=2)
+        )
         print(f"OpenSees failures: {n_fail} (see {err_path})", flush=True)
     print(json.dumps(_jsonable(agg), indent=2), flush=True)
     print(f"Wrote {csv_path}", flush=True)

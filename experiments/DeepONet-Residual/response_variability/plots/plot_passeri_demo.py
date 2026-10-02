@@ -49,7 +49,13 @@ from haskell_baseline import haskell_af_within  # noqa: E402
 from response_variability.metrics import spatial_sigma_ln  # noqa: E402
 from response_variability.names import HASKELL_NOMINAL, METHOD_COLORS, PASSERI, TORO  # noqa: E402
 from response_variability.plots.plot_presentation import load_pack, pack_path  # noqa: E402
-from response_variability.plots.plot_toro_demo import BEDROCK_VIEW_M, DZ, LN_STD_Z, OUT_DIR, pick_case  # noqa: E402
+from response_variability.plots.plot_toro_demo import (  # noqa: E402
+    BEDROCK_VIEW_M,
+    DZ,
+    LN_STD_Z,
+    OUT_DIR,
+    pick_case,
+)
 from response_variability.seiskit_arms import ensure_seiskit, hallal_config  # noqa: E402
 from response_variability.style import (  # noqa: E402
     apply_nature_style,
@@ -98,12 +104,16 @@ def draw_ensemble(
     return cfg, depth_mid, vs_rows, tf_rows, soil_nz
 
 
-def draw_toro_soil_vs(case: dict[str, float | int], *, n_seeds: int, dz: float = DZ) -> np.ndarray:
+def draw_toro_soil_vs(
+    case: dict[str, float | int], *, n_seeds: int, dz: float = DZ
+) -> np.ndarray:
     """Surface-sample Vs from a Toro draw on the same case, for the sigma comparison panel."""
     ensure_seiskit()
     from seiskit.profile_randomization import generate_vs_randomized_profile
 
-    cfg = hallal_config(vs1=case["vs1"], H=case["H"], cov=case["cov"], vs2=case["vs2"], dz=dz)
+    cfg = hallal_config(
+        vs1=case["vs1"], H=case["H"], cov=case["cov"], vs2=case["vs2"], dz=dz
+    )
     out = np.empty(n_seeds, dtype=np.float64)
     for k, seed in enumerate(range(1, n_seeds + 1)):
         rng = np.random.default_rng(seed)
@@ -152,20 +162,47 @@ def plot_vs_and_tf(
     fig, (ax_vs, ax_tf) = plt.subplots(1, 2, figsize=figsize("double", height_mm=70))
 
     rng_show = np.random.default_rng(0)
-    show_idx = rng_show.choice(vs_rows.shape[0], size=min(n_show, vs_rows.shape[0]), replace=False)
+    show_idx = rng_show.choice(
+        vs_rows.shape[0], size=min(n_show, vs_rows.shape[0]), replace=False
+    )
     for i in show_idx:
         ax_vs.step(vs_rows[i], depth_mid, color=color, alpha=0.2, lw=0.6, where="mid")
-    ax_vs.fill_betweenx(depth_mid, vs_lo, vs_hi, color=color, alpha=0.3, lw=0, label=r"median $\pm\,1\sigma_{\ln}$")
-    ax_vs.step(vs_median, depth_mid, color=color, lw=1.4, where="mid", label="median (randomized)")
+    ax_vs.fill_betweenx(
+        depth_mid,
+        vs_lo,
+        vs_hi,
+        color=color,
+        alpha=0.3,
+        lw=0,
+        label=r"median $\pm\,1\sigma_{\ln}$",
+    )
+    ax_vs.step(
+        vs_median,
+        depth_mid,
+        color=color,
+        lw=1.4,
+        where="mid",
+        label="median (randomized)",
+    )
     nominal_vs = np.where(depth_mid <= case["H"], case["vs1"], case["vs2"])
     ax_vs.step(
-        nominal_vs, depth_mid, color=base_color, ls="-.", lw=1.2, where="mid",
+        nominal_vs,
+        depth_mid,
+        color=base_color,
+        ls="-.",
+        lw=1.2,
+        where="mid",
         label=f"{HASKELL_NOMINAL} ($V_{{s1}}$/$V_{{s2}}$)",
     )
     ax_vs.axhline(case["H"], color="0.6", ls=":", lw=0.7)
     ax_vs.annotate(
-        "soil / bedrock", (0.02, case["H"]), xycoords=("axes fraction", "data"),
-        textcoords="offset points", xytext=(0, 3), fontsize=5.5, color="0.4",
+        "soil / bedrock",
+        (0.02, case["H"]),
+        xycoords=("axes fraction", "data"),
+        textcoords="offset points",
+        xytext=(0, 3),
+        fontsize=5.5,
+        color="0.4",
     )
     # Same soil-only zoom as the Toro demo. The band is visibly much narrower here --
     # that's real: sigma_ln_tts is ~0.02 vs Toro's depth-tapered 0.15-0.25.
@@ -176,7 +213,10 @@ def plot_vs_and_tf(
     ax_vs.annotate(
         f"bedrock $V_{{s2}}$={case['vs2']:.0f} m/s →",
         (0.98, case["H"] + 0.06 * (depth_mid[-1] - depth_mid[0])),
-        xycoords=("axes fraction", "data"), ha="right", fontsize=5.5, color=base_color,
+        xycoords=("axes fraction", "data"),
+        ha="right",
+        fontsize=5.5,
+        color=base_color,
     )
     ax_vs.set_ylim(depth_mid[-1] + DZ, 0.0)
     ax_vs.set_xlabel(r"$V_s$ (m/s)")
@@ -186,14 +226,32 @@ def plot_vs_and_tf(
     panel_letter(ax_vs, "a")
 
     for i in show_idx:
-        ax_tf.loglog(freq, np.maximum(tf_rows[i], 1e-6), color=color, alpha=0.15, lw=0.5)
+        ax_tf.loglog(
+            freq, np.maximum(tf_rows[i], 1e-6), color=color, alpha=0.15, lw=0.5
+        )
     ax_tf.fill_between(
-        freq, np.maximum(tf_lo, 1e-6), np.maximum(tf_hi, 1e-6),
-        color=color, alpha=0.3, lw=0, label=r"median $\pm\,1\sigma_{\ln}$",
+        freq,
+        np.maximum(tf_lo, 1e-6),
+        np.maximum(tf_hi, 1e-6),
+        color=color,
+        alpha=0.3,
+        lw=0,
+        label=r"median $\pm\,1\sigma_{\ln}$",
     )
-    ax_tf.loglog(freq, np.maximum(tf_geomean, 1e-6), color=color, lw=1.4, label=f"{PASSERI} geomean")
     ax_tf.loglog(
-        freq, np.maximum(nominal_tf, 1e-6), color=base_color, ls="-.", lw=1.2, label=HASKELL_NOMINAL
+        freq,
+        np.maximum(tf_geomean, 1e-6),
+        color=color,
+        lw=1.4,
+        label=f"{PASSERI} geomean",
+    )
+    ax_tf.loglog(
+        freq,
+        np.maximum(nominal_tf, 1e-6),
+        color=base_color,
+        ls="-.",
+        lw=1.2,
+        label=HASKELL_NOMINAL,
     )
     ax_tf.set_xlabel("Frequency (Hz)")
     ax_tf.set_ylabel(r"$|\mathrm{TF}|$")
@@ -239,18 +297,41 @@ def plot_params(
     toro_sigma_ln = float(np.std(np.log(toro_soil_vs / case["vs1"]), ddof=1))
 
     fig, axes = plt.subplots(
-        2, 2, figsize=figsize("double", height_mm=140),
+        2,
+        2,
+        figsize=figsize("double", height_mm=140),
         gridspec_kw={"hspace": 0.65, "wspace": 0.3},
     )
     ax_tt, ax_vs, ax_bar, ax_tab = axes.ravel()
 
     bins_tt = np.linspace(-3.0, 3.0, 25)
-    ax_tt.hist(tts_z, bins=bins_tt, density=True, color=color, alpha=0.55, label="drawn $Z$ (tts)")
+    ax_tt.hist(
+        tts_z,
+        bins=bins_tt,
+        density=True,
+        color=color,
+        alpha=0.55,
+        label="drawn $Z$ (tts)",
+    )
     zz = np.linspace(-3.0, 3.0, 400)
-    ax_tt.plot(zz, np.exp(-0.5 * zz**2) / np.sqrt(2 * np.pi), color="0.2", lw=1.0, label=r"$N(0,1)$")
+    ax_tt.plot(
+        zz,
+        np.exp(-0.5 * zz**2) / np.sqrt(2 * np.pi),
+        color="0.2",
+        lw=1.0,
+        label=r"$N(0,1)$",
+    )
     ax_tt.axvline(cfg.clip_std, color="0.3", ls="--", lw=0.8)
-    ax_tt.axvline(-cfg.clip_std, color="0.3", ls="--", lw=0.8, label=f"clip $|Z|\\leq${cfg.clip_std:g}")
-    ax_tt.set_xlabel(r"$Z=\ln(tt/tt_{\mathrm{nom}})/\sigma_{\ln\,tts}$, whole soil layer")
+    ax_tt.axvline(
+        -cfg.clip_std,
+        color="0.3",
+        ls="--",
+        lw=0.8,
+        label=f"clip $|Z|\\leq${cfg.clip_std:g}",
+    )
+    ax_tt.set_xlabel(
+        r"$Z=\ln(tt/tt_{\mathrm{nom}})/\sigma_{\ln\,tts}$, whole soil layer"
+    )
     ax_tt.set_ylabel("Density")
     ax_tt.set_title(f"Travel-time Z (what Passeri actually draws), n={n_seeds}")
     ax_tt.legend(loc="upper right", fontsize=6)
@@ -259,12 +340,20 @@ def plot_params(
     span = max(4.0 * vs_sigma_ln, 1e-3)
     xs = np.linspace(-span, span, 400)
     ax_vs.hist(
-        ln_vs, bins=25, density=True, color=color, alpha=0.55, range=(-span, span),
+        ln_vs,
+        bins=25,
+        density=True,
+        color=color,
+        alpha=0.55,
+        range=(-span, span),
         label="drawn $\\ln(V_s/V_{s1})$",
     )
     ax_vs.plot(
-        xs, np.exp(-0.5 * (xs / vs_sigma_ln) ** 2) / (vs_sigma_ln * np.sqrt(2 * np.pi)),
-        color="0.2", lw=1.0, label=f"fit $N(0,{vs_sigma_ln:.3f}^2)$",
+        xs,
+        np.exp(-0.5 * (xs / vs_sigma_ln) ** 2) / (vs_sigma_ln * np.sqrt(2 * np.pi)),
+        color="0.2",
+        lw=1.0,
+        label=f"fit $N(0,{vs_sigma_ln:.3f}^2)$",
     )
     ax_vs.set_xlabel(r"$\ln(V_s/V_{s1})$, whole soil layer")
     ax_vs.set_ylabel("Density")
@@ -273,12 +362,19 @@ def plot_params(
     panel_letter(ax_vs, "b")
 
     bars = ax_bar.bar(
-        [TORO, PASSERI], [toro_sigma_ln, vs_sigma_ln], color=[toro_color, color], width=0.6,
+        [TORO, PASSERI],
+        [toro_sigma_ln, vs_sigma_ln],
+        color=[toro_color, color],
+        width=0.6,
     )
     for rect, val in zip(bars, [toro_sigma_ln, vs_sigma_ln]):
         ax_bar.annotate(
-            f"{val:.3f}", (rect.get_x() + rect.get_width() / 2, val),
-            textcoords="offset points", xytext=(0, 3), ha="center", fontsize=6.5,
+            f"{val:.3f}",
+            (rect.get_x() + rect.get_width() / 2, val),
+            textcoords="offset points",
+            xytext=(0, 3),
+            ha="center",
+            fontsize=6.5,
         )
     ax_bar.set_ylabel(r"empirical $\sigma_{\ln V_s}$ (surface sample)")
     ax_bar.set_title("Same case, same n seeds: effective Vs spread")
@@ -287,12 +383,18 @@ def plot_params(
     ax_tab.axis("off")
     rows = [
         ("case / n seeds", f"index {case['index']} / {n_seeds}"),
-        (r"$V_{s1}, H, V_{s2}$", f"{case['vs1']:.0f} m/s, {case['H']:.0f} m, {case['vs2']:.0f} m/s"),
+        (
+            r"$V_{s1}, H, V_{s2}$",
+            f"{case['vs1']:.0f} m/s, {case['H']:.0f} m, {case['vs2']:.0f} m/s",
+        ),
         (r"$\xi$, dz", f"{case['xi']:.3f}, {cfg.dz:g} m"),
         ("cov (feeds safety-clip $\\sigma$)", f"{case['cov']:.3f}"),
         (r"$\sigma_{\ln\,tts}$ (the actual draw)", f"{cfg.sigma_ln_tts:.3f}"),
         (r"tts $\rho$ boost", f"+{cfg.tts_rho_boost:.2f} (moot: 1 layer)"),
-        (r"$V_s$ safety clip $\sigma$", f"max({cfg.sigma_ln_vs:.2f}, $\\sqrt{{\\ln(1+cov^2)}}$)"),
+        (
+            r"$V_s$ safety clip $\sigma$",
+            f"max({cfg.sigma_ln_vs:.2f}, $\\sqrt{{\\ln(1+cov^2)}}$)",
+        ),
         ("clip $|Z|\\leq$", f"{cfg.clip_std:g}"),
         ("tt bound (factor)", "$\\times$3 either way"),
         ("soil layers detected", "1 (flat base, no Vs jump)"),
@@ -343,10 +445,21 @@ def main() -> None:
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     plot_vs_and_tf(
-        freq, case, depth_mid, vs_rows, tf_rows, soil_nz, args.out_dir / "passeri_vs_tf_demo.png"
+        freq,
+        case,
+        depth_mid,
+        vs_rows,
+        tf_rows,
+        soil_nz,
+        args.out_dir / "passeri_vs_tf_demo.png",
     )
     plot_params(
-        case, cfg, vs_rows, soil_nz, toro_soil_vs, args.n_seeds,
+        case,
+        cfg,
+        vs_rows,
+        soil_nz,
+        toro_soil_vs,
+        args.n_seeds,
         args.out_dir / "passeri_params_demo.png",
     )
     print(f"Wrote {args.out_dir / 'passeri_vs_tf_demo.png'}")

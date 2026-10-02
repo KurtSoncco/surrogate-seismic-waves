@@ -85,8 +85,7 @@ def _ood_roots() -> tuple[Path, Path]:
         os.environ.get(
             "OOD_GT_ROOT",
             str(
-                Path.home()
-                / "surrogate-seismic-waves/checkpoints/ood_scores_full7680"
+                Path.home() / "surrogate-seismic-waves/checkpoints/ood_scores_full7680"
             ),
         )
     )
@@ -283,10 +282,7 @@ def main() -> None:
     dn_ckpt = Path(
         os.environ.get(
             "DEEPONET_CKPT",
-            str(
-                dn_config.CHECKPOINT_DIR
-                / "M7680_gino_rebal_ft.pt"
-            ),
+            str(dn_config.CHECKPOINT_DIR / "M7680_gino_rebal_ft.pt"),
         )
     )
     dn_model, _ = load_deeponet(dn_ckpt, device)
@@ -333,9 +329,7 @@ def main() -> None:
                 "deeponet_pearson_f": _pearson_across_freq(
                     tf_true, tf_dn, n_rec, n_freq
                 ),
-                "tf1d_pearson_f": _pearson_across_freq(
-                    tf_true, tf1d, n_rec, n_freq
-                ),
+                "tf1d_pearson_f": _pearson_across_freq(tf_true, tf1d, n_rec, n_freq),
                 "loglo_r2": _r2(tf_true, tf_loglo),
                 "deeponet_r2": _r2(tf_true, tf_dn),
                 "tf1d_r2": _r2(tf_true, tf1d),
@@ -344,7 +338,7 @@ def main() -> None:
             all_rows.append(row)
             if (j + 1) % 50 == 0 or j == 0:
                 print(
-                    f"  [{camp}] {j+1}/{len(jobs)}  "
+                    f"  [{camp}] {j + 1}/{len(jobs)}  "
                     f"LOGLO={row['loglo_rel_l2']:.3f}  "
                     f"DN={row['deeponet_rel_l2']:.3f}  "
                     f"TF1D={row['tf1d_rel_l2']:.3f}",

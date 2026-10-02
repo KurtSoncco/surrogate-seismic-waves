@@ -110,9 +110,9 @@ def fields_from_section(
     z_imp = (rho * vs_pad).astype(np.float32)
     z_imp = z_imp / max(float(z_imp.max()), _EPS)
     cols = np.clip(np.asarray(recorder_x, dtype=int), 0, vs.shape[1] - 1)
-    fields = np.stack(
-        [vs_n[:, cols], zeta_n[:, cols], z_imp[:, cols]], axis=0
-    ).astype(np.float32)
+    fields = np.stack([vs_n[:, cols], zeta_n[:, cols], z_imp[:, cols]], axis=0).astype(
+        np.float32
+    )
     vs_col = vs[:soil_nz, cols].mean(axis=0).astype(np.float32)
     return fields, vs_col
 
@@ -240,9 +240,7 @@ def pack_practitioner_inputs(
             )
         ),
         "vs_eq": float(
-            vs_eq_travel_time(
-                layers.H, layers.Vs, vs_rock=layers.vs_rock, vs_1d=vs_1d
-            )
+            vs_eq_travel_time(layers.H, layers.Vs, vs_rock=layers.vs_rock, vs_1d=vs_1d)
         ),
         "travel_time_s": float(
             travel_time_s(layers.H, layers.Vs, vs_rock=layers.vs_rock, vs_1d=vs_1d)

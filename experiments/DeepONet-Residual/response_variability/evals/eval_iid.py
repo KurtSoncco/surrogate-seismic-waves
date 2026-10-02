@@ -47,8 +47,7 @@ def _require_files(*paths: Path) -> None:
     if missing:
         lines = "\n".join(f"  {p}" for p in missing)
         raise FileNotFoundError(
-            "Missing required files for the IID Response_Variability check:\n"
-            f"{lines}"
+            f"Missing required files for the IID Response_Variability check:\n{lines}"
         )
 
 
@@ -65,7 +64,9 @@ def load_iid_arrays(
     meta = dict(np.load(cache_dir / "meta.npz", allow_pickle=True))
     tf2d_path = cache_dir / "tf2d.npy"
     if tf2d_path.is_file():
-        tf_ops = np.asarray(np.load(tf2d_path, mmap_mode="r")[test_idx], dtype=np.float64)
+        tf_ops = np.asarray(
+            np.load(tf2d_path, mmap_mode="r")[test_idx], dtype=np.float64
+        )
     else:
         tf_all = np.load(config.TF_PER_SAMPLE_PATH, mmap_mode="r")
         sidx = np.load(cache_dir / "sample_indices.npy")[test_idx]
@@ -77,10 +78,12 @@ def load_iid_arrays(
     return {
         "tf_opensees": tf_ops,
         "tf_haskell_nominal": np.asarray(
-            np.load(cache_dir / "tf1d_nom.npy", mmap_mode="r")[test_idx], dtype=np.float64
+            np.load(cache_dir / "tf1d_nom.npy", mmap_mode="r")[test_idx],
+            dtype=np.float64,
         ),
         "tf_haskell_column": np.asarray(
-            np.load(cache_dir / "tf1d_col.npy", mmap_mode="r")[test_idx], dtype=np.float64
+            np.load(cache_dir / "tf1d_col.npy", mmap_mode="r")[test_idx],
+            dtype=np.float64,
         ),
         "freq": np.asarray(freq, dtype=float),
         "vs1": vs1,
@@ -239,7 +242,9 @@ def summarize_methods(pack: dict[str, np.ndarray]) -> tuple[pd.DataFrame, pd.Dat
                 af_ref_spatial=tf_ops[i] if spatial is not None else None,
                 af_cand_spatial=spatial,
             )
-            center = float(f0_ex[i]) if i < f0_ex.size and np.isfinite(f0_ex[i]) else None
+            center = (
+                float(f0_ex[i]) if i < f0_ex.size and np.isfinite(f0_ex[i]) else None
+            )
             mets["gof_af"] = anderson_frequency_domain(
                 freq,
                 af_ref,
@@ -291,17 +296,13 @@ def band_misfit_table(pack: dict[str, np.ndarray]) -> pd.DataFrame:
             }
             for band, (lo, hi) in FREQ_BANDS.items():
                 if cand.ndim == 1:
-                    row[f"rel_l2_{band}"] = band_rel_l2(
-                        cand, ref_c, freq, lo=lo, hi=hi
-                    )
+                    row[f"rel_l2_{band}"] = band_rel_l2(cand, ref_c, freq, lo=lo, hi=hi)
                     row[f"rel_l2_{band}_central"] = row[f"rel_l2_{band}"]
                     row[f"pearson_{band}"] = band_pearson(
                         cand, ref_c, freq, lo=lo, hi=hi
                     )
                     row[f"pearson_{band}_central"] = row[f"pearson_{band}"]
-                    row[f"gof_{band}"] = band_anderson(
-                        cand, ref_c, freq, lo=lo, hi=hi
-                    )
+                    row[f"gof_{band}"] = band_anderson(cand, ref_c, freq, lo=lo, hi=hi)
                     row[f"gof_{band}_central"] = row[f"gof_{band}"]
                 else:
                     row[f"rel_l2_{band}"] = band_rel_l2(

@@ -132,7 +132,9 @@ def spatial_percentiles(
     )
 
 
-def rel_l2(pred: np.ndarray, true: np.ndarray, *, mask: np.ndarray | None = None) -> float:
+def rel_l2(
+    pred: np.ndarray, true: np.ndarray, *, mask: np.ndarray | None = None
+) -> float:
     p = np.asarray(pred, dtype=float).ravel()
     t = np.asarray(true, dtype=float).ravel()
     if mask is not None:

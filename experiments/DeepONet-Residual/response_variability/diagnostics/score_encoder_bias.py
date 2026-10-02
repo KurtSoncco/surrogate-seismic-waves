@@ -161,12 +161,23 @@ def _row(name: str) -> dict[str, Any]:
 
 
 def write_table(names: list[str], out: Path) -> dict[str, Any]:
-    rows = [_row(n) for n in names if (config.RESULTS_DIR / "response_variability" / "gino_bias" / n / "summary.json").is_file()]
+    rows = [
+        _row(n)
+        for n in names
+        if (
+            config.RESULTS_DIR
+            / "response_variability"
+            / "gino_bias"
+            / n
+            / "summary.json"
+        ).is_file()
+    ]
     control = next((r for r in rows if r["name"] == CONTROL), None)
     did: list[dict[str, Any]] = []
     for r in rows:
         if control is None or r["name"] == CONTROL:
             continue
+
         def d(key: str) -> float | None:
             a, b = r.get(key), control.get(key)
             if a is None or b is None:
@@ -183,7 +194,11 @@ def write_table(names: list[str], out: Path) -> dict[str, Any]:
             }
         )
     unfreeze = next((r for r in rows if r["name"] == "gino_gno_unfreeze_probe"), None)
-    collapse = float("nan") if unfreeze is None else float(unfreeze["collapse_ratio"] or float("nan"))
+    collapse = (
+        float("nan")
+        if unfreeze is None
+        else float(unfreeze["collapse_ratio"] or float("nan"))
+    )
     import math
 
     if unfreeze is None or not math.isfinite(collapse) or collapse < 0.7:
@@ -209,7 +224,12 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--ckpt-dir", type=Path, default=CKPT_DIR)
     p.add_argument("--batch-size", type=int, default=config.BATCH_SIZE)
-    p.add_argument("--n-pretell", type=int, default=0, help="0 skips Pretell (bias table does not need it).")
+    p.add_argument(
+        "--n-pretell",
+        type=int,
+        default=0,
+        help="0 skips Pretell (bias table does not need it).",
+    )
     p.add_argument("--skip-predict", action="store_true")
     p.add_argument("--table-only", action="store_true")
     p.add_argument(
@@ -238,7 +258,10 @@ def main() -> None:
         names = [n for n, _, _ in RUNS]
     report = write_table(
         names,
-        config.RESULTS_DIR / "response_variability" / "gino_bias" / "d0_encoder_table.json",
+        config.RESULTS_DIR
+        / "response_variability"
+        / "gino_bias"
+        / "d0_encoder_table.json",
     )
     if args.gate_d1:
         pick = str(report.get("d1_pick") or "")

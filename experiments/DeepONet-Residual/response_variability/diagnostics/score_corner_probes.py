@@ -138,9 +138,7 @@ def score_ckpt(
     rec["ops_ops_50_148"] = _ops_ops_for_idx(pack, (50, 148))
     p50 = rec.get("pearson_50")
     rec["sample50_below_ceiling"] = (
-        bool(float(p50) < float(rec["ops_ops_50_148"]))
-        if p50 not in ("", None)
-        else ""
+        bool(float(p50) < float(rec["ops_ops_50_148"])) if p50 not in ("", None) else ""
     )
     rec["note"] = ""
     return rec

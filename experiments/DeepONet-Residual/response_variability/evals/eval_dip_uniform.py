@@ -53,7 +53,9 @@ from response_variability.plots.tf_atlas import (  # noqa: E402
 HELD_OUT = OUT_DIR / "dipping_heldout_pack.npz"
 VAL_PACK = OUT_DIR / "dipping_val_pack.npz"
 TEST_PACK = config.RESULTS_DIR / "presentation" / "dipping_pack.npz"
-CLASSICAL = config.RESULTS_DIR / "response_variability" / "eval_bias" / "dipping_classical.npz"
+CLASSICAL = (
+    config.RESULTS_DIR / "response_variability" / "eval_bias" / "dipping_classical.npz"
+)
 PACK_OUT = OUT_DIR / "dipping_uniform_pack.npz"
 CHECKPOINT = OUT_DIR / "dipping_uniform_checkpoint.npz"
 FIG_DIR = OUT_DIR / "dipping"
@@ -105,7 +107,9 @@ def _split_fields(held: np.lib.npyio.NpzFile) -> tuple[np.ndarray, np.ndarray]:
     """Val then test Vs strips, aligned with ``held`` (val concatenated with test)."""
     val = np.load(VAL_PACK, allow_pickle=True)
     test = np.load(TEST_PACK, allow_pickle=True)
-    if not np.array_equal(held["sample_idx"][: val["sample_idx"].shape[0]], val["sample_idx"]):
+    if not np.array_equal(
+        held["sample_idx"][: val["sample_idx"].shape[0]], val["sample_idx"]
+    ):
         raise RuntimeError("val pack sample_idx does not match the held-out prefix")
     n_val = int(val["sample_idx"].shape[0])
     if not np.array_equal(held["sample_idx"][n_val:], test["sample_idx"]):
@@ -174,7 +178,9 @@ def write_depth_tables(table: dict[str, np.ndarray], fig_dir: Path) -> None:
 
     fig_dir.mkdir(parents=True, exist_ok=True)
     frame = pd.DataFrame(table)
-    frame["abs_err_discrete"] = np.abs(frame["sigma_y_empirical"] - frame["sigma_y_discrete"])
+    frame["abs_err_discrete"] = np.abs(
+        frame["sigma_y_empirical"] - frame["sigma_y_discrete"]
+    )
     frame["abs_err_continuous"] = np.abs(
         frame["sigma_y_empirical"] - frame["sigma_y_continuous"]
     )
@@ -186,7 +192,9 @@ def write_depth_tables(table: dict[str, np.ndarray], fig_dir: Path) -> None:
                 "split": split,
                 "n": int(len(part)),
                 "median_abs_err_discrete_m": float(part["abs_err_discrete"].median()),
-                "median_abs_err_continuous_m": float(part["abs_err_continuous"].median()),
+                "median_abs_err_continuous_m": float(
+                    part["abs_err_continuous"].median()
+                ),
                 "max_abs_err_discrete_m": float(part["abs_err_discrete"].max()),
             }
         )
@@ -245,7 +253,18 @@ def _load_checkpoint(n: int, n_freq: int) -> dict[str, np.ndarray]:
     z = np.load(CHECKPOINT)
     if int(z["done"].shape[0]) != n or int(z["toro_geo"].shape[1]) != n_freq:
         return _empty_spectra(n, n_freq)
-    return {key: np.array(z[key]) for key in ("toro_geo", "toro_lo", "toro_hi", "passeri_geo", "passeri_lo", "passeri_hi", "done")}
+    return {
+        key: np.array(z[key])
+        for key in (
+            "toro_geo",
+            "toro_lo",
+            "toro_hi",
+            "passeri_geo",
+            "passeri_lo",
+            "passeri_hi",
+            "done",
+        )
+    }
 
 
 def _save_checkpoint(spec: dict[str, np.ndarray]) -> None:
@@ -317,7 +336,7 @@ def run_ensembles(
                 left = (len(pending) - finished) / max(rate, 1e-6)
                 print(
                     f"  {int(spec['done'].sum())}/{n} done "
-                    f"({elapsed/60:.1f} min elapsed, ~{left/60:.1f} min left)",
+                    f"({elapsed / 60:.1f} min elapsed, ~{left / 60:.1f} min left)",
                     flush=True,
                 )
     if not bool(np.all(spec["done"])):
@@ -325,12 +344,18 @@ def run_ensembles(
     return spec
 
 
-def build_pack(held: np.lib.npyio.NpzFile, spec: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+def build_pack(
+    held: np.lib.npyio.NpzFile, spec: dict[str, np.ndarray]
+) -> dict[str, np.ndarray]:
     drop = {"vs_2d", "vs_column"}
     pack = {key: held[key] for key in held.files if key not in drop}
     pack["tf_toro_frozen"] = np.array(held["tf_toro"], dtype=np.float64, copy=True)
-    pack["tf_passeri_frozen"] = np.array(held["tf_passeri"], dtype=np.float64, copy=True)
-    pack["sigma_ln_toro_frozen"] = np.array(held["sigma_ln_toro"], dtype=np.float64, copy=True)
+    pack["tf_passeri_frozen"] = np.array(
+        held["tf_passeri"], dtype=np.float64, copy=True
+    )
+    pack["sigma_ln_toro_frozen"] = np.array(
+        held["sigma_ln_toro"], dtype=np.float64, copy=True
+    )
     pack["sigma_ln_passeri_frozen"] = np.array(
         held["sigma_ln_passeri"], dtype=np.float64, copy=True
     )
@@ -436,7 +461,14 @@ def plot_bands(pack: dict[str, np.ndarray], path: Path) -> Path:
             lo = np.maximum(geo * np.exp(-sig), 1e-6)
             hi = np.maximum(geo * np.exp(sig), 1e-6)
             ax.fill_between(freq, lo, hi, color=color, alpha=0.12, lw=0, zorder=2)
-            ax.plot(freq, np.maximum(geo, 1e-6), color=color, ls=(0, (1.2, 1.4)), lw=1.1, zorder=3)
+            ax.plot(
+                freq,
+                np.maximum(geo, 1e-6),
+                color=color,
+                ls=(0, (1.2, 1.4)),
+                lw=1.1,
+                zorder=3,
+            )
         for lo_key, hi_key, geo_key, color in (
             ("tf_toro_lo", "tf_toro_hi", "tf_toro", toro_c),
             ("tf_passeri_lo", "tf_passeri_hi", "tf_passeri", pas_c),

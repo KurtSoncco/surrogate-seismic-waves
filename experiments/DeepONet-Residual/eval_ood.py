@@ -74,7 +74,11 @@ def _ood_stoch(
 ) -> tuple[np.ndarray, str]:
     """Map OOD attrs onto the IID stochastic branch (ξ + CoV, or legacy 20-d)."""
     from data import build_stoch_vector
-    from features import empirical_acf_length, spectral_kl_coefficients, spectral_kl_from_field
+    from features import (
+        empirical_acf_length,
+        spectral_kl_coefficients,
+        spectral_kl_from_field,
+    )
 
     if "rf_seed" in params:
         rf_seed = int(params["rf_seed"])
@@ -163,7 +167,13 @@ def _load_residual_model(ckpt_path: Path, device):
     import torch
     from model import build_from_checkpoint_blob
 
-    from data import infer_trunk_scales, stoch_dim, stoch_layout_from_blob, trunk_feature_names, trunk_in_features_from_state
+    from data import (
+        infer_trunk_scales,
+        stoch_dim,
+        stoch_layout_from_blob,
+        trunk_feature_names,
+        trunk_in_features_from_state,
+    )
 
     blob = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     trunk_set = blob.get("trunk_set", "full")
@@ -179,9 +189,7 @@ def _load_residual_model(ckpt_path: Path, device):
     blob["stoch_layout"] = layout
     sdim = stoch_dim(layout=layout)
     blob["stoch_dim"] = int(sdim)
-    trunk_dim = len(trunk_feature_names(trunk_set, trunk_scales)) + (
-        1 if serial else 0
-    )
+    trunk_dim = len(trunk_feature_names(trunk_set, trunk_scales)) + (1 if serial else 0)
     model = build_from_checkpoint_blob(
         blob,
         field_channels=config.FIELD_CHANNELS,

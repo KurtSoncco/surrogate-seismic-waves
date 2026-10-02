@@ -106,13 +106,15 @@ def read_soil_xi(h5_path: Path, soil_nz: int) -> tuple[float, float]:
     return xi_soil, xi_bed
 
 
-def score_one(
-    freq: np.ndarray, ops: np.ndarray, cand: np.ndarray
-) -> dict[str, float]:
-    return method_vs_reference(freq=freq, af_ref=_as_central(ops), af_cand=np.asarray(cand, float))
+def score_one(freq: np.ndarray, ops: np.ndarray, cand: np.ndarray) -> dict[str, float]:
+    return method_vs_reference(
+        freq=freq, af_ref=_as_central(ops), af_cand=np.asarray(cand, float)
+    )
 
 
-def score_domain(domain: str, pack: dict[str, np.ndarray]) -> tuple[pd.DataFrame, dict[str, Any]]:
+def score_domain(
+    domain: str, pack: dict[str, np.ndarray]
+) -> tuple[pd.DataFrame, dict[str, Any]]:
     freq = np.asarray(pack["freq"], dtype=float)
     ops = np.asarray(pack["tf_opensees"], dtype=np.float64)
     nom_pack = np.asarray(pack["tf_haskell_nominal"], dtype=np.float64)
@@ -121,15 +123,25 @@ def score_domain(domain: str, pack: dict[str, np.ndarray]) -> tuple[pd.DataFrame
     rel_pack = np.empty(n, dtype=np.float64)
     for i in range(n):
         h5 = resolve_h5(str(pack["h5_path"][i]), domain)
-        soil_nz = int(pack["soil_nz"][i]) if "soil_nz" in pack else int(round(float(pack["H"][i])))
+        soil_nz = (
+            int(pack["soil_nz"][i])
+            if "soil_nz" in pack
+            else int(round(float(pack["H"][i])))
+        )
         xi_soil, xi_bed = read_soil_xi(h5, soil_nz)
         vs1 = float(pack["vs1"][i])
         H = float(pack["H"][i])
         vs2 = float(pack["vs2"][i])
-        tf05 = haskell_nominal_af_within(freq, vs1=vs1, H=H, vs2=vs2, xi=XI_FIXED, rho=config.RHO)
-        tf_xi = haskell_nominal_af_within(freq, vs1=vs1, H=H, vs2=vs2, xi=xi_soil, rho=config.RHO)
+        tf05 = haskell_nominal_af_within(
+            freq, vs1=vs1, H=H, vs2=vs2, xi=XI_FIXED, rho=config.RHO
+        )
+        tf_xi = haskell_nominal_af_within(
+            freq, vs1=vs1, H=H, vs2=vs2, xi=xi_soil, rho=config.RHO
+        )
         packed = _as_central(nom_pack[i])
-        rel_pack[i] = float(np.max(np.abs(tf05 - packed)) / max(float(np.max(np.abs(packed))), 1e-12))
+        rel_pack[i] = float(
+            np.max(np.abs(tf05 - packed)) / max(float(np.max(np.abs(packed))), 1e-12)
+        )
         m05 = score_one(freq, ops[i], tf05)
         mxi = score_one(freq, ops[i], tf_xi)
         m_vs = method_vs_reference(freq=freq, af_ref=tf_xi, af_cand=tf05)
@@ -160,7 +172,9 @@ def score_domain(domain: str, pack: dict[str, np.ndarray]) -> tuple[pd.DataFrame
             "rel_l2",
         )
         rows.append({**shared, "method": ARM_FIXED, **{k: m05[k] for k in metric_keys}})
-        rows.append({**shared, "method": ARM_SAMPLE, **{k: mxi[k] for k in metric_keys}})
+        rows.append(
+            {**shared, "method": ARM_SAMPLE, **{k: mxi[k] for k in metric_keys}}
+        )
     df = pd.DataFrame(rows)
     rec: dict[str, Any] = {
         "n": n,
@@ -168,7 +182,9 @@ def score_domain(domain: str, pack: dict[str, np.ndarray]) -> tuple[pd.DataFrame
         "xi_bedrock": median_iqr(df.drop_duplicates("sample")["xi_bedrock"].to_numpy()),
         "xi_fixed": XI_FIXED,
         "pack_nom_rel_err_max": float(np.nanmax(rel_pack)),
-        "pearson_05_vs_xi": median_iqr(df.drop_duplicates("sample")["pearson_05_vs_xi"].to_numpy()),
+        "pearson_05_vs_xi": median_iqr(
+            df.drop_duplicates("sample")["pearson_05_vs_xi"].to_numpy()
+        ),
         "delta_ln_A_05_vs_xi": median_iqr(
             df.drop_duplicates("sample")["delta_ln_A_05_vs_xi"].to_numpy()
         ),
@@ -328,7 +344,9 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--pack-dir", type=Path, default=PACK_DIR)
     p.add_argument("--out-dir", type=Path, default=OUT_DIR)
-    p.add_argument("--domains", nargs="+", default=list(SCORE_DOMAINS), choices=list(DOMAIN_SPECS))
+    p.add_argument(
+        "--domains", nargs="+", default=list(SCORE_DOMAINS), choices=list(DOMAIN_SPECS)
+    )
     args = p.parse_args()
 
     frames: list[pd.DataFrame] = []

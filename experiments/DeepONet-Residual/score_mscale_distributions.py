@@ -121,7 +121,9 @@ def load_domain_arrays(cache_dir: Path, test_idx: np.ndarray) -> dict[str, np.nd
     cache_dir = Path(cache_dir)
     tf2d_path = cache_dir / "tf2d.npy"
     if tf2d_path.is_file():
-        tf_ops = np.asarray(np.load(tf2d_path, mmap_mode="r")[test_idx], dtype=np.float64)
+        tf_ops = np.asarray(
+            np.load(tf2d_path, mmap_mode="r")[test_idx], dtype=np.float64
+        )
     elif config.TF_PER_SAMPLE_PATH.is_file():
         tf_all = np.load(config.TF_PER_SAMPLE_PATH, mmap_mode="r")
         sidx = np.load(cache_dir / "sample_indices.npy")[test_idx]
@@ -135,7 +137,8 @@ def load_domain_arrays(cache_dir: Path, test_idx: np.ndarray) -> dict[str, np.nd
     return {
         "tf_opensees": tf_ops,
         "tf_haskell_nominal": np.asarray(
-            np.load(cache_dir / "tf1d_nom.npy", mmap_mode="r")[test_idx], dtype=np.float64
+            np.load(cache_dir / "tf1d_nom.npy", mmap_mode="r")[test_idx],
+            dtype=np.float64,
         ),
         "freq": np.asarray(freq, dtype=float),
         "local_idx": test_idx,
@@ -146,7 +149,9 @@ def default_ckpt_map() -> dict[str, Path]:
     return {name: config.CHECKPOINT_DIR / fname for name, fname in DEFAULT_ARMS}
 
 
-def run(*, ckpts: dict[str, Path], batch_size: int, include_haskell: bool) -> dict[str, Any]:
+def run(
+    *, ckpts: dict[str, Path], batch_size: int, include_haskell: bool
+) -> dict[str, Any]:
     from response_variability.evals.eval_iid import predict_gino
 
     tests = mix_test_parts()

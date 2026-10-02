@@ -110,7 +110,9 @@ def impedance(pack: dict[str, np.ndarray]) -> np.ndarray:
     return vs2 / np.clip(vs1, _EPS, None)
 
 
-def _attr_float(params: dict[str, Any], *keys: str, default: float = float("nan")) -> float:
+def _attr_float(
+    params: dict[str, Any], *keys: str, default: float = float("nan")
+) -> float:
     for k in keys:
         if k in params and params[k] is not None:
             try:

@@ -162,7 +162,9 @@ def interpolate_ship_p(
         fields = batch["fields"].to(device)
         stoch = batch["stoch"].to(device)
         trunk_y = batch["trunk_y"].to(device)
-        n_all = int(batch["query_x"].shape[-1]) if "query_x" in batch else fields.shape[-1]
+        n_all = (
+            int(batch["query_x"].shape[-1]) if "query_x" in batch else fields.shape[-1]
+        )
         train_idx = query_station_indices(n_all, train_split)
         hold_idx = query_station_indices(n_all, hold_split)
         _forward(
@@ -192,9 +194,18 @@ def interpolate_ship_p(
         if bias is not None:
             r_n = r_n + bias.reshape(-1)[0]
         r = (r_n * t_std + t_mean).reshape(p.shape[0], len(hold_idx), n_freq)
-        tf1d = batch["tf1d"].cpu().numpy().reshape(p.shape[0], n_all, n_freq)[:, hold_idx]
-        tf2d = batch["tf2d"].cpu().numpy().reshape(p.shape[0], n_all, n_freq)[:, hold_idx]
-        tgt = batch["target_raw"].cpu().numpy().reshape(p.shape[0], n_all, n_freq)[:, hold_idx]
+        tf1d = (
+            batch["tf1d"].cpu().numpy().reshape(p.shape[0], n_all, n_freq)[:, hold_idx]
+        )
+        tf2d = (
+            batch["tf2d"].cpu().numpy().reshape(p.shape[0], n_all, n_freq)[:, hold_idx]
+        )
+        tgt = (
+            batch["target_raw"]
+            .cpu()
+            .numpy()
+            .reshape(p.shape[0], n_all, n_freq)[:, hold_idx]
+        )
         r_hat.append(r.detach().cpu().numpy())
         r_true.append(tgt)
         tf1d_a.append(tf1d)
@@ -340,7 +351,9 @@ def score_domain(
 
     if ship_model is not None and ship_stats is not None:
         apply_checkpoint_stats(ship_stats, full_ds)
-        loader = DataLoader(full_ds, batch_size=batch_size, shuffle=False, num_workers=0)
+        loader = DataLoader(
+            full_ds, batch_size=batch_size, shuffle=False, num_workers=0
+        )
         rt, rh, t1, t2 = interpolate_ship_p(
             ship_model,
             loader,
@@ -380,12 +393,12 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
         i = (rec.get("interpolate_p") or {}).get("pearson_R_freq")
         h = (rec.get("haskell") or {}).get("pearson_R_freq")
         beat = rec.get("beats_interpolate_p")
+
         def _f(x):
             return "—" if x is None else f"{float(x):.3f}"
 
         lines.append(
-            f"| {dname} | {_f(k)} | {_f(i)} | {_f(h)} | "
-            f"{'yes' if beat else 'no'} |"
+            f"| {dname} | {_f(k)} | {_f(i)} | {_f(h)} | {'yes' if beat else 'no'} |"
         )
     path.write_text("\n".join(lines) + "\n")
 

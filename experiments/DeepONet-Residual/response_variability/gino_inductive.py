@@ -66,7 +66,9 @@ def dimensionless_freq(freq: np.ndarray, vs1: float, H: float) -> np.ndarray:
 
 
 def impedance_ratio(vs1: np.ndarray, vs2: np.ndarray) -> np.ndarray:
-    return np.asarray(vs2, dtype=float) / np.clip(np.asarray(vs1, dtype=float), _EPS, None)
+    return np.asarray(vs2, dtype=float) / np.clip(
+        np.asarray(vs1, dtype=float), _EPS, None
+    )
 
 
 def invariance_orbit_check(
@@ -115,7 +117,9 @@ def mean_r_on_train(r: np.ndarray) -> dict[str, float]:
     return {
         "mean_R": float(np.nanmean(x)),
         "mean_abs_R": float(np.nanmean(np.abs(x))),
-        "near_zero": bool(abs(float(np.nanmean(x))) < 0.05 * max(float(np.nanmean(np.abs(x))), _EPS)),
+        "near_zero": bool(
+            abs(float(np.nanmean(x))) < 0.05 * max(float(np.nanmean(np.abs(x))), _EPS)
+        ),
     }
 
 
@@ -133,7 +137,9 @@ def prior_collapse_curve(
     y = np.asarray(r_norm, dtype=float)
     order = np.argsort(d)
     d, y = d[order], y[order]
-    inside = y[d <= hull + 1e-9] if np.any(d <= hull + 1e-9) else y[: max(len(y) // 5, 1)]
+    inside = (
+        y[d <= hull + 1e-9] if np.any(d <= hull + 1e-9) else y[: max(len(y) // 5, 1)]
+    )
     far = y[d >= np.quantile(d, 0.8)] if d.size >= 5 else y[-max(len(y) // 5, 1) :]
     y_in = float(np.nanmean(inside)) if inside.size else float("nan")
     y_far = float(np.nanmean(far)) if far.size else float("nan")

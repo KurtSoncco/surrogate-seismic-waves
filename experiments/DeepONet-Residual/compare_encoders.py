@@ -148,9 +148,7 @@ def aggregate(pack: Dict[str, np.ndarray]) -> Dict[str, float]:
         "r2_TF": flat_r2(tf2d, tfhat),
         "r2_TF_1d_only": flat_r2(tf2d, tf1d),
         "delta_r2_TF": flat_r2(tf2d, tfhat) - flat_r2(tf2d, tf1d),
-        "pearson_TF_freq": pearson_across_freq(
-            tf2d, tfhat, n_rec=n_rec, n_freq=n_freq
-        ),
+        "pearson_TF_freq": pearson_across_freq(tf2d, tfhat, n_rec=n_rec, n_freq=n_freq),
     }
 
 

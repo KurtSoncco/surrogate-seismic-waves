@@ -157,12 +157,16 @@ def run(
     slices = split_corner_summaries(summary)
     written: dict[str, Path] = {"summary": SUMMARY_PATH}
     if not skip_plot:
-        fig = plot_pearson_boxes_corner(slices, OUT_DIR / "method_ranking_pearson_corner.png")
+        fig = plot_pearson_boxes_corner(
+            slices, OUT_DIR / "method_ranking_pearson_corner.png"
+        )
         written["figure"] = fig
         print(f"Wrote {fig}", flush=True)
     n_train = int((pack["held_out"] == 0).sum())
     n_held = int((pack["held_out"] == 1).sum())
-    print(f"[corner_is] n={pack['tf_opensees'].shape[0]} train-eligible={n_train} held-out={n_held}")
+    print(
+        f"[corner_is] n={pack['tf_opensees'].shape[0]} train-eligible={n_train} held-out={n_held}"
+    )
     for key, _title in CORNER_PEARSON_PANELS:
         print(f"  {key} rows={len(slices[key])}", flush=True)
     return written

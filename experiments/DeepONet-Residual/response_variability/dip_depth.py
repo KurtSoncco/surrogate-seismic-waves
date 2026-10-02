@@ -77,7 +77,9 @@ def uniform_dip_depths(
     return np.maximum(depths, float(h_min))
 
 
-def interface_depths(vs_field: np.ndarray, vs2: float, *, dz: float = 1.0) -> np.ndarray:
+def interface_depths(
+    vs_field: np.ndarray, vs2: float, *, dz: float = 1.0
+) -> np.ndarray:
     """Soil–bedrock interface depth (m) on each finite column of ``vs_field``.
 
     ``vs_field`` is ``(nz, nx)``. The interface is the first depth where

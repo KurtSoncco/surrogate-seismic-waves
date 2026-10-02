@@ -198,9 +198,7 @@ def select_impedance_indices(
 
 
 def _panel_title(pack: dict[str, np.ndarray], i: int) -> str:
-    line1 = (
-        rf"$V_{{s1}}$={pack['vs1'][i]:.0f} m s$^{{-1}}$, $H$={pack['H'][i]:.0f} m"
-    )
+    line1 = rf"$V_{{s1}}$={pack['vs1'][i]:.0f} m s$^{{-1}}$, $H$={pack['H'][i]:.0f} m"
     bits = [rf"CoV={pack['cov'][i]:.2f}"]
     if "rH" in pack:
         bits.insert(0, rf"$r_H$={pack['rH'][i]:.0f}")
@@ -340,9 +338,7 @@ def plot_tf_panels(
     return savefig(fig, out_dir / filename)
 
 
-def plot_tf_panel_variants(
-    pack: dict[str, np.ndarray], out_dir: Path
-) -> list[Path]:
+def plot_tf_panel_variants(pack: dict[str, np.ndarray], out_dir: Path) -> list[Path]:
     """Three sample-covering layouts for the same method overlay."""
     pack = attach_geometry_from_cache(pack)
     layouts = (
@@ -437,7 +433,9 @@ def plot_peak_bias(peaks: pd.DataFrame, out_dir: Path) -> tuple[Path, Path]:
     cmp_df = peaks[peaks["method"].isin(labels)]
 
     fig, ax = plt.subplots(figsize=_compare_figsize(len(labels)))
-    data = [cmp_df.loc[cmp_df["method"] == m, "delta_f_peak"].to_numpy() for m in labels]
+    data = [
+        cmp_df.loc[cmp_df["method"] == m, "delta_f_peak"].to_numpy() for m in labels
+    ]
     _boxplot_with_points(ax, data, labels)
     ax.set_ylabel(r"$\Delta f_{\mathrm{peak}}$ (Hz)")
     ax.set_xlabel("")

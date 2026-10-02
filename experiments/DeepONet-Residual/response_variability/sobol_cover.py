@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Train vs val+test Sobol occupancy pairplots (IID 6-D, dipping 7-D).
 
-    uv run python experiments/DeepONet-Residual/response_variability/sobol_cover.py
+uv run python experiments/DeepONet-Residual/response_variability/sobol_cover.py
 """
 
 from __future__ import annotations
@@ -155,7 +155,12 @@ def unique_overlap(train_x: np.ndarray, held_x: np.ndarray) -> dict[str, int]:
     t = unique_rows(train_x)
     h = unique_rows(held_x)
     if t.size == 0 or h.size == 0:
-        return {"n_train": len(t), "n_held": len(h), "n_overlap": 0, "n_held_only": len(h)}
+        return {
+            "n_train": len(t),
+            "n_held": len(h),
+            "n_overlap": 0,
+            "n_held_only": len(h),
+        }
     t_set = {tuple(np.round(row, 8)) for row in t}
     h_set = {tuple(np.round(row, 8)) for row in h}
     overlap = t_set & h_set

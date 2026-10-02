@@ -56,7 +56,9 @@ def _r2(y: np.ndarray, p: np.ndarray) -> float:
     return 1.0 - ss_res / max(ss_tot, 1e-12)
 
 
-def _pearson_across_freq(y: np.ndarray, p: np.ndarray, n_rec: int, n_freq: int) -> float:
+def _pearson_across_freq(
+    y: np.ndarray, p: np.ndarray, n_rec: int, n_freq: int
+) -> float:
     y = y.reshape(n_rec, n_freq).astype(np.float64)
     p = p.reshape(n_rec, n_freq).astype(np.float64)
     cors = []
@@ -175,7 +177,11 @@ def predict_deeponet_full_tf(
     rH = float(meta["rH"][local_i])
     aHV = float(meta["aHV"][local_i])
     CoV = float(meta["CoV"][local_i])
-    xi_damp = float(meta["xi_damp"][local_i]) if "xi_damp" in meta else dn_config.DEFAULT_XI_TREND
+    xi_damp = (
+        float(meta["xi_damp"][local_i])
+        if "xi_damp" in meta
+        else dn_config.DEFAULT_XI_TREND
+    )
     xi_vals, _ = spectral_kl_coefficients(
         rf_seed=rf_seed,
         rH=rH,
@@ -297,6 +303,8 @@ def load_loglo(device: torch.device):
     sys.modules["config"] = dn_config
     # Keep LOGLO helpers bound to their modules; don't rebind model globally
     return model, build_input_from_h5, predict_tf, ckpt
+
+
 def main() -> None:
     cache_tag = os.environ.get("CACHE_TAG", "full7680_seed42")
     cache_dir = dn_config.CACHE_DIR / cache_tag
@@ -333,10 +341,7 @@ def main() -> None:
     dn_ckpt = Path(
         os.environ.get(
             "DEEPONET_CKPT",
-            str(
-                dn_config.CHECKPOINT_DIR
-                / "M7680_gino_rebal_ft.pt"
-            ),
+            str(dn_config.CHECKPOINT_DIR / "M7680_gino_rebal_ft.pt"),
         )
     )
     print(f"[compare] DeepONet ckpt={dn_ckpt}", flush=True)
@@ -390,7 +395,7 @@ def main() -> None:
         rows.append(row)
         if (j + 1) % 25 == 0 or j == 0:
             print(
-                f"[{j+1}/{len(test_local)}] sidx={sidx}  "
+                f"[{j + 1}/{len(test_local)}] sidx={sidx}  "
                 f"LOGLO relL2={row['loglo_rel_l2']:.3f}  "
                 f"DeepONet relL2={row['deeponet_rel_l2']:.3f}  "
                 f"TF1D relL2={row['tf1d_rel_l2']:.3f}",

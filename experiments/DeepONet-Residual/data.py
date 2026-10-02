@@ -121,9 +121,7 @@ def normalize_zeta_max(zeta: np.ndarray, nz: int, eps: float = 1e-12) -> np.ndar
     return (zeta / zmax).astype(np.float32)
 
 
-def stoch_dim(
-    k_xi: int = config.K_XI, layout: str = STOCH_LAYOUT_DEFAULT
-) -> int:
+def stoch_dim(k_xi: int = config.K_XI, layout: str = STOCH_LAYOUT_DEFAULT) -> int:
     """Length of the stochastic branch vector.
 
     ``xi_cov`` (default) is ξ (2 K_XI real/imag KL coeffs) plus CoV.
@@ -417,8 +415,7 @@ def f0_quarter_wavelength(
 ) -> float:
     """f0 = 1/(4T) on soil layers. Bedrock is Vs2 or Vs_1d[-1], not in T."""
     return 1.0 / (
-        4.0
-        * max(travel_time_s(layer_H, layer_Vs, vs_rock=vs_rock, vs_1d=vs_1d), _EPS)
+        4.0 * max(travel_time_s(layer_H, layer_Vs, vs_rock=vs_rock, vs_1d=vs_1d), _EPS)
     )
 
 
@@ -452,17 +449,13 @@ def nom_layers_from_meta(
         h = np.asarray(meta["layer_H"][local_i], dtype=np.float64).ravel()
         vs = np.asarray(meta["layer_Vs"][local_i], dtype=np.float64).ravel()
         if h.size and vs.size and h.size == vs.size:
-            return soil_layers_excluding_bedrock(
-                h, vs, vs_rock=vs_rock, vs_1d=vs_1d
-            )
+            return soil_layers_excluding_bedrock(h, vs, vs_rock=vs_rock, vs_1d=vs_1d)
     h = float(meta["H"][local_i])
     vs1 = float(meta["Vs1"][local_i])
     return np.array([h], dtype=np.float64), np.array([vs1], dtype=np.float64)
 
 
-def vs_1d_from_h5(
-    h5_path: Path | str, *, col: int | None = None
-) -> np.ndarray | None:
+def vs_1d_from_h5(h5_path: Path | str, *, col: int | None = None) -> np.ndarray | None:
     """Central (or ``col``) 1D Vs column, bedrock at ``[-1]``."""
     path = Path(h5_path)
     if not path.is_file():
@@ -489,7 +482,7 @@ def append_serial_tf1d(trunk: np.ndarray, tf1d: np.ndarray) -> np.ndarray:
 def multiscale_freq_names(n_scales: int) -> list[str]:
     """Names for the extra octave-spaced log-frequency harmonics (k = 2, 4, ...)."""
     return [
-        f"{p}_f_k{2 ** k}"
+        f"{p}_f_k{2**k}"
         for k in range(1, max(int(n_scales), 1))
         for p in ("sin", "cos")
     ]
@@ -706,7 +699,10 @@ class ResidualDeepONetDataset(Dataset):
         if target == "R_nom" and self.nom_variant == "sample_xi":
             key = "r_nom_xi_signed.npy"
             tf_key = "tf1d_nom_xi.npy"
-            if not (self.cache_dir / key).is_file() or not (self.cache_dir / tf_key).is_file():
+            if (
+                not (self.cache_dir / key).is_file()
+                or not (self.cache_dir / tf_key).is_file()
+            ):
                 raise FileNotFoundError(
                     f"nom_variant=sample_xi needs {key} and {tf_key} in {self.cache_dir}"
                 )
@@ -745,7 +741,9 @@ class ResidualDeepONetDataset(Dataset):
         else:
             self.recorder_x = np.arange(self.r.shape[1])
         self.recorder_x_all = np.asarray(self.recorder_x)
-        self.query_idx = query_station_indices(len(self.recorder_x_all), self.query_split)
+        self.query_idx = query_station_indices(
+            len(self.recorder_x_all), self.query_split
+        )
         self.recorder_x = self.recorder_x_all[self.query_idx]
         self.query_x = column_x_m(self.recorder_x)
         self._fields_support = None
@@ -792,7 +790,9 @@ class ResidualDeepONetDataset(Dataset):
         desc = f"dataset {target}/{trunk_set}/nf={len(self.f_idx)}"
         for local_i in tqdm(self.indices, desc=desc, leave=False):
             item = self._load_item(int(local_i))
-            self._cache.append({k: torch.from_numpy(np.array(v, copy=True)) for k, v in item.items()})
+            self._cache.append(
+                {k: torch.from_numpy(np.array(v, copy=True)) for k, v in item.items()}
+            )
 
     def __len__(self) -> int:
         return len(self.indices)
@@ -849,9 +849,7 @@ class ResidualDeepONetDataset(Dataset):
                 k=config.K_XI,
                 soil_nz=soil_nz,
             )
-            acf_length = empirical_acf_length(
-                vs_c, dx=config.DX, soil_nz=soil_nz
-            )
+            acf_length = empirical_acf_length(vs_c, dx=config.DX, soil_nz=soil_nz)
         else:
             rf_seed = int(self.meta["rf_seed"][local_i])
             xi_vals, _ = spectral_kl_coefficients(
@@ -921,20 +919,22 @@ class ResidualDeepONetDataset(Dataset):
         r = np.asarray(self.r[local_i][qidx][:, self.f_idx], dtype=np.float32)
         tf1d = np.asarray(self.tf1d[local_i][qidx][:, self.f_idx], dtype=np.float32)
         if self.tf2d_local is not None:
-            tf2d = np.asarray(self.tf2d_local[local_i][qidx][:, self.f_idx], dtype=np.float32)
+            tf2d = np.asarray(
+                self.tf2d_local[local_i][qidx][:, self.f_idx], dtype=np.float32
+            )
         elif self.tf_all is not None:
             sidx = int(self.sample_indices[local_i])
             if 0 <= sidx < len(self.tf_all):
-                tf2d = np.asarray(self.tf_all[sidx][qidx][:, self.f_idx], dtype=np.float32)
+                tf2d = np.asarray(
+                    self.tf_all[sidx][qidx][:, self.f_idx], dtype=np.float32
+                )
             else:
                 tf2d = (tf1d + r).astype(np.float32)
         else:
             tf2d = (tf1d + r).astype(np.float32)
         layer_H, layer_Vs = nom_layers_from_meta(self.meta, local_i, vs_1d=vs_1d)
         vs_rock = _meta_float_at(self.meta, local_i, "vs_rock", "Vs2", "Vs_bedrock")
-        f0_tts = f0_quarter_wavelength(
-            layer_H, layer_Vs, vs_rock=vs_rock, vs_1d=vs_1d
-        )
+        f0_tts = f0_quarter_wavelength(layer_H, layer_Vs, vs_rock=vs_rock, vs_1d=vs_1d)
         trunk_y = build_trunk_queries(
             vs_col=vs_col,
             H=H,
@@ -1031,9 +1031,7 @@ class CombinedResidualDataset(Dataset):
             self._cache.extend(ds._cache)
             self.domain_names_per_item.extend([str(name)] * len(ds._cache))
         widths = {
-            int(item["fields"].shape[-1])
-            for item in self._cache
-            if "fields" in item
+            int(item["fields"].shape[-1]) for item in self._cache if "fields" in item
         }
         if len(widths) > 1:
             raise ValueError(

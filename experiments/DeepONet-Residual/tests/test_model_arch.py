@@ -537,7 +537,9 @@ def test_mscale_branch4_shares_gno():
 def test_mscale_t4_trunk_params_not_above_control():
     from model import gno_core
 
-    kw, _ = _mscale_kw(latent_dim=128, trunk_hidden=256, trunk_layers=5, residual_fno=False)
+    kw, _ = _mscale_kw(
+        latent_dim=128, trunk_hidden=256, trunk_layers=5, residual_fno=False
+    )
     m1 = build_model("single", n_mscale_trunk=1, **kw)
     m4 = build_model("single", n_mscale_trunk=4, **kw)
     n1 = sum(p.numel() for p in gno_core(m1).trunk.parameters())
@@ -629,7 +631,9 @@ def test_col_enc_mlp_forward():
     from model import _ColumnMLPEncoder, gno_core
 
     kw, n_rec = _mscale_kw()
-    model = build_model("single", n_mscale_trunk=4, n_mscale_branch=4, col_enc="mlp", **kw)
+    model = build_model(
+        "single", n_mscale_trunk=4, n_mscale_branch=4, col_enc="mlp", **kw
+    )
     core = gno_core(model)
     assert isinstance(core.col_enc, _ColumnMLPEncoder)
     assert core.col_enc.proj.in_features == 3 * 16
@@ -640,7 +644,9 @@ def test_col_enc_attn_forward():
     from model import _ColumnAttnEncoder, gno_core
 
     kw, n_rec = _mscale_kw()
-    model = build_model("single", n_mscale_trunk=4, n_mscale_branch=4, col_enc="attn", **kw)
+    model = build_model(
+        "single", n_mscale_trunk=4, n_mscale_branch=4, col_enc="attn", **kw
+    )
     core = gno_core(model)
     assert isinstance(core.col_enc, _ColumnAttnEncoder)
     _ablate_forward(model, n_rec)

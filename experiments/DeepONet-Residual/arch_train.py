@@ -425,7 +425,17 @@ def main() -> None:
     p.add_argument("--fno-layers", type=int, default=config.FNO_N_LAYERS)
     p.add_argument(
         "--fno-kind",
-        choices=["vanilla", "ufno", "ffno", "afno", "wno", "fno1d", "loglo", "tf", "band2"],
+        choices=[
+            "vanilla",
+            "ufno",
+            "ffno",
+            "afno",
+            "wno",
+            "fno1d",
+            "loglo",
+            "tf",
+            "band2",
+        ],
         default="vanilla",
         help="vanilla FNO, U-FNO, F-FNO, leftover DualPathLOGLO, axial leftover TF, or band2 Hz split.",
     )

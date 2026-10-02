@@ -142,12 +142,16 @@ class ResUNetFieldEncoder(nn.Module):
         return self.head(d0)
 
 
-FieldEncoderKind = Literal["conv", "resunet", "gno", "attn", "gat", "identity", "kernel"]
+FieldEncoderKind = Literal[
+    "conv", "resunet", "gno", "attn", "gat", "identity", "kernel"
+]
 ColEncKind = Literal["conv", "mlp", "attn"]
 StochInjectKind = Literal["mlp", "concat"]
 FuseKind = Literal["mlp", "add"]
 COL_ENC_POOL_BINS = 16
-FNOKind = Literal["vanilla", "ufno", "ffno", "afno", "wno", "fno1d", "loglo", "tf", "band2"]
+FNOKind = Literal[
+    "vanilla", "ufno", "ffno", "afno", "wno", "fno1d", "loglo", "tf", "band2"
+]
 
 
 def build_field_encoder(
@@ -558,9 +562,7 @@ def _build_column_encoder(
         return _ColumnMLPEncoder(in_channels, out_dim)
     if kind == "attn":
         return _ColumnAttnEncoder(in_channels, out_dim)
-    return _ColumnEncoder(
-        in_channels, hidden, out_dim, depth_tokens=depth_tokens
-    )
+    return _ColumnEncoder(in_channels, hidden, out_dim, depth_tokens=depth_tokens)
 
 
 class _ChainGNO(nn.Module):
@@ -591,7 +593,9 @@ class _ChainGNO(nn.Module):
     @staticmethod
     def _gather_shift(x: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
         b, n, c = x.shape
-        steps = d.reshape(-1).to(device=x.device, dtype=torch.long).clamp(1, max(n - 1, 1))
+        steps = (
+            d.reshape(-1).to(device=x.device, dtype=torch.long).clamp(1, max(n - 1, 1))
+        )
         if steps.numel() == 1 and b > 1:
             steps = steps.expand(b)
         idx = torch.arange(n, device=x.device).unsqueeze(0).expand(b, n)
@@ -647,9 +651,11 @@ def apply_gno_dilation(module: nn.Module, rH: torch.Tensor | None) -> None:
         if not torch.is_tensor(rH):
             rH = torch.as_tensor(rH, dtype=torch.float32)
         finite = torch.nan_to_num(rH.reshape(-1).to(dtype=torch.float32), nan=0.0)
-        d = torch.round(finite / GNO_DILATION_SPACING_M).clamp(
-            GNO_DILATION_LO, GNO_DILATION_HI
-        ).long()
+        d = (
+            torch.round(finite / GNO_DILATION_SPACING_M)
+            .clamp(GNO_DILATION_LO, GNO_DILATION_HI)
+            .long()
+        )
     for m in module.modules():
         if isinstance(m, _ChainGNO):
             if d is None or not m.rh_dilate:
@@ -869,7 +875,9 @@ class RecorderGNODeepONet(nn.Module):
         self.kernel_k = max(1, int(kernel_k))
         self.kernel_tau_m = float(kernel_tau_m)
         if self.fuse_kind == "add" and self.stoch_inject != "mlp":
-            raise ValueError("fuse=add requires stoch-inject=mlp so node and stoch dims match")
+            raise ValueError(
+                "fuse=add requires stoch-inject=mlp so node and stoch dims match"
+            )
         self.field_encoder_kind = (
             "attn"
             if node_mixer == "attn"
@@ -905,7 +913,9 @@ class RecorderGNODeepONet(nn.Module):
                 tau_m=self.kernel_tau_m,
             )
         else:
-            self.gno = _ChainGNO(latent_dim, n_layers=n_gno_layers, rh_dilate=self.gno_rh_dilate)
+            self.gno = _ChainGNO(
+                latent_dim, n_layers=n_gno_layers, rh_dilate=self.gno_rh_dilate
+            )
         if self.stoch_inject == "concat":
             self.stoch_mlp = None
             fuse_in = latent_dim + int(stoch_dim)
@@ -1308,7 +1318,9 @@ def _load_dual_path_loglo():
     return mod.DualPathLOGLOStack
 
 
-def _pad_to_multiple(x: torch.Tensor, ph: int, pw: int) -> tuple[torch.Tensor, int, int]:
+def _pad_to_multiple(
+    x: torch.Tensor, ph: int, pw: int
+) -> tuple[torch.Tensor, int, int]:
     h, w = x.shape[-2], x.shape[-1]
     pad_h = (ph - h % ph) % ph
     pad_w = (pw - w % pw) % pw
@@ -1406,9 +1418,9 @@ class FrozenBoost(nn.Module):
         for p in self.frozen.parameters():
             p.requires_grad = False
         self.shrink = nn.Parameter(torch.tensor(float(shrink)))
-        self.accepts_geom_flags = bool(getattr(booster, "accepts_geom_flags", False)) or bool(
-            getattr(frozen, "accepts_geom_flags", False)
-        )
+        self.accepts_geom_flags = bool(
+            getattr(booster, "accepts_geom_flags", False)
+        ) or bool(getattr(frozen, "accepts_geom_flags", False))
         self.accepts_query_x = bool(getattr(booster, "accepts_query_x", False)) or bool(
             getattr(frozen, "accepts_query_x", False)
         )
@@ -1597,11 +1609,19 @@ class DeepONetFNO(nn.Module):
         if freq is None:
             self._query_freq = torch.empty(0, device=self._query_freq.device)
             return
-        arr = np.asarray(freq, dtype=np.float32).ravel() if not torch.is_tensor(freq) else freq
-        t = torch.as_tensor(arr, dtype=torch.float32, device=self._query_freq.device).ravel()
+        arr = (
+            np.asarray(freq, dtype=np.float32).ravel()
+            if not torch.is_tensor(freq)
+            else freq
+        )
+        t = torch.as_tensor(
+            arr, dtype=torch.float32, device=self._query_freq.device
+        ).ravel()
         self._query_freq = t
 
-    def _grid_freq_hz(self, n_freq: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    def _grid_freq_hz(
+        self, n_freq: int, device: torch.device, dtype: torch.dtype
+    ) -> torch.Tensor:
         buf = self._query_freq
         if buf.numel() == n_freq:
             return buf.to(device=device, dtype=dtype)
@@ -1638,7 +1658,11 @@ class DeepONetFNO(nn.Module):
         n_freq = n_q // n_rec
         x = self.lift(r.view(b, 1, n_rec, n_freq))
         self.last_lift = x
-        if self.fno_low is not None and self.fno_high is not None and self.proj_high is not None:
+        if (
+            self.fno_low is not None
+            and self.fno_high is not None
+            and self.proj_high is not None
+        ):
             x_l = self._run_vanilla_fno(self.fno_low, x)
             x_h = self._run_vanilla_fno(self.fno_high, x)
             r_l = self.proj(x_l)
@@ -1947,7 +1971,9 @@ def build_model(
         )
         booster = _core(
             fno_kind_local=boost_fno_kind,
-            width_local=int(boost_width) if boost_width is not None else max(8, fno_width // 2),
+            width_local=int(boost_width)
+            if boost_width is not None
+            else max(8, fno_width // 2),
             gated_local=gated,
             pod_local=pod_readout,
         )
@@ -1970,27 +1996,38 @@ def _arch_from_src(
     defaults: dict[str, Any],
 ) -> dict[str, Any]:
     """Architecture kwargs for ``build_model`` from a checkpoint (or nested) dict."""
-    fno_width = int(src.get("fno_width", blob.get("fno_width", defaults.get("fno_width", 32))))
+    fno_width = int(
+        src.get("fno_width", blob.get("fno_width", defaults.get("fno_width", 32)))
+    )
     patch = src.get("loglo_patch", blob.get("loglo_patch", (3, 8)))
     modes = src.get("pod_modes", blob.get("pod_modes"))
     mean = src.get("pod_mean", blob.get("pod_mean"))
     n_modes = src.get("fno_n_modes", blob.get("fno_n_modes", (8, 16)))
     return {
         "field_encoder": src.get(
-            "field_encoder", blob.get("field_encoder", defaults.get("field_encoder", "conv"))
+            "field_encoder",
+            blob.get("field_encoder", defaults.get("field_encoder", "conv")),
         ),
         "residual_fno": bool(src.get("residual_fno", blob.get("residual_fno", False))),
         "n_rec": int(src.get("n_rec", blob.get("n_rec", defaults.get("n_rec", 21)))),
         "fno_width": fno_width,
         "fno_n_modes": tuple(n_modes),
         "fno_n_layers": int(
-            src.get("fno_n_layers", blob.get("fno_n_layers", defaults.get("fno_n_layers", 4)))
+            src.get(
+                "fno_n_layers",
+                blob.get("fno_n_layers", defaults.get("fno_n_layers", 4)),
+            )
         ),
         "n_gno_layers": int(
-            src.get("n_gno_layers", blob.get("n_gno_layers", defaults.get("n_gno_layers", 3)))
+            src.get(
+                "n_gno_layers",
+                blob.get("n_gno_layers", defaults.get("n_gno_layers", 3)),
+            )
         ),
         "fno_kind": src.get("fno_kind", blob.get("fno_kind", "vanilla")),
-        "physics_tokens": bool(src.get("physics_tokens", blob.get("physics_tokens", False))),
+        "physics_tokens": bool(
+            src.get("physics_tokens", blob.get("physics_tokens", False))
+        ),
         "geom_flag_dim": int(src.get("geom_flag_dim", blob.get("geom_flag_dim", 0))),
         "learned_1d": bool(src.get("learned_1d", blob.get("learned_1d", False))),
         "gated": bool(src.get("gated", blob.get("gated", False))),
@@ -2003,11 +2040,15 @@ def _arch_from_src(
         "col_enc_depth_tokens": int(
             src.get(
                 "col_enc_depth_tokens",
-                blob.get("col_enc_depth_tokens", defaults.get("col_enc_depth_tokens", 1)),
+                blob.get(
+                    "col_enc_depth_tokens", defaults.get("col_enc_depth_tokens", 1)
+                ),
             )
         ),
         "boost": False,
-        "boost_fno_kind": src.get("boost_fno_kind", blob.get("boost_fno_kind", "loglo")),
+        "boost_fno_kind": src.get(
+            "boost_fno_kind", blob.get("boost_fno_kind", "loglo")
+        ),
         "boost_width": int(
             src.get(
                 "boost_width",
@@ -2025,9 +2066,12 @@ def _arch_from_src(
                 blob.get("mscale_coord_dims", FULL_TRUNK_COORD_DIMS),
             )
         ),
-        "col_enc": src.get("col_enc", blob.get("col_enc", defaults.get("col_enc", "conv"))),
+        "col_enc": src.get(
+            "col_enc", blob.get("col_enc", defaults.get("col_enc", "conv"))
+        ),
         "stoch_inject": src.get(
-            "stoch_inject", blob.get("stoch_inject", defaults.get("stoch_inject", "mlp"))
+            "stoch_inject",
+            blob.get("stoch_inject", defaults.get("stoch_inject", "mlp")),
         ),
         "fuse_kind": src.get(
             "fuse_kind", blob.get("fuse_kind", defaults.get("fuse_kind", "mlp"))
@@ -2038,12 +2082,20 @@ def _arch_from_src(
                 blob.get("gno_rh_dilate", defaults.get("gno_rh_dilate", False)),
             )
         ),
-        "kernel_k": int(src.get("kernel_k", blob.get("kernel_k", defaults.get("kernel_k", KERNEL_K)))),
+        "kernel_k": int(
+            src.get(
+                "kernel_k", blob.get("kernel_k", defaults.get("kernel_k", KERNEL_K))
+            )
+        ),
         "latent_fno": bool(
-            src.get("latent_fno", blob.get("latent_fno", defaults.get("latent_fno", False)))
+            src.get(
+                "latent_fno", blob.get("latent_fno", defaults.get("latent_fno", False))
+            )
         ),
         "n_latent": int(
-            src.get("n_latent", blob.get("n_latent", defaults.get("n_latent", N_LATENT_X)))
+            src.get(
+                "n_latent", blob.get("n_latent", defaults.get("n_latent", N_LATENT_X))
+            )
         ),
     }
 
@@ -2091,8 +2143,12 @@ def build_from_checkpoint_blob(
             "gated": bool(blob.get("gated", False)),
             "pod_readout": bool(blob.get("pod_readout", False)),
         }
-        frozen = build_model(mode, **common, **_arch_from_src(frozen_src, blob, defaults={}))
-        booster = build_model(mode, **common, **_arch_from_src(booster_src, blob, defaults={}))
+        frozen = build_model(
+            mode, **common, **_arch_from_src(frozen_src, blob, defaults={})
+        )
+        booster = build_model(
+            mode, **common, **_arch_from_src(booster_src, blob, defaults={})
+        )
         net: nn.Module = FrozenBoost(
             frozen,
             booster,

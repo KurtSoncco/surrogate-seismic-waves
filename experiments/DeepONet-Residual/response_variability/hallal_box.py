@@ -11,7 +11,9 @@ from pathlib import Path
 
 import numpy as np
 
-BOX_DIR = Path("/mnt/box/GIG Lab - UC Berkeley/Projects/Neural Operator/data/hallal_vs_2d")
+BOX_DIR = Path(
+    "/mnt/box/GIG Lab - UC Berkeley/Projects/Neural Operator/data/hallal_vs_2d"
+)
 
 
 def apply_hallal_ground_truth(

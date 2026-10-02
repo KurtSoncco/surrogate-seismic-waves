@@ -33,7 +33,9 @@ PEARSON_HI = 10.0
 TAIL_THR = 0.9
 OUT_DIR = config.RESULTS_DIR / "response_variability" / "eval_bias"
 PACK_DIR = config.RESULTS_DIR / "presentation"
-PER_SAMPLE_CSV = config.RESULTS_DIR / "response_variability" / "gino_bias" / "per_sample.csv"
+PER_SAMPLE_CSV = (
+    config.RESULTS_DIR / "response_variability" / "gino_bias" / "per_sample.csv"
+)
 
 # 6D columns: Vs1, H, CoV, rH, aHV, Vs2
 COL_COV, COL_RH = 2, 3
@@ -96,9 +98,7 @@ def quantile_cuts(train: np.ndarray, cols: tuple[int, ...], q: float) -> np.ndar
     return np.quantile(t, q, axis=0)
 
 
-def in_joint_cell(
-    x: np.ndarray, cuts: np.ndarray, cols: tuple[int, ...]
-) -> np.ndarray:
+def in_joint_cell(x: np.ndarray, cuts: np.ndarray, cols: tuple[int, ...]) -> np.ndarray:
     if not np.all(np.isfinite(cuts)):
         return np.zeros(len(x), dtype=bool)
     sl = np.asarray(x, dtype=float)[:, list(cols)]
@@ -118,13 +118,17 @@ def occupancy_row(
     if mask is None:
         mask = np.ones(len(x), dtype=bool)
     xin = x[mask]
-    inside = cell_occupancy(xin) if np.any(mask) else {
-        "n_files": 0.0,
-        "n_unique_6d": 0.0,
-        "mean_files_per_id": float("nan"),
-        "n_ids_ge2": 0.0,
-        "n_files_in_replicated": 0.0,
-    }
+    inside = (
+        cell_occupancy(xin)
+        if np.any(mask)
+        else {
+            "n_files": 0.0,
+            "n_unique_6d": 0.0,
+            "mean_files_per_id": float("nan"),
+            "n_ids_ge2": 0.0,
+            "n_files_in_replicated": 0.0,
+        }
+    )
     n_files = occ["n_files"]
     n_unique = occ["n_unique_6d"]
     return {
@@ -136,7 +140,9 @@ def occupancy_row(
         "n_files_in_cell": int(inside["n_files"]),
         "n_unique_6d_in_cell": int(inside["n_unique_6d"]),
         "frac_files": float(inside["n_files"] / n_files) if n_files else float("nan"),
-        "frac_unique": float(inside["n_unique_6d"] / n_unique) if n_unique else float("nan"),
+        "frac_unique": float(inside["n_unique_6d"] / n_unique)
+        if n_unique
+        else float("nan"),
         "mean_files_per_id": occ["mean_files_per_id"],
         "n_ids_ge2": int(occ["n_ids_ge2"]),
     }
@@ -199,10 +205,18 @@ def pairwise_ops_pearson(
     a = np.asarray(array, dtype=float)
     return {
         "n_pairs": float(len(c)),
-        "ops_ops_pearson_median_central": float(np.nanmedian(c)) if c.size else float("nan"),
-        "ops_ops_pearson_p16_central": float(np.nanpercentile(c, 16)) if c.size else float("nan"),
-        "ops_ops_pearson_p84_central": float(np.nanpercentile(c, 84)) if c.size else float("nan"),
-        "ops_ops_pearson_median_array": float(np.nanmedian(a)) if a.size else float("nan"),
+        "ops_ops_pearson_median_central": float(np.nanmedian(c))
+        if c.size
+        else float("nan"),
+        "ops_ops_pearson_p16_central": float(np.nanpercentile(c, 16))
+        if c.size
+        else float("nan"),
+        "ops_ops_pearson_p84_central": float(np.nanpercentile(c, 84))
+        if c.size
+        else float("nan"),
+        "ops_ops_pearson_median_array": float(np.nanmedian(a))
+        if a.size
+        else float("nan"),
     }
 
 
@@ -361,7 +375,11 @@ def build_occupancy(
             continue
         rows.append(
             occupancy_row(
-                domain=domain, split=split, cell="all", x=x, mask=np.ones(len(x), dtype=bool)
+                domain=domain,
+                split=split,
+                cell="all",
+                x=x,
+                mask=np.ones(len(x), dtype=bool),
             )
         )
         for name, cuts, cols in cells:
@@ -391,7 +409,9 @@ def tail_clusters(
         if flag:
             groups[int(ids[i])].append(i)
     rows = []
-    for cid, members in sorted(groups.items(), key=lambda kv: min(pearson[j] for j in kv[1])):
+    for cid, members in sorted(
+        groups.items(), key=lambda kv: min(pearson[j] for j in kv[1])
+    ):
         proto = x[members[0]]
         rows.append(
             {
@@ -433,7 +453,12 @@ def plot_sample50(pack: dict[str, np.ndarray], out_path: Path, *, i: int = 50) -
         _plot_tf_panel,
         attach_stoch_from_cache,
     )
-    from response_variability.style import apply_nature_style, figsize, panel_letter, savefig
+    from response_variability.style import (
+        apply_nature_style,
+        figsize,
+        panel_letter,
+        savefig,
+    )
 
     apply_nature_style()
     pack = attach_stoch_from_cache(pack, "iid")
@@ -522,9 +547,13 @@ def run(
     iid_p = load_per_sample_pearson(per_sample_csv, "iid", len(iid_pack["vs1"]))
     dip_p = load_per_sample_pearson(per_sample_csv, "dipping", len(dip_pack["vs1"]))
     if iid_p is None:
-        iid_p = central_pearson(iid_pack["tf_gino"], iid_pack["tf_opensees"], iid_pack["freq"])
+        iid_p = central_pearson(
+            iid_pack["tf_gino"], iid_pack["tf_opensees"], iid_pack["freq"]
+        )
     if dip_p is None:
-        dip_p = central_pearson(dip_pack["tf_gino"], dip_pack["tf_opensees"], dip_pack["freq"])
+        dip_p = central_pearson(
+            dip_pack["tf_gino"], dip_pack["tf_opensees"], dip_pack["freq"]
+        )
 
     iid_split = iid_n1000_split()
     n1000 = config.CACHE_DIR / "n1000_seed42"
@@ -580,19 +609,23 @@ def run(
     ) + tail_clusters(dip_pack, dip_p < TAIL_THR, domain="dipping", pearson=dip_p)
     paths["tail_clusters"] = _write_csv(out_dir / "tail_6d_clusters.csv", clusters)
 
-    ceil = seed_ceiling_rows(iid_pack, domain="iid", gino_ops=iid_p) + seed_ceiling_rows(
-        dip_pack, domain="dipping", gino_ops=dip_p
-    )
+    ceil = seed_ceiling_rows(
+        iid_pack, domain="iid", gino_ops=iid_p
+    ) + seed_ceiling_rows(dip_pack, domain="dipping", gino_ops=dip_p)
     paths["seed_ceiling"] = _write_csv(out_dir / "seed_ceiling.csv", ceil)
 
     rec = recorder_sensitivity_rows(
         iid_pack, domain="iid", gino_ops_central=iid_p
     ) + recorder_sensitivity_rows(dip_pack, domain="dipping", gino_ops_central=dip_p)
-    paths["recorder_sensitivity"] = _write_csv(out_dir / "recorder_sensitivity.csv", rec)
+    paths["recorder_sensitivity"] = _write_csv(
+        out_dir / "recorder_sensitivity.csv", rec
+    )
     paths["recorder_plot"] = plot_recorder_sensitivity(
         rec, out_dir / "recorder_sensitivity_dipping.png"
     )
-    paths["sample50"] = plot_sample50(iid_pack, out_dir / "sample50_iid.png", i=sample_i)
+    paths["sample50"] = plot_sample50(
+        iid_pack, out_dir / "sample50_iid.png", i=sample_i
+    )
 
     x_ids = cell_ids(param_matrix(iid_pack))
     n_same = int(np.sum(x_ids == x_ids[sample_i]))

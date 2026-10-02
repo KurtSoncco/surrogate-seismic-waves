@@ -431,14 +431,18 @@ def evaluate(
         tf2d_all.append(tf2d.cpu().numpy().ravel())
         tf_hat_all.append(tf_hat.numpy().ravel())
         if "f0_tts" in batch:
-            f0_all.append(np.asarray(batch["f0_tts"].cpu().numpy(), dtype=np.float64).ravel())
+            f0_all.append(
+                np.asarray(batch["f0_tts"].cpu().numpy(), dtype=np.float64).ravel()
+            )
         core = gno_core(model)
         hat = getattr(core, "last_tf1d_hat", None)
         if hat is not None:
             tf1d_hat_all.append(hat.detach().cpu().numpy().ravel())
         gate = getattr(model, "last_gate", None)
         if gate is not None:
-            gate_all.append(gate.detach().cpu().numpy().reshape(gate.shape[0], -1).mean(-1))
+            gate_all.append(
+                gate.detach().cpu().numpy().reshape(gate.shape[0], -1).mean(-1)
+            )
     y = np.concatenate(y_all)
     p = np.concatenate(pred_all)
     tf1d = np.concatenate(tf1d_all)
@@ -605,7 +609,9 @@ def _arch_kwargs(
         "col_enc_depth_tokens": int(col_enc_depth_tokens),
         "boost": bool(boost),
         "boost_fno_kind": str(boost_fno_kind),
-        "boost_width": int(boost_width) if boost_width is not None else max(8, int(fno_width) // 2),
+        "boost_width": int(boost_width)
+        if boost_width is not None
+        else max(8, int(fno_width) // 2),
         "boost_shrink": float(config.BOOST_SHRINK),
         "n_mscale_trunk": int(n_mscale_trunk),
         "n_mscale_branch": int(n_mscale_branch),
@@ -777,7 +783,9 @@ def train_from_datasets(
             )
     monitor = str(val_monitor or "smooth_l1")
     if monitor not in ("smooth_l1", "three_layer"):
-        raise ValueError(f"val_monitor must be smooth_l1 or three_layer, got {monitor!r}")
+        raise ValueError(
+            f"val_monitor must be smooth_l1 or three_layer, got {monitor!r}"
+        )
     if monitor == "three_layer" and "ood_three_layer" not in val_domain_loaders:
         raise ValueError(
             "val_monitor=three_layer needs a three-layer val slice on val_ds"
@@ -918,13 +926,17 @@ def train_from_datasets(
         arch_kw["boost_width"] = int(booster_width)
         print(f"[train] frozen leftover from {boost_ckpt}", flush=True)
     if init_ckpt is not None and not boosting:
-        blob = init_blob or torch.load(init_ckpt, map_location="cpu", weights_only=False)
+        blob = init_blob or torch.load(
+            init_ckpt, map_location="cpu", weights_only=False
+        )
         _load_init_weights(model, blob, fno_kind=str(fno_kind), init_ckpt=init_ckpt)
     if freeze_gno:
         n_frozen = freeze_gno_encoder(model)
         print(f"[train] froze GNO encoder params n={n_frozen}", flush=True)
         if n_frozen == 0:
-            print("[train] WARNING: --freeze-gno found no col_enc/gno params", flush=True)
+            print(
+                "[train] WARNING: --freeze-gno found no col_enc/gno params", flush=True
+            )
         if str(field_encoder) == "kernel":
             print(
                 "[train] kernel mixer stays trainable (--freeze-gno only froze col_enc)",
@@ -934,7 +946,9 @@ def train_from_datasets(
         n_fno = freeze_fno_head(model)
         print(f"[train] froze FNO leftover head params n={n_fno}", flush=True)
         if n_fno == 0:
-            print("[train] WARNING: --freeze-fno found no DeepONetFNO params", flush=True)
+            print(
+                "[train] WARNING: --freeze-fno found no DeepONetFNO params", flush=True
+            )
 
     enc_lr = encoder_lr
     if enc_lr is None and gno_rh_dilate and not freeze_gno:
@@ -986,7 +1000,9 @@ def train_from_datasets(
             min_lr=float(lr_sched_min),
             threshold=1e-8,
         )
-    beta = float(smooth_l1_beta if smooth_l1_beta is not None else config.SMOOTH_L1_BETA)
+    beta = float(
+        smooth_l1_beta if smooth_l1_beta is not None else config.SMOOTH_L1_BETA
+    )
     crit = nn.SmoothL1Loss(beta=beta)
     radial_crit = _radial_loss_mod()() if radial_loss_weight > 0 else None
     t_mean = stats["target_mean"].to(device)
@@ -1129,7 +1145,12 @@ def train_from_datasets(
                 loss = loss + float(band_weight) * band_normalized_loss(
                     pr, rt, band_masks, band_scales
                 )
-            if aux_tf_rel_l2 > 0 or aux_peak_band > 0 or aux_logspec > 0 or aux_logspec_full > 0:
+            if (
+                aux_tf_rel_l2 > 0
+                or aux_peak_band > 0
+                or aux_logspec > 0
+                or aux_logspec_full > 0
+            ):
                 pred_raw = pred * t_std + t_mean
                 tf1d = batch["tf1d"].to(device)
                 tf2d = batch["tf2d"].to(device)

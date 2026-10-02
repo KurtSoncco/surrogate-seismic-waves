@@ -74,12 +74,12 @@ def _score_loader(
             tf1d_all.append(batch["tf1d"].numpy())
             tf2d_all.append(batch["tf2d"].numpy())
             if "f0_tts" in batch:
-                f0_all.append(np.asarray(batch["f0_tts"].numpy(), dtype=np.float64).ravel())
+                f0_all.append(
+                    np.asarray(batch["f0_tts"].numpy(), dtype=np.float64).ravel()
+                )
             gate = getattr(model, "last_gate", None)
             if gate is not None:
-                gate_all.append(
-                    gate.cpu().numpy().reshape(gate.shape[0], -1).mean(-1)
-                )
+                gate_all.append(gate.cpu().numpy().reshape(gate.shape[0], -1).mean(-1))
     p = np.concatenate(p_all, axis=0)
     tf1d = np.concatenate(tf1d_all, axis=0)
     tf2d = np.concatenate(tf2d_all, axis=0)
@@ -102,7 +102,13 @@ def _score_loader(
 def _load_residual(ckpt: Path, device):
     from model import build_from_checkpoint_blob
 
-    from data import infer_trunk_scales, stoch_dim, stoch_layout_from_blob, trunk_feature_names, trunk_in_features_from_state
+    from data import (
+        infer_trunk_scales,
+        stoch_dim,
+        stoch_layout_from_blob,
+        trunk_feature_names,
+        trunk_in_features_from_state,
+    )
 
     blob = torch.load(ckpt, map_location="cpu", weights_only=False)
     serial = bool(blob.get("serial_tf1d", False))
@@ -118,9 +124,7 @@ def _load_residual(ckpt: Path, device):
     blob["stoch_layout"] = layout
     sdim = stoch_dim(layout=layout)
     blob["stoch_dim"] = int(sdim)
-    trunk_dim = len(trunk_feature_names(trunk_set, trunk_scales)) + (
-        1 if serial else 0
-    )
+    trunk_dim = len(trunk_feature_names(trunk_set, trunk_scales)) + (1 if serial else 0)
     model = build_from_checkpoint_blob(
         blob,
         field_channels=config.FIELD_CHANNELS,
@@ -218,7 +222,10 @@ def score_gino(ckpt: Path, out_dir: Path, *, full7680: bool = False) -> dict[str
     out_dir.mkdir(parents=True, exist_ok=True)
     compact = {
         **{k: v for k, v in report.items() if k != "domains"},
-        "domains": {n: _compact(m) if isinstance(m, dict) else m for n, m in report["domains"].items()},
+        "domains": {
+            n: _compact(m) if isinstance(m, dict) else m
+            for n, m in report["domains"].items()
+        },
         "loglo": {
             **{k: v for k, v in report["loglo"].items() if k != "domains"},
             "domains": {
@@ -253,8 +260,12 @@ def _attach_win_rates(report: dict[str, Any]) -> None:
         wins[name] = {
             "gino_beats_loglo": win_rate(ga, la),
             "loglo_beats_gino": win_rate(la, ga),
-            "gino_beats_haskell": win_rate(ga, gino.get("rel_l2_tf_1d_per_sample") or []),
-            "loglo_beats_haskell": win_rate(la, lo.get("rel_l2_tf_1d_per_sample") or []),
+            "gino_beats_haskell": win_rate(
+                ga, gino.get("rel_l2_tf_1d_per_sample") or []
+            ),
+            "loglo_beats_haskell": win_rate(
+                la, lo.get("rel_l2_tf_1d_per_sample") or []
+            ),
         }
     if wins:
         report["win_rate"] = wins
@@ -302,7 +313,11 @@ def score_loglo_on_mix(
     try:
         loglo_model, build_input_from_h5, predict_tf, used = load_loglo(device)
     except Exception as exc:
-        return {"skipped": True, "reason": f"LOGLO load failed: {exc}", "ckpt": str(ckpt)}
+        return {
+            "skipped": True,
+            "reason": f"LOGLO load failed: {exc}",
+            "ckpt": str(ckpt),
+        }
 
     out: dict[str, Any] = {"skipped": False, "ckpt": str(used), "domains": {}}
     for name, (cache, idx) in tests.items():
@@ -312,7 +327,11 @@ def score_loglo_on_mix(
         meta = dict(np.load(cache / "meta.npz", allow_pickle=True))
         tf1d_all = np.load(cache / "tf1d_nom.npy", mmap_mode="r")
         r_all = np.load(cache / "r_nom_signed.npy", mmap_mode="r")
-        freq = np.load(cache / "freq.npy") if (cache / "freq.npy").is_file() else _freq_grid()
+        freq = (
+            np.load(cache / "freq.npy")
+            if (cache / "freq.npy").is_file()
+            else _freq_grid()
+        )
         f_idx = freq_screen_indices(freq, n_freq)
         tf2d_path = cache / "tf2d.npy"
         tf2d_local = np.load(tf2d_path, mmap_mode="r") if tf2d_path.is_file() else None
@@ -385,17 +404,33 @@ def synthetic_report() -> dict[str, Any]:
     r_hat_good = 0.8 * r_true
     r_hat_bad = -2.0 * r_true
     good = score_leftover_batch(
-        tf1d=tf1d, r_true=r_true, r_hat=r_hat_good, tf2d=tf2d,
-        freq=freq, n_rec=n_rec, n_freq=n_f,
+        tf1d=tf1d,
+        r_true=r_true,
+        r_hat=r_hat_good,
+        tf2d=tf2d,
+        freq=freq,
+        n_rec=n_rec,
+        n_freq=n_f,
     )
     bad = score_leftover_batch(
-        tf1d=tf1d, r_true=r_true, r_hat=r_hat_bad, tf2d=tf2d,
-        freq=freq, n_rec=n_rec, n_freq=n_f,
+        tf1d=tf1d,
+        r_true=r_true,
+        r_hat=r_hat_bad,
+        tf2d=tf2d,
+        freq=freq,
+        n_rec=n_rec,
+        n_freq=n_f,
     )
     r_log = np.log(np.maximum(tf2d, 1e-8)) - np.log(np.maximum(tf1d, 1e-8))
     log_good = score_leftover_batch(
-        tf1d=tf1d, r_true=r_true, r_hat=0.8 * r_log, tf2d=tf2d,
-        freq=freq, n_rec=n_rec, n_freq=n_f, log_residual=True,
+        tf1d=tf1d,
+        r_true=r_true,
+        r_hat=0.8 * r_log,
+        tf2d=tf2d,
+        freq=freq,
+        n_rec=n_rec,
+        n_freq=n_f,
+        log_residual=True,
     )
     return {
         "good_residual": good,
@@ -428,11 +463,16 @@ def main() -> None:
         rep = synthetic_report()
         args.out.mkdir(parents=True, exist_ok=True)
         compact = {k: _compact(v) for k, v in rep.items()}
-        (args.out / "harm_rate_synthetic.json").write_text(json.dumps(compact, indent=2))
+        (args.out / "harm_rate_synthetic.json").write_text(
+            json.dumps(compact, indent=2)
+        )
         print(json.dumps(compact, indent=2))
         return
     if not args.ckpt.is_file():
-        print(f"[harm] no checkpoint at {args.ckpt}; writing synthetic placeholder", flush=True)
+        print(
+            f"[harm] no checkpoint at {args.ckpt}; writing synthetic placeholder",
+            flush=True,
+        )
         rep = synthetic_report()
         args.out.mkdir(parents=True, exist_ok=True)
         path = args.out / "harm_rate.json"

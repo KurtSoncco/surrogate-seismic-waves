@@ -109,7 +109,9 @@ def plot_n_ladder_pearson(blob: dict[str, Any], out_dir: Path) -> Path:
     ax.set_ylabel(r"Held-out Pearson of $|\mathrm{TF}|$")
     ax.set_ylim(0.80, 0.95)
     ax.legend(loc="lower right")
-    ax.set_title("Pearson: rebalance keeps three-layer shape while extra IID files do not")
+    ax.set_title(
+        "Pearson: rebalance keeps three-layer shape while extra IID files do not"
+    )
     fig.tight_layout()
     return savefig(fig, out_dir / "n_ladder_pearson.png")
 
@@ -326,7 +328,9 @@ def plot_freq_train_heldout(blob: dict[str, Any], out_dir: Path) -> Path:
     ax.set_xticklabels([_title(d) for d in domains])
     ax.set_ylabel(r"GINO relative $L_2$")
     ax.legend(loc="upper left")
-    ax.set_title("Held-out frequencies are in-band interpolation; high $f$ is the leftover")
+    ax.set_title(
+        "Held-out frequencies are in-band interpolation; high $f$ is the leftover"
+    )
     fig.tight_layout()
     return savefig(fig, out_dir / "freq_train_vs_heldout.png")
 

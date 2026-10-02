@@ -70,7 +70,9 @@ def _geomean(stack: np.ndarray) -> np.ndarray:
 
 LN_P84_Z = 1.0  # Φ(1) ≈ 0.8413; GMPE / site-response "84th percentile"
 # seiskit comparison/Response_Variability/manifest.py DMIN_MULTIPLIERS
-DMULT_MULTIPLIERS: tuple[float, ...] = tuple(float(x) for x in np.linspace(3.0, 6.0, 10))
+DMULT_MULTIPLIERS: tuple[float, ...] = tuple(
+    float(x) for x in np.linspace(3.0, 6.0, 10)
+)
 
 
 def lognormal_upper(

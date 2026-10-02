@@ -81,7 +81,9 @@ PACK_4D = ("vs1", "H", "cov", "vs2")
 PACK_6D = ("vs1", "H", "cov", "rH", "aHV", "vs2")
 
 
-def _meta_matrix(meta: dict[str, Any], idx: np.ndarray, keys: tuple[str, ...]) -> np.ndarray:
+def _meta_matrix(
+    meta: dict[str, Any], idx: np.ndarray, keys: tuple[str, ...]
+) -> np.ndarray:
     loc = np.asarray(idx, dtype=int)
     return np.column_stack([np.asarray(meta[key], dtype=float)[loc] for key in keys])
 
@@ -226,7 +228,9 @@ def load_domain_pack(domain: str, pack_dir: Path) -> dict[str, np.ndarray]:
     pack = attach_pretell_p84(pack)
     if "tf_pretell_p84" in pack:
         pack["rel_l2_pretell_p84"] = _rel_l2_per_sample(pack["tf_pretell_p84"], ops)
-        pack["pearson_pretell_p84"] = _pearson_mask_per_sample(pack["tf_pretell_p84"], ops)
+        pack["pearson_pretell_p84"] = _pearson_mask_per_sample(
+            pack["tf_pretell_p84"], ops
+        )
     vs1 = np.asarray(pack["vs1"], dtype=float)
     H = np.asarray(pack["H"], dtype=float)
     pack["f0"] = np.array([theoretical_f0(v, h) for v, h in zip(vs1, H)], dtype=float)
@@ -435,9 +439,7 @@ def compute(pack_dir: Path) -> dict[str, Any]:
     train6_iid = clouds["M700"]["x6"][clouds["M700"]["iid_mask"]]
     train4_iid = clouds["M700"]["x4"][clouds["M700"]["iid_mask"]]
     packs = {d: load_domain_pack(d, pack_dir) for d in DOMAIN_SPECS}
-    dist = {
-        d: domain_distance_rows(d, packs[d], train4_iid, train6_iid) for d in packs
-    }
+    dist = {d: domain_distance_rows(d, packs[d], train4_iid, train6_iid) for d in packs}
 
     fill: dict[str, dict[str, list[float]]] = {
         "iid_4d": nested_fill_curve(
@@ -448,7 +450,10 @@ def compute(pack_dir: Path) -> dict[str, Any]:
         fill["iid_6d"] = nested_fill_curve(
             unique_rows(train6_iid), _pack_matrix(packs["iid"], PACK_6D)
         )
-    for ood_key, dname in (("ood_dipping", "dipping"), ("ood_three_layer", "three_layer")):
+    for ood_key, dname in (
+        ("ood_dipping", "dipping"),
+        ("ood_three_layer", "three_layer"),
+    ):
         try:
             ood_tr = load_ood_train(ood_key)
         except (KeyError, FileNotFoundError):
@@ -539,7 +544,9 @@ def compute(pack_dir: Path) -> dict[str, Any]:
         },
         "freq": {
             d: {
-                "gino_train_bins_mean": float(np.nanmean(freq[d]["rel_l2_gino_train_bins"])),
+                "gino_train_bins_mean": float(
+                    np.nanmean(freq[d]["rel_l2_gino_train_bins"])
+                ),
                 "gino_heldout_bins_mean": float(
                     np.nanmean(freq[d]["rel_l2_gino_heldout_bins"])
                 ),

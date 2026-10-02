@@ -25,7 +25,11 @@ def _haskell():
         haskell_nominal_layered_af_within,
     )
 
-    return haskell_at_columns, haskell_nominal_af_within, haskell_nominal_layered_af_within
+    return (
+        haskell_at_columns,
+        haskell_nominal_af_within,
+        haskell_nominal_layered_af_within,
+    )
 
 
 def soil_mean_xi(zeta: np.ndarray, soil_nz: int) -> float:
@@ -85,7 +89,9 @@ def compute_signed_for_index(
     tf_2d: np.ndarray,
     freq: np.ndarray,
     recorder_x: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict, np.ndarray, np.ndarray]:
+) -> tuple[
+    np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict, np.ndarray, np.ndarray
+]:
     """Return signed R_col, R_nom, TF1D_col, TF1D_nom, meta, plus sample-ξ nom extras."""
     haskell_at_columns, haskell_nominal_af_within, _layered = _haskell()
     h5_path = resolve_h5_path(manifest_row["h5_path"])
@@ -283,9 +289,9 @@ def stack_field_columns(
     z_imp = z_imp / max(float(z_imp.max()), 1e-12)
     col = np.asarray(cols, dtype=int).ravel()
     col = np.clip(col, 0, vs_crop.shape[1] - 1)
-    fields = np.stack(
-        [vs_n[:, col], zeta_n[:, col], z_imp[:, col]], axis=0
-    ).astype(np.float32)
+    fields = np.stack([vs_n[:, col], zeta_n[:, col], z_imp[:, col]], axis=0).astype(
+        np.float32
+    )
     n = max(1, min(int(soil_nz), vs_crop.shape[0]))
     vs_col = vs_crop[:n, col].mean(axis=0).astype(np.float32)
     return fields, vs_col
@@ -298,9 +304,7 @@ def _fields_from_h5(
     vs, zeta, _ = _read_sample(h5_path)
     vs = vs[:, config.X_SLICE_START : config.X_SLICE_END]
     zeta = zeta[:, config.X_SLICE_START : config.X_SLICE_END]
-    return stack_field_columns(
-        vs, zeta, recorder_x, soil_nz=soil_nz, nz=nz
-    )
+    return stack_field_columns(vs, zeta, recorder_x, soil_nz=soil_nz, nz=nz)
 
 
 def build_support_fields_cache(

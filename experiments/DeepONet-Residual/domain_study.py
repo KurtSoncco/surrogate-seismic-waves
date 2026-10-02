@@ -12,7 +12,11 @@ import numpy as np
 import torch
 
 import config
-from data import CombinedResidualDataset, ResidualDeepONetDataset, dataset_kwargs_from_blob
+from data import (
+    CombinedResidualDataset,
+    ResidualDeepONetDataset,
+    dataset_kwargs_from_blob,
+)
 from domain_splits import ensure_splits, load_split
 from ood_signed_cache import (
     build_ood_signed_cache,

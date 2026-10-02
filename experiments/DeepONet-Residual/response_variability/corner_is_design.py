@@ -42,7 +42,9 @@ from sobol import (  # noqa: E402
 )
 
 OUT_DIR = config.RESULTS_DIR / "response_variability" / "eval_bias"
-PER_SAMPLE_CSV = config.RESULTS_DIR / "response_variability" / "gino_bias" / "per_sample.csv"
+PER_SAMPLE_CSV = (
+    config.RESULTS_DIR / "response_variability" / "gino_bias" / "per_sample.csv"
+)
 
 COV_LO, COV_HI = 0.255, 0.3
 RH_LO, RH_HI = 80.0, 100.0
@@ -67,7 +69,9 @@ FORBIDDEN_RF_SEEDS = frozenset({2486904, 2823621})
 SAMPLE50_SAMPLE_ID = 9000
 
 
-def load_per_sample_anderson(path: Path = PER_SAMPLE_CSV) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def load_per_sample_anderson(
+    path: Path = PER_SAMPLE_CSV,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """(CoV, r_H, Anderson) from nested-test IID+dipping rows."""
     cov: list[float] = []
     rh: list[float] = []
@@ -149,7 +153,9 @@ def unit_l2(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.sqrt(((ua[:, None, :] - ub[None, :, :]) ** 2).sum(axis=-1))
 
 
-def far_from_existing(cand: np.ndarray, existing: np.ndarray, tol: float = NEAR_TOL) -> np.ndarray:
+def far_from_existing(
+    cand: np.ndarray, existing: np.ndarray, tol: float = NEAR_TOL
+) -> np.ndarray:
     if existing.size == 0:
         return np.ones(len(cand), dtype=bool)
     dmin = unit_l2(cand, existing).min(axis=1)
@@ -177,7 +183,10 @@ def importance_pick(
     picked_arr = existing.copy()
     for i in order:
         row = pool[int(i)]
-        if picked_arr.size and not far_from_existing(row[None, :], picked_arr, tol=tol)[0]:
+        if (
+            picked_arr.size
+            and not far_from_existing(row[None, :], picked_arr, tol=tol)[0]
+        ):
             continue
         picked.append(row)
         picked_arr = np.vstack([picked_arr, row]) if picked_arr.size else row[None, :]
@@ -188,7 +197,9 @@ def importance_pick(
     return np.asarray(picked, dtype=float)
 
 
-def maximin_holdout(phys: np.ndarray, n_hold: int, rng: np.random.Generator) -> np.ndarray:
+def maximin_holdout(
+    phys: np.ndarray, n_hold: int, rng: np.random.Generator
+) -> np.ndarray:
     """Greedy maximin subset (indices) for locations held out of training forever."""
     unit = physical_to_unit(phys)
     n = len(unit)
@@ -307,7 +318,9 @@ def build_design(
             )
             gidx += 1
     extra_seeds = extra_rf_seeds(
-        N_SAMPLE50_SEEDS, forbidden=FORBIDDEN_RF_SEEDS, rng=np.random.default_rng(seed + 2)
+        N_SAMPLE50_SEEDS,
+        forbidden=FORBIDDEN_RF_SEEDS,
+        rng=np.random.default_rng(seed + 2),
     )
     theta50 = sample50_phys()
     extra: list[ManifestEntry] = []
@@ -337,9 +350,7 @@ def build_design(
     }
 
 
-def _write_locations_csv(
-    path: Path, phys: np.ndarray, held_out: np.ndarray
-) -> None:
+def _write_locations_csv(path: Path, phys: np.ndarray, held_out: np.ndarray) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fields = ["sample_id", "held_out", "Vs1", "H", "CoV", "rH", "aHV", "Vs2"]
     with path.open("w", newline="", encoding="utf-8") as f:
@@ -371,7 +382,9 @@ def main() -> None:
     write_manifest_csv(out / "corner_is_manifest.csv", blob["corner"])
     write_manifest_csv(out / "sample50_extra_seeds.csv", blob["extra"])
     write_manifest_csv(out / "corner_is_all.csv", blob["combined"])
-    _write_locations_csv(out / "corner_is_locations.csv", blob["locations"], blob["held_out"])
+    _write_locations_csv(
+        out / "corner_is_locations.csv", blob["locations"], blob["held_out"]
+    )
     n_exist = len(blob["existing_corner"])
     n_hold = int(blob["held_out"].sum())
     print(

@@ -154,7 +154,9 @@ def score_ckpt_domain(
                 "pearson_freq": delta_pack(
                     baseline_raw["pearson"], rec["_pearson"], higher_better=True
                 ),
-                "gof_af": delta_pack(baseline_raw["gof"], rec["_gof"], higher_better=False),
+                "gof_af": delta_pack(
+                    baseline_raw["gof"], rec["_gof"], higher_better=False
+                ),
                 "rel_l2_TF": delta_pack(
                     baseline_raw["rel"], rec["_rel"], higher_better=False
                 ),
@@ -208,9 +210,7 @@ def run(*, ckpt: Path, batch_size: int) -> dict[str, Any]:
 
 
 def _print_brief(blob: dict[str, Any]) -> None:
-    print(
-        f"\n{'dom':<16} {'op':<22} {'P mean':>8} {'ΔP':>8} {'A med':>8} {'ΔA':>8}"
-    )
+    print(f"\n{'dom':<16} {'op':<22} {'P mean':>8} {'ΔP':>8} {'A med':>8} {'ΔA':>8}")
     for domain, ops in blob.get("domains", {}).items():
         for op_name, rec in ops.items():
             p = rec["pearson_freq"]
