@@ -42,7 +42,7 @@ Physics: 500 m soil-variability strip between 500 m absorbing pads (full domain 
 | `recorders/accel/data` | `(n_time, 42)` = 21 base + 21 surface |
 | `params`: `Vs1`, `Vs2`, `H`, `CoV`, `rH`, `aHV`, `rf_seed` | CoV 0.10–0.30; H 15–100 m |
 
-Models crop columns `[500:1000]` (variability strip) and pad depth to `NZ_MAX=128`. GIFNO / LOGLO input is `(4, 128, 500)` = normalized Vs, ζ, x, z. Residual DeepONet fields are `(3, 128, 21)` at recorder columns only.
+Models crop columns `[500:1000]` (variability strip) and pad depth to `NZ_MAX=128`. GIFNO / LOGLO input is `(4, 128, 500)` = normalized Vs, ζ, x, z. Residual DeepONet fields are `(3, 128, 21)` at recorder columns only (15 m spacing: indices `100, 115, …, 400`). Kernel-query GNO can still use denser **support** columns from the same 1 m Vs strip (`fields_support.npy`, stride 5 → 100 columns); labels stay the 21 OpenSees TFs. Do not interpolate those 21 TFs onto a denser x-grid and call it ground truth.
 
 ### TF cache
 

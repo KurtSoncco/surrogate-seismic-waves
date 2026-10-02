@@ -107,11 +107,16 @@ def _aggregate(rows: list[dict[str, float]], prefix: str) -> dict[str, float]:
 
 
 def _ood_stoch(
-    params: dict[str, Any], nz: int, *, layout: str = "xi_cov"
+    params: dict[str, Any],
+    nz: int,
+    *,
+    layout: str = "xi_cov",
+    vs_field: np.ndarray | None = None,
+    soil_nz: int | None = None,
 ) -> tuple[np.ndarray, str]:
     """Map OOD attrs onto the IID stochastic branch (ξ + CoV, or legacy 20-d)."""
     from data import build_stoch_vector
-    from features import spectral_kl_coefficients
+    from features import empirical_acf_length, spectral_kl_coefficients, spectral_kl_from_field
 
     if "rf_seed" in params:
         rf_seed = int(params["rf_seed"])
@@ -136,16 +141,32 @@ def _ood_stoch(
             layout=layout,
         )
         return stoch, note
-    xi_vals, _ = spectral_kl_coefficients(
-        rf_seed=rf_seed,
-        rH=rH,
-        aHV=aHV,
-        nx=config.NX,
-        nz=nz,
-        dx=config.DX,
-        dz=config.DZ,
-        k=config.K_XI,
-    )
+    acf_length = 0.0
+    if layout == "xi_field_acf":
+        if vs_field is None:
+            raise ValueError("xi_field_acf needs the cropped Vs strip")
+        xi_vals, _ = spectral_kl_from_field(
+            vs_field,
+            rH=rH,
+            aHV=aHV,
+            dx=config.DX,
+            dz=config.DZ,
+            k=config.K_XI,
+            soil_nz=soil_nz,
+        )
+        acf_length = empirical_acf_length(vs_field, dx=config.DX, soil_nz=soil_nz)
+        note = f"{note}+field_acf"
+    else:
+        xi_vals, _ = spectral_kl_coefficients(
+            rf_seed=rf_seed,
+            rH=rH,
+            aHV=aHV,
+            nx=config.NX,
+            nz=nz,
+            dx=config.DX,
+            dz=config.DZ,
+            k=config.K_XI,
+        )
     stoch = build_stoch_vector(
         xi_vals=xi_vals,
         rH=rH,
@@ -153,6 +174,7 @@ def _ood_stoch(
         CoV=cov,
         xi_damp=xi_damp,
         layout=layout,
+        acf_length=acf_length,
     )
     return stoch, note
 
@@ -243,6 +265,7 @@ def _predict_rhat(
     layer_H: np.ndarray | None = None,
     layer_Vs: np.ndarray | None = None,
     vs_rock: float | None = None,
+    rH: float | None = None,
 ) -> np.ndarray:
     import torch
     from features import fourier_freq_features
@@ -300,6 +323,9 @@ def _predict_rhat(
             trunk_t,
             blob.get("branch_mode", "single"),
             geom_flags=geom_flags,
+            rH=None
+            if rH is None
+            else torch.tensor([[float(rH)]], dtype=torch.float32, device=device),
         )
         pred = pred_n * stats["target_std"].to(device) + stats["target_mean"].to(device)
         n_rec = len(recorder_x)
@@ -399,7 +425,11 @@ def eval_one_h5(
         model, blob, stats, trunk_set = model_pack
         fields, vs_col = _ood_fields(vs, zeta, rec, int(vs_c.shape[0]), soil_nz)
         stoch, stoch_note = _ood_stoch(
-            params, int(vs_c.shape[0]), layout=str(blob.get("stoch_layout", "xi_cov"))
+            params,
+            int(vs_c.shape[0]),
+            layout=str(blob.get("stoch_layout", "xi_cov")),
+            vs_field=vs_c,
+            soil_nz=soil_nz,
         )
         row["stoch_note"] = stoch_note
         from data import geom_flags_from_name
@@ -430,6 +460,9 @@ def eval_one_h5(
             vs_rock=float(true_layers["vs_rock"])
             if true_layers is not None
             else (float(nom["vs2"]) if nom.get("vs2") else None),
+            rH=float(params["rH"])
+            if "rH" in params
+            else float(params.get("rH1", params.get("rH", float("nan")))),
         )
         r_hat = clamp_residual(r_hat, clamp_mode)
         prior = (

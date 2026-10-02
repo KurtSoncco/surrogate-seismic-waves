@@ -22,6 +22,8 @@ import config  # noqa: E402
 from response_variability.metrics import spatial_percentiles  # noqa: E402
 from response_variability.names import (  # noqa: E402
     ALL_METHODS,
+    DMULT,
+    DMULT_P84,
     GINO,
     HASKELL_COLUMN,
     HASKELL_NOMINAL,
@@ -50,15 +52,25 @@ _LETTERS = "abcde"
 
 
 def methods_in_pack(pack: dict[str, np.ndarray]) -> list[str]:
-    return [m for m, key in TF_KEYS.items() if key in pack]
+    methods = [m for m, key in TF_KEYS.items() if key in pack]
+    if PRETELL in methods:
+        methods = [m for m in methods if m != HASKELL_COLUMN]
+    return methods
 
 
 def compare_methods_in(obj) -> list[str]:
-    """Candidate methods (excludes OpenSees 2-D), in canonical order."""
+    """Candidate methods (excludes OpenSees 2-D), in canonical order.
+
+    Per-recorder column Haskell is omitted when the 200-column Pretell arm is present.
+    """
     if isinstance(obj, dict):
         present = {m for m, key in TF_KEYS.items() if key in obj and m != OPENSEES}
+        if PRETELL in present:
+            present.discard(HASKELL_COLUMN)
     else:
         present = {m for m in obj["method"].unique() if m != OPENSEES}
+        if PRETELL in present:
+            present.discard(HASKELL_COLUMN)
     return [m for m in ALL_METHODS if m in present]
 
 
@@ -66,7 +78,7 @@ def _curve_at_sample(tf: np.ndarray, i: int) -> np.ndarray:
     a = np.asarray(tf[i], dtype=np.float64)
     if a.ndim == 1:
         return a
-    return a[CENTRAL_REC]
+    return a[a.shape[0] // 2]
 
 
 def _load_pack(out_dir: Path) -> dict[str, np.ndarray]:
@@ -368,8 +380,10 @@ def plot_tf_panel_variants(
 def _tick_labels(labels: list[str]) -> list[str]:
     wrap = {
         HASKELL_NOMINAL: "1D Base\nCase",
-        HASKELL_COLUMN: "Pretell's\napproach",
-        PRETELL_P84: "Pretell\np84",
+        PRETELL: "Pretell\nmedian",
+        PRETELL_P84: "Pretell\npercentile",
+        DMULT: "Dmult",
+        DMULT_P84: "Dmult\np84",
     }
     return [wrap.get(lab, lab.replace(" (", "\n(")) for lab in labels]
 
@@ -592,6 +606,9 @@ def _refresh_method_labels(df: pd.DataFrame) -> pd.DataFrame:
         {
             "Haskell (nominal)": HASKELL_NOMINAL,
             "Haskell (column)": HASKELL_COLUMN,
+            "Pretell's approach": HASKELL_COLUMN,
+            "Pretell": PRETELL,
+            "Pretell p84": PRETELL_P84,
         }
     )
     return df

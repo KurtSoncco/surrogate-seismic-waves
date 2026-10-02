@@ -37,6 +37,8 @@ def corpus_root(name: str) -> Path:
         return config.ood_dipping_root()
     if key in ("three_layer", "ood_three_layer", "threelayer"):
         return config.ood_three_layer_root()
+    if key in ("corner_is", "corner"):
+        return config.corner_is_root()
     raise ValueError(f"Unknown OOD corpus {name!r}")
 
 
@@ -44,6 +46,7 @@ def default_ood_roots() -> dict[str, Path]:
     return {
         "ood_dipping": config.ood_dipping_root(),
         "ood_three_layer": config.ood_three_layer_root(),
+        "corner_is": config.corner_is_root(),
     }
 
 

@@ -26,6 +26,8 @@ from train import _device, _forward, apply_norms  # noqa: E402
 
 from response_variability.metrics import (  # noqa: E402
     FREQ_BANDS,
+    anderson_frequency_domain,
+    band_anderson,
     band_pearson,
     band_rel_l2,
     method_vs_reference,
@@ -33,7 +35,7 @@ from response_variability.metrics import (  # noqa: E402
     spatial_sigma_ln,
     theoretical_f0,
 )
-from response_variability.names import OPENSEES, TF_KEYS  # noqa: E402
+from response_variability.names import HASKELL_COLUMN, OPENSEES, TF_KEYS  # noqa: E402
 
 OUT_DIR = config.RESULTS_DIR / "response_variability"
 CENTRAL_REC = config.N_LATERAL // 2
@@ -151,6 +153,7 @@ def predict_gino(
                 batch["trunk_y"].to(device),
                 mode,
                 geom_flags=batch.get("geom_flags"),
+                rH=batch.get("rH"),
             )
             pred = (pred_n * t_std + t_mean).cpu().numpy()
             tf1d = batch["tf1d"].numpy()
@@ -163,14 +166,22 @@ def _as_central(tf_i: np.ndarray) -> np.ndarray:
     a = np.asarray(tf_i, dtype=np.float64)
     if a.ndim == 1:
         return a
-    return a[..., CENTRAL_REC, :] if a.ndim == 3 else a[CENTRAL_REC]
+    rec = a.shape[-2] // 2
+    return a[..., rec, :] if a.ndim == 3 else a[rec]
 
 
 def pack_method_tfs(pack: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
-    """Candidate methods present in ``pack`` (excludes OpenSees 2-D)."""
+    """Candidate methods present in ``pack`` (excludes OpenSees 2-D).
+
+    When the 200-column Pretell geomean is present, drop per-recorder column
+    Haskell so Pretell is not scored twice.
+    """
     out = {}
+    skip = {OPENSEES}
+    if "tf_pretell" in pack:
+        skip.add(HASKELL_COLUMN)
     for method, key in TF_KEYS.items():
-        if method == OPENSEES:
+        if method in skip:
             continue
         if key in pack:
             out[method] = pack[key]
@@ -178,24 +189,29 @@ def pack_method_tfs(pack: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
 
 
 def summarize_methods(pack: dict[str, np.ndarray]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    from response_variability.covariates import attach_extracted_f0
+
+    if "f0_calc" not in pack:
+        pack = attach_extracted_f0(pack)
     freq = pack["freq"]
     tf_ops = pack["tf_opensees"]
     method_tfs = pack_method_tfs(pack)
     n = tf_ops.shape[0]
+    f0_ex = np.asarray(pack["f0"], dtype=float)
     summary_rows: list[dict[str, Any]] = []
     peak_rows: list[dict[str, Any]] = []
     for i in range(n):
         af_ref = _as_central(tf_ops[i])
         shared = {
             "sample": i,
-            "local_idx": int(pack["local_idx"][i]),
-            "sample_idx": int(pack["sample_idx"][i]),
-            "rf_seed": int(pack["rf_seed"][i]),
+            "local_idx": int(pack["local_idx"][i]) if "local_idx" in pack else i,
+            "sample_idx": int(pack["sample_idx"][i]) if "sample_idx" in pack else i,
+            "rf_seed": int(pack["rf_seed"][i]) if "rf_seed" in pack else -1,
             "Vs1": float(pack["vs1"][i]),
             "H": float(pack["H"][i]),
             "CoV": float(pack["cov"][i]),
             "Vs2": float(pack["vs2"][i]),
-            "f0": float(pack["f0"][i]),
+            "f0": float(f0_ex[i]) if i < f0_ex.size else float(pack["f0"][i]),
             "reference": OPENSEES,
         }
         f_ops, a_ops = peak_af(freq, af_ref)
@@ -222,6 +238,14 @@ def summarize_methods(pack: dict[str, np.ndarray]) -> tuple[pd.DataFrame, pd.Dat
                 af_cand=_as_central(cand),
                 af_ref_spatial=tf_ops[i] if spatial is not None else None,
                 af_cand_spatial=spatial,
+            )
+            center = float(f0_ex[i]) if i < f0_ex.size and np.isfinite(f0_ex[i]) else None
+            mets["gof_af"] = anderson_frequency_domain(
+                freq,
+                af_ref,
+                _as_central(cand),
+                f_weight_center=center,
+                f_weight_width=1.5,
             )
             row = {**shared, "method": method, **mets}
             summary_rows.append(row)
@@ -256,8 +280,8 @@ def band_misfit_table(pack: dict[str, np.ndarray]) -> pd.DataFrame:
             cand = np.asarray(tf[i], dtype=np.float64)
             row: dict[str, Any] = {
                 "sample": i,
-                "local_idx": int(pack["local_idx"][i]),
-                "sample_idx": int(pack["sample_idx"][i]),
+                "local_idx": int(pack["local_idx"][i]) if "local_idx" in pack else i,
+                "sample_idx": int(pack["sample_idx"][i]) if "sample_idx" in pack else i,
                 "method": method,
                 "reference": OPENSEES,
                 "Vs1": float(pack["vs1"][i]),
@@ -275,6 +299,10 @@ def band_misfit_table(pack: dict[str, np.ndarray]) -> pd.DataFrame:
                         cand, ref_c, freq, lo=lo, hi=hi
                     )
                     row[f"pearson_{band}_central"] = row[f"pearson_{band}"]
+                    row[f"gof_{band}"] = band_anderson(
+                        cand, ref_c, freq, lo=lo, hi=hi
+                    )
+                    row[f"gof_{band}_central"] = row[f"gof_{band}"]
                 else:
                     row[f"rel_l2_{band}"] = band_rel_l2(
                         cand, ref_full, freq, lo=lo, hi=hi
@@ -286,6 +314,12 @@ def band_misfit_table(pack: dict[str, np.ndarray]) -> pd.DataFrame:
                         cand, ref_full, freq, lo=lo, hi=hi
                     )
                     row[f"pearson_{band}_central"] = band_pearson(
+                        _as_central(cand), ref_c, freq, lo=lo, hi=hi
+                    )
+                    row[f"gof_{band}"] = band_anderson(
+                        cand, ref_full, freq, lo=lo, hi=hi
+                    )
+                    row[f"gof_{band}_central"] = band_anderson(
                         _as_central(cand), ref_c, freq, lo=lo, hi=hi
                     )
             rows.append(row)
@@ -313,6 +347,11 @@ def aggregate_json(summary: pd.DataFrame, misfit: pd.DataFrame) -> dict[str, Any
             rec["pearson_low_mean"] = float(mis["pearson_low"].mean())
             rec["pearson_mid_mean"] = float(mis["pearson_mid"].mean())
             rec["pearson_high_mean"] = float(mis["pearson_high"].mean())
+        if "gof_low" in mis.columns:
+            rec["gof_low_mean"] = float(mis["gof_low"].mean())
+            rec["gof_mid_mean"] = float(mis["gof_mid"].mean())
+            rec["gof_high_mean"] = float(mis["gof_high"].mean())
+            rec["gof_all_mean"] = float(mis["gof_all"].mean())
         if "rel_l2_spatial" in sub.columns:
             rec["rel_l2_spatial_mean"] = float(sub["rel_l2_spatial"].mean())
         out[method] = rec

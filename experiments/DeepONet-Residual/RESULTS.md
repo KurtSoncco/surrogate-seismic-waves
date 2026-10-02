@@ -3,6 +3,15 @@
 **Current figures and shipped metrics:** [`results/README.md`](results/README.md)  
 **Nested LOGLO vs GINO:** [`results/compare_gino_loglo/`](results/compare_gino_loglo/)
 
+**Naming:** the shipped leftover called “GNO” / “GINO” is a **pinned 21-node
+chain GNN** (index kNN=2 on the recorder line) plus FNO-on-\(R\) on a fixed
+\((21,n_f)\) lattice. Mesh-agnostic queries are in **frequency**, not space.
+Kernel-integral query \(p(x_q)\) is `--encoder kernel` (Savio
+`savio_spatial_query.sh`). Those arms failed nested three-layer
+(`results/SPATIAL_QUERY.md`). Recorder spacing is **15 m**
+(`LATERAL_SPACING_M`); the 25 m figure is only the legacy \(r_H\)-dilation hop
+used by Part 0b, not the array.
+
 This file is the chronological bake-off log (ResUNet → GINO → rebal FT). Numbers below that pre-date `M7680_gino_rebal_ft` are not the shipped leftover.
 
 **Experiment:** [`experiments/DeepONet-Residual/`](.)  

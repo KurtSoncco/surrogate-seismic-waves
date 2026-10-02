@@ -182,6 +182,48 @@ def spectral_kl_from_field(
     return values.astype(np.float32), names
 
 
+def empirical_acf_length(
+    vs_field: np.ndarray,
+    *,
+    dx: float = 1.0,
+    soil_nz: int | None = None,
+    min_m: float = 10.0,
+    max_m: float = 100.0,
+) -> float:
+    """Horizontal e-folding length of demeaned ln V_s (metres).
+
+    Depth-average the soil strip, then take the lag where the sample ACF of
+    demeaned ln V_s first drops below 1/e. Clamped to ``[min_m, max_m]``.
+    """
+    vs = np.asarray(vs_field, dtype=np.float64)
+    if vs.ndim != 2:
+        raise ValueError(f"vs_field must be (nz, nx); got {vs.shape}")
+    nz, nx = vs.shape
+    n_soil = nz if soil_nz is None else max(1, min(int(soil_nz), nz))
+    soil = np.maximum(vs[:n_soil], _EPS)
+    ln_vs = np.log(soil)
+    profile = ln_vs.mean(axis=0)
+    x = profile - float(profile.mean())
+    var = float(np.dot(x, x))
+    if nx < 2 or var < _EPS:
+        return float(min_m)
+    acf = np.correlate(x, x, mode="full")[nx - 1 :] / var
+    thresh = float(np.e) ** -1
+    below = np.where(acf < thresh)[0]
+    if below.size == 0:
+        lag = float(nx - 1)
+    else:
+        k = int(below[0])
+        if k <= 0:
+            lag = 0.0
+        else:
+            a0, a1 = float(acf[k - 1]), float(acf[k])
+            frac = (a0 - thresh) / max(a0 - a1, _EPS)
+            lag = (k - 1) + float(np.clip(frac, 0.0, 1.0))
+    length = float(lag) * float(dx)
+    return float(np.clip(length, min_m, max_m))
+
+
 def log_freq_hat(
     freq: np.ndarray,
     *,

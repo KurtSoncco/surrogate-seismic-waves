@@ -620,7 +620,21 @@ def analyze_pack(
     peaks = peak_signed_bias(gino, ops, freq)
     logb = trough_safe_log_bias(gino, ops)
     l2 = per_sample_rel_l2(gino, ops)
-    f0, zimp = f0_impedance(pack)
+    from response_variability.covariates import (
+        attach_extracted_f0,
+        pearson_anderson_per_sample,
+        present_covariates,
+    )
+
+    pack_f0 = pack if "f0_calc" in pack else attach_extracted_f0(pack)
+    pack_f0 = dict(pack_f0)
+    f0 = np.asarray(pack_f0["f0"], dtype=float)
+    zimp = np.asarray(
+        pack_f0.get("impedance", pack["vs2"] / np.clip(pack["vs1"], _EPS, None))
+    )
+    pack_f0["impedance"] = zimp
+    pack_f0["f0"] = f0
+    pa = pearson_anderson_per_sample(gino, ops, freq, f0_extracted=f0)
     r_hat = leftover(gino, nom)
     r = leftover(ops, nom)
     tr = dct_transfer_ratio(r_hat, r)
@@ -656,6 +670,21 @@ def analyze_pack(
         ),
         "CoV_logbias": quartile_bins(pack["cov"], logb, n_boot=n_boot, seed=seed),
     }
+    quartile_pearson: dict[str, list] = {}
+    quartile_gof: dict[str, list] = {}
+    for key in present_covariates(pack_f0, domain):
+        vals = np.asarray(pack_f0[key], dtype=float)
+        quartile_pearson[key] = quartile_bins(
+            vals, pa["pearson"], n_boot=n_boot, seed=seed
+        )
+        quartile_gof[key] = quartile_bins(vals, pa["gof_af"], n_boot=n_boot, seed=seed)
+        for band in ("low", "mid", "high", "all"):
+            quartile_pearson[f"{key}_{band}"] = quartile_bins(
+                vals, pa[f"pearson_{band}"], n_boot=n_boot, seed=seed
+            )
+            quartile_gof[f"{key}_{band}"] = quartile_bins(
+                vals, pa[f"gof_{band}"], n_boot=n_boot, seed=seed
+            )
     mean_r = mean_leftover(ops, nom)
     return {
         "domain": domain,
@@ -669,16 +698,31 @@ def analyze_pack(
         "offline_1d": alt,
         "dct": tr,
         "rel_l2_mean": float(np.nanmean(l2)),
+        "pearson_mean": float(np.nanmean(pa["pearson"])),
+        "gof_af_mean": float(np.nanmean(pa["gof_af"])),
         "delta_ln_A_median": float(np.nanmedian(peaks["delta_ln_A_peak"])),
         "delta_f_peak_median": float(np.nanmedian(peaks["delta_f_peak"])),
         "log_bias_trough_safe_median": float(np.nanmedian(logb)),
         "quartile_rel_l2": bins,
+        "quartile_pearson": quartile_pearson,
+        "quartile_gof": quartile_gof,
         "in_hull_iid": hull,
         "per_sample": {
             "rel_l2": l2,
+            "pearson": pa["pearson"],
+            "gof_af": pa["gof_af"],
+            "pearson_low": pa["pearson_low"],
+            "pearson_mid": pa["pearson_mid"],
+            "pearson_high": pa["pearson_high"],
+            "pearson_all": pa["pearson_all"],
+            "gof_low": pa["gof_low"],
+            "gof_mid": pa["gof_mid"],
+            "gof_high": pa["gof_high"],
+            "gof_all": pa["gof_all"],
             "delta_ln_A_peak": peaks["delta_ln_A_peak"],
             "log_bias_trough_safe": logb,
             "slope_b": per_b,
+            "f0": f0,
         },
         "dct_ratio": tr_ratio,
     }

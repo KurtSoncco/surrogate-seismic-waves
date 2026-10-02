@@ -30,7 +30,10 @@ from response_variability.eval_iid import (  # noqa: E402
     summarize_methods,
 )
 from response_variability.seiskit_arms import (  # noqa: E402
+    attach_dmult_p84,
+    attach_pretell_p84,
     ensure_seiskit,
+    hallal_dmin_geomean_tf,
     hallal_geomean_tf,
     pretell_haskell_tf,
 )
@@ -67,12 +70,14 @@ def add_seiskit_arms(
     n_freq = len(freq)
     tf_toro = np.empty((n, n_freq), dtype=np.float64)
     tf_passeri = np.empty((n, n_freq), dtype=np.float64)
+    tf_dmult = np.empty((n, n_freq), dtype=np.float64)
     tf_pretell = np.empty((n, n_freq), dtype=np.float64)
     sig_toro = np.empty((n, n_freq), dtype=np.float64)
     sig_passeri = np.empty((n, n_freq), dtype=np.float64)
+    sig_dmult = np.empty((n, n_freq), dtype=np.float64)
     sig_pretell = np.empty((n, n_freq), dtype=np.float64)
 
-    for i, loc in enumerate(tqdm(local, desc="seiskit Hallal+Pretell")):
+    for i, loc in enumerate(tqdm(local, desc="seiskit Hallal+Dmult+Pretell")):
         h5_path = resolve_h5_path(str(meta["h5_path"][int(loc)]))
         vs, zeta, params = _load_h5(h5_path)
         vs_strip = vs[:, config.X_SLICE_START : config.X_SLICE_END]
@@ -105,6 +110,13 @@ def add_seiskit_arms(
             n_seeds=n_hallal_seeds,
             kind="passeri",
         )
+        geo_d, sig_d = hallal_dmin_geomean_tf(
+            freq=freq,
+            vs1=vs1,
+            H=H,
+            cov=cov,
+            vs2=vs2,
+        )
         geo_pr, sig_pr = pretell_haskell_tf(
             freq=freq,
             vs_strip=vs_strip,
@@ -116,20 +128,21 @@ def add_seiskit_arms(
         )
         tf_toro[i], sig_toro[i] = geo_t, np.asarray(sig_t, dtype=np.float64)
         tf_passeri[i], sig_passeri[i] = geo_p, np.asarray(sig_p, dtype=np.float64)
+        tf_dmult[i], sig_dmult[i] = geo_d, np.asarray(sig_d, dtype=np.float64)
         tf_pretell[i], sig_pretell[i] = geo_pr, np.asarray(sig_pr, dtype=np.float64)
 
     pack = dict(pack)
     pack["tf_toro"] = tf_toro
     pack["tf_passeri"] = tf_passeri
+    pack["tf_dmult"] = tf_dmult
     pack["tf_pretell"] = tf_pretell
     pack["sigma_ln_toro"] = sig_toro
     pack["sigma_ln_passeri"] = sig_passeri
+    pack["sigma_ln_dmult"] = sig_dmult
     pack["sigma_ln_pretell"] = sig_pretell
     pack["n_hallal_seeds"] = np.array(n_hallal_seeds)
     pack["n_pretell"] = np.array(n_pretell)
-    from response_variability.seiskit_arms import attach_pretell_p84
-
-    return attach_pretell_p84(pack)
+    return attach_dmult_p84(attach_pretell_p84(pack))
 
 
 def main() -> None:
@@ -154,11 +167,12 @@ def main() -> None:
         blob = np.load(pred_out, allow_pickle=True)
         pack = {k: blob[k] for k in blob.files}
         from response_variability.seiskit_arms import (
+            attach_dmult_p84,
             attach_pretell_p84,
             upgrade_sigma_ln_from_presentation,
         )
 
-        pack = attach_pretell_p84(upgrade_sigma_ln_from_presentation(pack))
+        pack = attach_dmult_p84(attach_pretell_p84(upgrade_sigma_ln_from_presentation(pack)))
     else:
         blob = np.load(args.predictions, allow_pickle=True)
         pack = {k: blob[k] for k in blob.files}

@@ -137,6 +137,11 @@ def mix_val_parts(
     ]
 
 
+def mix_val_lookup(*, seed: int = config.SEED, iid_only: bool = False) -> dict[str, tuple[Path, np.ndarray]]:
+    """Val slices keyed like ``mix_test_parts`` (iid / ood_dipping / ood_three_layer)."""
+    return {name: (cache, idx) for name, cache, idx in mix_val_parts(seed=seed, iid_only=iid_only)}
+
+
 def mix_test_parts(*, seed: int = config.SEED) -> dict[str, tuple[Path, np.ndarray]]:
     iid = iid_n1000_split(seed=seed)
     dip = load_split(config.CACHE_DIR / "splits" / f"ood_dipping_seed{seed}.npz")

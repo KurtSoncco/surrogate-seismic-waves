@@ -249,28 +249,178 @@ def write_sample_indices(cache_tag: str, indices: np.ndarray) -> Path:
     return path
 
 
-def _fields_from_h5(
-    h5_path: Path, recorder_x: np.ndarray, soil_nz: int, nz: int
+def support_column_indices(
+    stride: int = config.SUPPORT_STRIDE,
+    nx: int = config.NX,
+) -> np.ndarray:
+    """Column indices on the cropped 500 m strip (1 m grid)."""
+    s = max(int(stride), 1)
+    return np.arange(0, int(nx), s, dtype=int)
+
+
+def column_x_m(cols: np.ndarray | Sequence[float]) -> np.ndarray:
+    """Physical x (m) on the cropped strip: cell centers."""
+    c = np.asarray(cols, dtype=np.float64).ravel()
+    return ((c + 0.5) * float(config.DX)).astype(np.float32)
+
+
+def stack_field_columns(
+    vs_crop: np.ndarray,
+    zeta_crop: np.ndarray,
+    cols: np.ndarray,
+    *,
+    soil_nz: int,
+    nz: int,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return (fields [3, Nz_max, n_rec], vs_col [n_rec]) on the cropped strip."""
+    """Return (fields [3, Nz_max, n_col], vs_col [n_col]) from a cropped strip."""
     from data import normalize_vs_surface, normalize_zeta_max, pad_depth
 
-    vs, zeta, _ = _read_sample(h5_path)
-    vs = vs[:, config.X_SLICE_START : config.X_SLICE_END]
-    zeta = zeta[:, config.X_SLICE_START : config.X_SLICE_END]
-    vs_pad = pad_depth(vs, config.NZ_MAX)
-    zeta_pad = pad_depth(zeta, config.NZ_MAX)
+    vs_pad = pad_depth(vs_crop, config.NZ_MAX)
+    zeta_pad = pad_depth(zeta_crop, config.NZ_MAX)
     vs_n = normalize_vs_surface(vs_pad)
     zeta_n = normalize_zeta_max(zeta_pad, nz)
     z_imp = (config.RHO * vs_pad).astype(np.float32)
     z_imp = z_imp / max(float(z_imp.max()), 1e-12)
-    cols = recorder_x.astype(int)
-    fields = np.stack([vs_n[:, cols], zeta_n[:, cols], z_imp[:, cols]], axis=0).astype(
-        np.float32
-    )
-    n = max(1, min(int(soil_nz), vs.shape[0]))
-    vs_col = vs[:n, cols].mean(axis=0).astype(np.float32)
+    col = np.asarray(cols, dtype=int).ravel()
+    col = np.clip(col, 0, vs_crop.shape[1] - 1)
+    fields = np.stack(
+        [vs_n[:, col], zeta_n[:, col], z_imp[:, col]], axis=0
+    ).astype(np.float32)
+    n = max(1, min(int(soil_nz), vs_crop.shape[0]))
+    vs_col = vs_crop[:n, col].mean(axis=0).astype(np.float32)
     return fields, vs_col
+
+
+def _fields_from_h5(
+    h5_path: Path, recorder_x: np.ndarray, soil_nz: int, nz: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return (fields [3, Nz_max, n_rec], vs_col [n_rec]) on the cropped strip."""
+    vs, zeta, _ = _read_sample(h5_path)
+    vs = vs[:, config.X_SLICE_START : config.X_SLICE_END]
+    zeta = zeta[:, config.X_SLICE_START : config.X_SLICE_END]
+    return stack_field_columns(
+        vs, zeta, recorder_x, soil_nz=soil_nz, nz=nz
+    )
+
+
+def build_support_fields_cache(
+    cache_tag: str | Path = "n7680_seed42",
+    *,
+    stride: int = config.SUPPORT_STRIDE,
+    force: bool = False,
+) -> Path:
+    """Dense Vs/ζ/Z columns for kernel GNO support. Does not touch R_nom labels.
+
+    Reads existing signed-cache ``meta.npz`` / H5 paths. Stride ``s=5`` on the
+    500 m strip → 100 support columns. No new OpenSees.
+    """
+    out_dir = Path(cache_tag)
+    if not out_dir.is_dir():
+        out_dir = config.CACHE_DIR / str(cache_tag)
+    fields_path = out_dir / "fields_support.npy"
+    x_path = out_dir / "support_x.npy"
+    cols_path = out_dir / "support_cols.npy"
+    meta_path = out_dir / "support_meta.npz"
+    if (
+        not force
+        and fields_path.is_file()
+        and x_path.is_file()
+        and cols_path.is_file()
+        and meta_path.is_file()
+    ):
+        prev = dict(np.load(meta_path, allow_pickle=True))
+        if int(prev.get("stride", stride)) == int(stride):
+            print(f"[support] reuse {fields_path}", flush=True)
+            return out_dir
+    idx_path = out_dir / "sample_indices.npy"
+    signed_meta = out_dir / "meta.npz"
+    if not idx_path.is_file() or not signed_meta.is_file():
+        raise FileNotFoundError(
+            f"need signed cache meta at {out_dir} before support fields"
+        )
+    sample_indices = np.load(idx_path)
+    meta = dict(np.load(signed_meta, allow_pickle=True))
+    cols = support_column_indices(stride)
+    n = len(sample_indices)
+    n_s = int(cols.size)
+    fields = np.empty((n, 3, config.NZ_MAX, n_s), dtype=np.float32)
+    for i in tqdm(range(n), desc=f"support s={stride} {out_dir.name}"):
+        stored = str(meta["h5_path"][i])
+        path = Path(stored)
+        if not path.is_file():
+            path = resolve_h5_path(stored)
+        vs, zeta, _ = _read_sample(path)
+        vs = vs[:, config.X_SLICE_START : config.X_SLICE_END]
+        zeta = zeta[:, config.X_SLICE_START : config.X_SLICE_END]
+        soil_nz = int(meta["soil_nz"][i]) if "soil_nz" in meta else int(meta["nz"][i])
+        nz = int(meta["nz"][i])
+        fld, _ = stack_field_columns(vs, zeta, cols, soil_nz=soil_nz, nz=nz)
+        fields[i] = fld
+    np.save(fields_path, fields)
+    np.save(x_path, column_x_m(cols))
+    np.save(cols_path, cols.astype(np.int64))
+    np.savez(
+        meta_path,
+        stride=np.int64(stride),
+        n_support=np.int64(n_s),
+        nx=np.int64(config.NX),
+    )
+    print(f"Wrote support fields → {fields_path}  n={n} n_support={n_s}", flush=True)
+    return out_dir
+
+
+def slice_support_fields_from_parent(
+    child_tag: str,
+    parent_tag: str,
+    *,
+    force: bool = False,
+) -> Path:
+    """Copy stride-s support fields onto a nested child cache (no H5 reread)."""
+    src = config.CACHE_DIR / parent_tag
+    dst = config.CACHE_DIR / child_tag
+    dst_fields = dst / "fields_support.npy"
+    if (
+        not force
+        and dst_fields.is_file()
+        and (dst / "support_x.npy").is_file()
+        and (dst / "support_cols.npy").is_file()
+    ):
+        print(f"[support] reuse {dst_fields}", flush=True)
+        return dst
+    src_fields = src / "fields_support.npy"
+    if not src_fields.is_file():
+        raise FileNotFoundError(f"need {src_fields} before slicing {child_tag}")
+    child_idx_path = dst / "sample_indices.npy"
+    parent_idx_path = src / "sample_indices.npy"
+    if not child_idx_path.is_file() or not parent_idx_path.is_file():
+        raise FileNotFoundError(f"need sample_indices.npy in {src} and {dst}")
+    parent = np.load(parent_idx_path)
+    child = np.load(child_idx_path)
+    loc = {int(s): i for i, s in enumerate(parent)}
+    missing = [int(s) for s in child if int(s) not in loc]
+    if missing:
+        raise KeyError(
+            f"{len(missing)} {child_tag} samples are not in {parent_tag} "
+            f"(e.g. {missing[:5]})"
+        )
+    rows = np.array([loc[int(s)] for s in child], dtype=int)
+    dst.mkdir(parents=True, exist_ok=True)
+    np.save(dst_fields, np.load(src_fields, mmap_mode="r")[rows])
+    for name in ("support_x.npy", "support_cols.npy"):
+        sp = src / name
+        if sp.is_file():
+            np.save(dst / name, np.load(sp))
+    src_meta = src / "support_meta.npz"
+    if src_meta.is_file():
+        import shutil
+
+        shutil.copy2(src_meta, dst / "support_meta.npz")
+    print(
+        f"[support] sliced {child_tag} from {parent_tag} rows={len(rows)} "
+        f"n_support={int(np.load(dst / 'support_cols.npy').size)}",
+        flush=True,
+    )
+    return dst
 
 
 def build_signed_cache(
@@ -449,12 +599,37 @@ if __name__ == "__main__":
         action="store_true",
         help="Write tf1d_nom_xi.npy extras using H5 soil-mean ζ (does not rewrite R_nom).",
     )
-    args = p.parse_args()
-    build_signed_cache(
-        args.cache_tag,
-        force=args.force,
-        max_samples=args.max_samples,
-        indices_only=args.indices_only,
-        allow_stratified=not args.require_residual_indices,
-        sample_xi=args.sample_xi,
+    p.add_argument(
+        "--support-fields",
+        action="store_true",
+        help="Write stride-s kernel support fields from existing H5 (no new OpenSees).",
     )
+    p.add_argument(
+        "--support-stride",
+        type=int,
+        default=config.SUPPORT_STRIDE,
+        help="Column stride on the 500 m strip (default 5 → 100 support).",
+    )
+    p.add_argument(
+        "--slice-support-from",
+        default=None,
+        help="Slice fields_support.npy from this parent cache tag (no H5 reread).",
+    )
+    args = p.parse_args()
+    if args.slice_support_from:
+        slice_support_fields_from_parent(
+            args.cache_tag, args.slice_support_from, force=args.force
+        )
+    elif args.support_fields:
+        build_support_fields_cache(
+            args.cache_tag, stride=args.support_stride, force=args.force
+        )
+    else:
+        build_signed_cache(
+            args.cache_tag,
+            force=args.force,
+            max_samples=args.max_samples,
+            indices_only=args.indices_only,
+            allow_stratified=not args.require_residual_indices,
+            sample_xi=args.sample_xi,
+        )

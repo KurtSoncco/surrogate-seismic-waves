@@ -21,20 +21,24 @@ import config
 import h5py
 
 from features import (
+    empirical_acf_length,
     fourier_freq_features,
     log_freq_hat,
     spectral_kl_coefficients,
+    spectral_kl_from_field,
 )
 
 _EPS = 1e-12
 TargetName = Literal["R_col", "R_nom"]
 TrunkSet = Literal["fstar", "fstar_fourier", "xL", "full"]
-StochLayout = Literal["xi_cov", "legacy20", "cov_only"]
+StochLayout = Literal["xi_cov", "legacy20", "cov_only", "xi_field_acf"]
 FstarKind = Literal["legacy", "tts"]
 XCoordKind = Literal["x_over_lambda", "xH"]
+QuerySplit = Literal["all", "even", "odd", "interior", "edge"]
 STOCH_LAYOUT_DEFAULT: StochLayout = "xi_cov"
 FSTAR_KIND_DEFAULT: FstarKind = "legacy"
 X_COORD_DEFAULT: XCoordKind = "x_over_lambda"
+QUERY_SPLIT_DEFAULT: QuerySplit = "all"
 
 
 def freq_screen_indices(freq: np.ndarray, n: int) -> np.ndarray:
@@ -122,18 +126,55 @@ def stoch_dim(
     """Length of the stochastic branch vector.
 
     ``xi_cov`` (default) is ξ (2 K_XI real/imag KL coeffs) plus CoV.
+    ``xi_field_acf`` is field-FFT ξ plus CoV plus empirical ACF length (metres).
     ``legacy20`` is the original concat ξ + [rH, aHV, CoV, ξ_damp].
     ``cov_only`` is the practitioner scalar CoV (no ξ).
-    rH/aHV still enter ξ via PSD mode ranking in ``xi_cov`` / ``legacy20``.
+    rH/aHV still enter ξ via PSD mode ranking in ``xi_cov`` / ``legacy20`` /
+    ``xi_field_acf``.
     """
     k2 = 2 * int(k_xi)
     if layout == "legacy20":
         return k2 + 4
+    if layout == "xi_field_acf":
+        return k2 + 2
     if layout == "xi_cov":
         return k2 + 1
     if layout == "cov_only":
         return 1
     raise ValueError(f"unknown stoch layout {layout!r}")
+
+
+def column_x_m(cols: np.ndarray | Sequence[float]) -> np.ndarray:
+    """Physical x (m) on the cropped strip: cell centers."""
+    c = np.asarray(cols, dtype=np.float64).ravel()
+    return ((c + 0.5) * float(config.DX)).astype(np.float32)
+
+
+def support_column_indices(
+    stride: int = config.SUPPORT_STRIDE,
+    nx: int = config.NX,
+) -> np.ndarray:
+    """Column indices on the cropped 500 m strip (1 m grid)."""
+    s = max(int(stride), 1)
+    return np.arange(0, int(nx), s, dtype=int)
+
+
+def query_station_indices(n_rec: int, split: str = "all") -> np.ndarray:
+    """Which of the labeled recorders are trunk queries."""
+    n = int(n_rec)
+    idx = np.arange(n, dtype=int)
+    key = str(split).lower()
+    if key == "all":
+        return idx
+    if key == "even":
+        return idx[idx % 2 == 0]
+    if key == "odd":
+        return idx[idx % 2 == 1]
+    if key in ("interior", "drop_edge"):
+        return idx if n <= 2 else idx[1:-1]
+    if key in ("edge", "edges"):
+        return idx if n <= 1 else np.array([0, n - 1], dtype=int)
+    raise ValueError(f"unknown query split {split!r}")
 
 
 def build_stoch_vector(
@@ -144,11 +185,15 @@ def build_stoch_vector(
     CoV: float,
     xi_damp: float,
     layout: str = STOCH_LAYOUT_DEFAULT,
+    acf_length: float = 0.0,
 ) -> np.ndarray:
     """Assemble the branch stochastic vector. rH/aHV are unused in ``xi_cov`` / ``cov_only``."""
     xi = np.asarray(xi_vals, dtype=np.float32).ravel()
     if layout == "legacy20":
         tail = np.array([rH, aHV, CoV, xi_damp], dtype=np.float32)
+        return np.concatenate([xi, tail]).astype(np.float32)
+    if layout == "xi_field_acf":
+        tail = np.array([CoV, acf_length], dtype=np.float32)
         return np.concatenate([xi, tail]).astype(np.float32)
     if layout == "xi_cov":
         tail = np.array([CoV], dtype=np.float32)
@@ -183,11 +228,13 @@ def infer_stoch_layout(
     k2 = 2 * int(config.K_XI)
     if dim == k2 + 4:
         return "legacy20"
+    if dim == k2 + 2:
+        return "xi_field_acf"
     if dim == k2 + 1:
         return "xi_cov"
     if dim == 1:
         return "cov_only"
-    if recorded in ("legacy20", "xi_cov", "cov_only"):
+    if recorded in ("legacy20", "xi_cov", "cov_only", "xi_field_acf"):
         return recorded  # type: ignore[return-value]
     return STOCH_LAYOUT_DEFAULT
 
@@ -197,6 +244,69 @@ def stoch_layout_from_blob(blob: dict) -> StochLayout:
         blob.get("model") or {},
         recorded=blob.get("stoch_layout"),
     )
+
+
+def stoch_layout_from_dim(dim: int, k_xi: int = config.K_XI) -> StochLayout:
+    """Layout for a known branch width. Raises if ``dim`` is not a layout."""
+    layout = infer_stoch_layout(in_features=int(dim))
+    if stoch_dim(k_xi=k_xi, layout=layout) != int(dim):
+        raise ValueError(f"no stoch layout for dim {dim}")
+    return layout
+
+
+def stoch_layout_parts(
+    layout: str, k_xi: int = config.K_XI
+) -> tuple[tuple[str, int], ...]:
+    """Ordered ``(channel, width)`` blocks for a stochastic layout."""
+    k2 = 2 * int(k_xi)
+    if layout == "legacy20":
+        return (("xi", k2), ("rH", 1), ("aHV", 1), ("CoV", 1), ("xi_damp", 1))
+    if layout == "xi_field_acf":
+        return (("xi", k2), ("CoV", 1), ("acf", 1))
+    if layout == "xi_cov":
+        return (("xi", k2), ("CoV", 1))
+    if layout == "cov_only":
+        return (("CoV", 1),)
+    raise ValueError(f"unknown stoch layout {layout!r}")
+
+
+def remap_stoch_last_dim(
+    src: torch.Tensor,
+    dst_dim: int,
+    *,
+    new_fill: float,
+    k_xi: int = config.K_XI,
+) -> torch.Tensor:
+    """Copy named stoch channels along the last dim; fill channels the dest adds.
+
+    ``legacy20`` → ``xi_cov`` / ``xi_field_acf`` keeps ξ and CoV and drops
+    rH / aHV / ξ_damp. ``xi_cov`` → ``xi_field_acf`` appends ACF at ``new_fill``.
+    """
+    src_dim = int(src.shape[-1])
+    dst_dim = int(dst_dim)
+    if src_dim == dst_dim:
+        return src
+    src_layout = stoch_layout_from_dim(src_dim, k_xi=k_xi)
+    dst_layout = stoch_layout_from_dim(dst_dim, k_xi=k_xi)
+    offsets: dict[str, tuple[int, int]] = {}
+    pos = 0
+    for name, width in stoch_layout_parts(src_layout, k_xi=k_xi):
+        offsets[name] = (pos, width)
+        pos += width
+    chunks: list[torch.Tensor] = []
+    for name, width in stoch_layout_parts(dst_layout, k_xi=k_xi):
+        if name in offsets:
+            start, src_width = offsets[name]
+            if src_width != width:
+                raise ValueError(
+                    f"stoch channel {name!r} width {src_width} != {width} "
+                    f"({src_layout} → {dst_layout})"
+                )
+            chunks.append(src[..., start : start + width])
+            continue
+        fill_shape = src.shape[:-1] + (width,)
+        chunks.append(src.new_full(fill_shape, float(new_fill)))
+    return torch.cat(chunks, dim=-1)
 
 
 def stoch_dim_from_dataset(ds: object) -> int:
@@ -584,6 +694,8 @@ class ResidualDeepONetDataset(Dataset):
         fstar_kind: str = FSTAR_KIND_DEFAULT,
         x_coord: str = X_COORD_DEFAULT,
         nom_variant: str = "default",
+        query_split: str = QUERY_SPLIT_DEFAULT,
+        support_stride: int = 0,
     ):
         if n_freq_train is not None:
             n_freq = n_freq_train
@@ -599,6 +711,8 @@ class ResidualDeepONetDataset(Dataset):
         self.fstar_kind: FstarKind = "tts" if str(fstar_kind) == "tts" else "legacy"
         self.x_coord: XCoordKind = "xH" if str(x_coord) == "xH" else "x_over_lambda"
         self.nom_variant = str(nom_variant)
+        self.query_split = str(query_split)
+        self.support_stride = int(support_stride)
 
         self.meta = dict(np.load(self.cache_dir / "meta.npz", allow_pickle=True))
         key = "r_col_signed.npy" if target == "R_col" else "r_nom_signed.npy"
@@ -644,6 +758,27 @@ class ResidualDeepONetDataset(Dataset):
             self.recorder_x = np.load(config.RECORDER_X_IDX_PATH)
         else:
             self.recorder_x = np.arange(self.r.shape[1])
+        self.recorder_x_all = np.asarray(self.recorder_x)
+        self.query_idx = query_station_indices(len(self.recorder_x_all), self.query_split)
+        self.recorder_x = self.recorder_x_all[self.query_idx]
+        self.query_x = column_x_m(self.recorder_x)
+        self._fields_support = None
+        if self.support_stride > 0:
+            sp = self.cache_dir / "fields_support.npy"
+            sx = self.cache_dir / "support_x.npy"
+            if sp.is_file() and sx.is_file():
+                self._fields_support = np.load(sp, mmap_mode="r")
+                self.support_x = np.asarray(np.load(sx), dtype=np.float32).ravel()
+            else:
+                print(
+                    f"[data] no fields_support.npy in {self.cache_dir}; "
+                    "kernel support falls back to 21 recorder columns",
+                    flush=True,
+                )
+                self.support_stride = 0
+                self.support_x = column_x_m(self.recorder_x_all)
+        else:
+            self.support_x = column_x_m(self.recorder_x_all)
         if str(freq_sample) == "band":
             self.f_idx = freq_band_balanced_indices(self.freq, n_freq)
         else:
@@ -671,10 +806,27 @@ class ResidualDeepONetDataset(Dataset):
         desc = f"dataset {target}/{trunk_set}/nf={len(self.f_idx)}"
         for local_i in tqdm(self.indices, desc=desc, leave=False):
             item = self._load_item(int(local_i))
-            self._cache.append({k: torch.from_numpy(v) for k, v in item.items()})
+            self._cache.append({k: torch.from_numpy(np.array(v, copy=True)) for k, v in item.items()})
 
     def __len__(self) -> int:
         return len(self.indices)
+
+    def _meta_rH(self, local_i: int) -> float:
+        if "rH" not in self.meta:
+            return float("nan")
+        v = float(self.meta["rH"][local_i])
+        return v if np.isfinite(v) else float("nan")
+
+    def _cropped_vs_strip(self, local_i: int) -> np.ndarray:
+        from residual_signed import resolve_h5_path
+
+        stored = str(self.meta["h5_path"][local_i])
+        path = Path(stored)
+        if not path.is_file():
+            path = resolve_h5_path(stored)
+        with h5py.File(path, "r") as f:
+            vs = np.asarray(f["Vs_realization_2D"][:], dtype=np.float64)
+        return vs[:, config.X_SLICE_START : config.X_SLICE_END]
 
     def _stoch(self, local_i: int) -> np.ndarray:
         CoV = float(self.meta["CoV"][local_i])
@@ -687,32 +839,53 @@ class ResidualDeepONetDataset(Dataset):
                 xi_damp=0.0,
                 layout="cov_only",
             )
-        rf_seed = int(self.meta["rf_seed"][local_i])
-        rH = float(self.meta["rH"][local_i])
-        aHV = float(self.meta["aHV"][local_i])
+        rH = self._meta_rH(local_i)
+        aHV = float(self.meta["aHV"][local_i]) if "aHV" in self.meta else 1.0
+        if not np.isfinite(aHV) or aHV <= 0:
+            aHV = 1.0
         nz = int(self.meta["nz"][local_i])
+        soil_nz = int(self.meta["soil_nz"][local_i]) if "soil_nz" in self.meta else nz
         xi_damp = float(
             self.meta["xi_damp"][local_i]
             if "xi_damp" in self.meta
             else config.DEFAULT_XI_TREND
         )
-        xi_vals, _ = spectral_kl_coefficients(
-            rf_seed=rf_seed,
-            rH=rH,
-            aHV=aHV,
-            nx=config.NX,
-            nz=nz,
-            dx=config.DX,
-            dz=config.DZ,
-            k=config.K_XI,
-        )
+        acf_length = 0.0
+        if self.stoch_layout == "xi_field_acf":
+            vs_c = self._cropped_vs_strip(local_i)
+            rH_rank = float(rH) if np.isfinite(rH) and rH > 0 else 50.0
+            xi_vals, _ = spectral_kl_from_field(
+                vs_c,
+                rH=rH_rank,
+                aHV=float(aHV),
+                dx=config.DX,
+                dz=config.DZ,
+                k=config.K_XI,
+                soil_nz=soil_nz,
+            )
+            acf_length = empirical_acf_length(
+                vs_c, dx=config.DX, soil_nz=soil_nz
+            )
+        else:
+            rf_seed = int(self.meta["rf_seed"][local_i])
+            xi_vals, _ = spectral_kl_coefficients(
+                rf_seed=rf_seed,
+                rH=float(rH) if np.isfinite(rH) else 50.0,
+                aHV=float(aHV),
+                nx=config.NX,
+                nz=nz,
+                dx=config.DX,
+                dz=config.DZ,
+                k=config.K_XI,
+            )
         return build_stoch_vector(
             xi_vals=xi_vals,
-            rH=rH,
-            aHV=aHV,
+            rH=float(rH) if np.isfinite(rH) else 0.0,
+            aHV=float(aHV),
             CoV=CoV,
             xi_damp=xi_damp,
             layout=self.stoch_layout,
+            acf_length=acf_length,
         )
 
     def _load_item(self, local_i: int) -> dict[str, np.ndarray]:
@@ -721,16 +894,24 @@ class ResidualDeepONetDataset(Dataset):
         H = float(self.meta["H"][local_i])
         soil_nz = int(self.meta["soil_nz"][local_i])
         vs_1d: np.ndarray | None = None
-        if self._fields_all is not None and self._vs_col_all is not None:
+        qidx = self.query_idx
+        if self._vs_col_all is not None:
+            vs_col_all = np.asarray(self._vs_col_all[local_i], dtype=np.float64)
+        else:
+            vs_col_all = None
+        if self._fields_support is not None:
+            fields = np.asarray(self._fields_support[local_i], dtype=np.float32)
+            if vs_col_all is None:
+                vs_col_all = np.ones(len(self.recorder_x_all), dtype=np.float64)
+        elif self._fields_all is not None and vs_col_all is not None:
             fields = np.asarray(self._fields_all[local_i], dtype=np.float32)
-            vs_col = np.asarray(self._vs_col_all[local_i], dtype=np.float64)
         else:
             with h5py.File(h5_path, "r") as f:
                 vs = np.asarray(f["Vs_realization_2D"][:], dtype=np.float64)
                 zeta = np.asarray(f["Damping_zeta"][:], dtype=np.float64)
             vs = vs[:, config.X_SLICE_START : config.X_SLICE_END]
             zeta = zeta[:, config.X_SLICE_START : config.X_SLICE_END]
-            c = int(self.recorder_x[len(self.recorder_x) // 2])
+            c = int(self.recorder_x_all[len(self.recorder_x_all) // 2])
             c = min(max(c, 0), vs.shape[1] - 1)
             vs_1d = vs[:, c]
             vs_pad = pad_depth(vs, config.NZ_MAX)
@@ -739,21 +920,26 @@ class ResidualDeepONetDataset(Dataset):
             zeta_n = normalize_zeta_max(zeta_pad, nz)
             z_imp = (config.RHO * vs_pad).astype(np.float32)
             z_imp = z_imp / max(float(z_imp.max()), _EPS)
-            cols = self.recorder_x.astype(int)
+            if self.support_stride > 0:
+                cols = support_column_indices(self.support_stride)
+            else:
+                cols = self.recorder_x_all.astype(int)
             fields = np.stack(
                 [vs_n[:, cols], zeta_n[:, cols], z_imp[:, cols]], axis=0
             ).astype(np.float32)
             n = max(1, min(soil_nz, vs.shape[0]))
-            vs_col = vs[:n, cols].mean(axis=0)
+            rec_cols = self.recorder_x_all.astype(int)
+            vs_col_all = vs[:n, rec_cols].mean(axis=0)
 
-        r = np.asarray(self.r[local_i][:, self.f_idx], dtype=np.float32)
-        tf1d = np.asarray(self.tf1d[local_i][:, self.f_idx], dtype=np.float32)
+        vs_col = np.asarray(vs_col_all, dtype=np.float64).ravel()[qidx]
+        r = np.asarray(self.r[local_i][qidx][:, self.f_idx], dtype=np.float32)
+        tf1d = np.asarray(self.tf1d[local_i][qidx][:, self.f_idx], dtype=np.float32)
         if self.tf2d_local is not None:
-            tf2d = np.asarray(self.tf2d_local[local_i][:, self.f_idx], dtype=np.float32)
+            tf2d = np.asarray(self.tf2d_local[local_i][qidx][:, self.f_idx], dtype=np.float32)
         elif self.tf_all is not None:
             sidx = int(self.sample_indices[local_i])
             if 0 <= sidx < len(self.tf_all):
-                tf2d = np.asarray(self.tf_all[sidx][:, self.f_idx], dtype=np.float32)
+                tf2d = np.asarray(self.tf_all[sidx][qidx][:, self.f_idx], dtype=np.float32)
             else:
                 tf2d = (tf1d + r).astype(np.float32)
         else:
@@ -780,6 +966,7 @@ class ResidualDeepONetDataset(Dataset):
         )
         if self.serial_tf1d:
             trunk_y = append_serial_tf1d(trunk_y, tf1d)
+        rH = self._meta_rH(local_i)
         return {
             "fields": fields,
             "stoch": self._stoch(local_i),
@@ -789,6 +976,9 @@ class ResidualDeepONetDataset(Dataset):
             "tf2d": tf2d.reshape(-1),
             "f0_tts": np.array(float(f0_tts), dtype=np.float64),
             "geom_flags": np.zeros(2, dtype=np.float32),
+            "rH": np.array([rH], dtype=np.float32),
+            "query_x": np.asarray(self.query_x, dtype=np.float32),
+            "support_x": np.asarray(self.support_x, dtype=np.float32),
         }
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
@@ -854,6 +1044,16 @@ class CombinedResidualDataset(Dataset):
         for ds, name in zip(self._parts, names):
             self._cache.extend(ds._cache)
             self.domain_names_per_item.extend([str(name)] * len(ds._cache))
+        widths = {
+            int(item["fields"].shape[-1])
+            for item in self._cache
+            if "fields" in item
+        }
+        if len(widths) > 1:
+            raise ValueError(
+                f"mixed support widths {sorted(widths)}; every mix cache needs "
+                "fields_support.npy at the same stride"
+            )
         self.n_rec = self._parts[0].n_rec
         self.f_idx = self._parts[0].f_idx
         self.freq_s = getattr(self._parts[0], "freq_s", None)
@@ -866,6 +1066,8 @@ class CombinedResidualDataset(Dataset):
         self.x_coord = getattr(self._parts[0], "x_coord", X_COORD_DEFAULT)
         self.nom_variant = getattr(self._parts[0], "nom_variant", "default")
         self.serial_tf1d = self._parts[0].serial_tf1d
+        self.query_split = getattr(self._parts[0], "query_split", "all")
+        self.support_stride = int(getattr(self._parts[0], "support_stride", 0) or 0)
         self._geom_flags = torch.stack(
             [geom_flags_from_name(n) for n in self.domain_names_per_item], dim=0
         )

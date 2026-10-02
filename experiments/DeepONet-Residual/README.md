@@ -5,6 +5,16 @@ Signed residual DeepONet: **single shared branch** encodes material fields
 trunk queries mesh-agnostic `(x/λ, f*, sin, cos)` and (shipped) `log TF_1D`,
 output signed `R = TF_2D − TF_1D` for geometry-aware **R_nom**.
 
+**Shipped leftover is a 21-node chain GNN**, not Li et al.’s kernel-integral
+GNO. Mesh-agnostic queries apply to **frequency** (and the scalar \(x/\lambda\));
+the branch codes \(p\) exist only at the trained recorder indices (15 m spacing
+on the cropped strip). `--encoder kernel` is the distance-kNN query GNO
+(Savio spatial-query arms). Those arms **KILL** the nested three-layer gate
+(16 Sep 2026); interpolate neighboring ship \(p\) remains the spatial query
+between stations. See [`results/SPATIAL_QUERY.md`](results/SPATIAL_QUERY.md).
+Do not replace `M7680_gino_rebal_ft.pt` until a kernel arm wins the nested
+21-station gates **and** station hold-out vs interpolate-\(p\).
+
 **Shipped recipe:** freeze-GNO fine-tune of mix **M7680**
 (`iid_frac=0.34`, three-layer val stop, vanilla FNO-on-\(R\)). Checkpoint:
 `checkpoints/M7680_gino_rebal_ft.pt`.
@@ -95,10 +105,12 @@ wandb sync experiments/DeepONet-Residual/wandb/offline-run-*
 | File | Role |
 |------|------|
 | `residual_signed.py` | Stratified indices + signed R + TF_1D baselines |
-| `model.py` | SingleBranch / MultiBranch / GNO DeepONet + FNO-on-R wrapper |
-| `data.py` | Field + stochastic + trunk dataset |
+| `model.py` | SingleBranch / MultiBranch / chain GNN or kernel GNO DeepONet + FNO-on-R / latent-grid FNO |
+| `data.py` | Field + stochastic + trunk dataset; optional dense support + query-station splits |
 | `train.py` | Train / eval (wandb + tqdm) |
-| `arch_train.py` | n-ladder / recipe / FNO / GNO bake-off |
+| `arch_train.py` | n-ladder / recipe / FNO / GNO bake-off (`--encoder kernel`, `--query-split`) |
+| `eval_spatial_query.py` | Station hold-out vs interpolate-p / Haskell (not `eval_spatial_leftover.py`) |
+| `savio_spatial_query.sh` | Savio M7680 kernel control + even/odd + edge arms |
 | `mix_ladder.py` | Nested-safe M700/M1400/M2100/M7680 mix indices |
 | `domain_study.py` | Operator / P0–P4 mix / architecture bake-off |
 | `lambda_train.sh` | Lambda Labs wrapper (wandb online, GINO-wide) |

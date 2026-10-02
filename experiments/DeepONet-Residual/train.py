@@ -42,7 +42,9 @@ from data import (
     TrunkSet,
     iid_resample_sampler,
     make_splits,
+    remap_stoch_last_dim,
     stoch_dim_from_dataset,
+    stoch_layout_from_dim,
 )
 
 
@@ -140,15 +142,47 @@ def _pad_trunk_stats_to(stats: dict[str, torch.Tensor], trunk_dim: int) -> None:
     )
 
 
+def _pad_stoch_stats_to(stats: dict[str, torch.Tensor], stoch_dim: int) -> None:
+    """Match ship stoch_mean/std when the branch layout changes.
+
+    Growing (ξ+CoV → +ACF) pads new channels with mean 0 / std 1. Shrinking
+    (legacy20 → xi_cov / xi_field_acf) keeps ξ and CoV and drops rH / aHV /
+    ξ_damp. Unmappable widths still raise.
+    """
+    mean = stats["stoch_mean"]
+    std = stats["stoch_std"]
+    d = int(mean.shape[-1])
+    if d == stoch_dim:
+        return
+    try:
+        src_layout = stoch_layout_from_dim(d)
+        dst_layout = stoch_layout_from_dim(stoch_dim)
+        stats["stoch_mean"] = remap_stoch_last_dim(mean, stoch_dim, new_fill=0.0)
+        stats["stoch_std"] = remap_stoch_last_dim(std, stoch_dim, new_fill=1.0)
+    except ValueError as exc:
+        raise ValueError(
+            f"checkpoint stoch stats dim {d} exceeds branch dim {stoch_dim}"
+        ) from exc
+    print(
+        f"[train] remapped stoch stats {d} → {stoch_dim} "
+        f"({src_layout} → {dst_layout}; new channels mean=0 std=1)",
+        flush=True,
+    )
+
+
 def apply_checkpoint_stats(stats: dict[str, torch.Tensor], *datasets) -> None:
     trunk_dim = None
+    stoch_dim = None
     for ds in datasets:
         cache = getattr(ds, "_cache", None)
         if cache:
             trunk_dim = int(cache[0]["trunk_y"].shape[-1])
+            stoch_dim = int(cache[0]["stoch"].shape[-1])
             break
     if trunk_dim is not None:
         _pad_trunk_stats_to(stats, trunk_dim)
+    if stoch_dim is not None:
+        _pad_stoch_stats_to(stats, stoch_dim)
     for ds in datasets:
         apply_norms(ds, stats)
 
@@ -209,25 +243,41 @@ def _mirror_vanilla_fno_into_band2(state: dict[str, Any]) -> dict[str, Any]:
 def _compatible_state(
     model: nn.Module, state: dict[str, Any]
 ) -> tuple[dict[str, Any], list[str]]:
-    """Drop keys whose shapes do not match (modes-up / leftover-head swaps)."""
+    """Drop keys whose shapes do not match (modes-up / leftover-head swaps).
+
+    Also maps DeepONetFNO ``base.*`` keys onto an unwrapped kernel GNO so ship
+    ``col_enc`` / fuse / trunk can warm-start when FNO-on-R is off.
+    """
     current = model.state_dict()
     out: dict[str, Any] = {}
     skipped: list[str] = []
+
+    def _candidates(key: str) -> list[str]:
+        names = [key]
+        if key.startswith("base."):
+            names.append(key[5:])
+        else:
+            names.append("base." + key)
+        return names
+
     for key, val in state.items():
-        if key not in current:
-            continue
-        if tuple(current[key].shape) != tuple(val.shape):
-            widened = (
-                _zero_pad_input_dim(current[key], val)
-                if "trunk" in str(key).lower()
-                else None
-            )
-            if widened is None:
-                skipped.append(str(key))
+        for ck in _candidates(str(key)):
+            if ck not in current:
                 continue
-            out[key] = widened
-            continue
-        out[key] = val
+            if tuple(current[ck].shape) == tuple(val.shape):
+                out.setdefault(ck, val)
+                break
+            adapted = None
+            key_l = str(ck).lower()
+            if "stoch_mlp" in key_l:
+                adapted = _adapt_stoch_input_dim(current[ck], val)
+            elif "trunk" in key_l:
+                adapted = _zero_pad_input_dim(current[ck], val)
+            if adapted is not None:
+                out.setdefault(ck, adapted)
+                break
+            skipped.append(str(key))
+            break
     return out, skipped
 
 
@@ -244,6 +294,24 @@ def _zero_pad_input_dim(target: Any, val: Any) -> Any | None:
     out = torch.zeros_like(target)
     out[:, : val.shape[1]] = val
     return out
+
+
+def _adapt_stoch_input_dim(target: Any, val: Any) -> Any | None:
+    """Warm-start ``stoch_mlp`` when the branch layout is not a prefix pad.
+
+    Prefix copy of a 20-d legacy weight onto 17/18-d would treat rH/aHV as
+    CoV/ACF. Named remap keeps ξ + CoV and zero-fills channels the dest adds.
+    """
+    if val.ndim != 2 or target.ndim != 2:
+        return None
+    if target.shape[0] != val.shape[0]:
+        return None
+    if target.shape[1] == val.shape[1]:
+        return val
+    try:
+        return remap_stoch_last_dim(val, int(target.shape[1]), new_fill=0.0)
+    except ValueError:
+        return _zero_pad_input_dim(target, val)
 
 
 def _load_init_weights(
@@ -329,7 +397,15 @@ def evaluate(
         tf1d = batch["tf1d"].to(device)
         tf2d = batch["tf2d"].to(device)
         pred_n = _forward(
-            model, fields, stoch, trunk_y, mode, geom_flags=batch.get("geom_flags")
+            model,
+            fields,
+            stoch,
+            trunk_y,
+            mode,
+            geom_flags=batch.get("geom_flags"),
+            rH=batch.get("rH"),
+            query_x=batch.get("query_x"),
+            support_x=batch.get("support_x"),
         )
         loss_sum += float(crit(pred_n, target_n).item())
         n_batches += 1
@@ -496,10 +572,23 @@ def _forward(
     trunk_y: torch.Tensor,
     mode: BranchMode,
     geom_flags: torch.Tensor | None = None,
+    rH: torch.Tensor | None = None,
+    query_x: torch.Tensor | None = None,
+    support_x: torch.Tensor | None = None,
 ) -> torch.Tensor:
     kwargs: dict[str, torch.Tensor] = {}
     if geom_flags is not None and getattr(model, "accepts_geom_flags", False):
         kwargs["geom_flags"] = geom_flags.to(fields.device)
+    if getattr(model, "accepts_query_x", False):
+        if query_x is not None:
+            kwargs["query_x"] = query_x.to(fields.device)
+        if support_x is not None:
+            kwargs["support_x"] = support_x.to(fields.device)
+    if rH is not None:
+        rH = rH.to(fields.device)
+    from model import apply_gno_dilation
+
+    apply_gno_dilation(model, rH)
     if mode == "stoch_only":
         return model(None, stoch, trunk_y, **kwargs)
     if mode == "fields_only":
@@ -532,6 +621,10 @@ def _arch_kwargs(
     col_enc: str = "conv",
     stoch_inject: str = "mlp",
     fuse_kind: str = "mlp",
+    gno_rh_dilate: bool = False,
+    kernel_k: int = 2,
+    latent_fno: bool = False,
+    n_latent: int = 32,
 ) -> dict[str, Any]:
     return {
         "residual_fno": bool(residual_fno),
@@ -558,6 +651,10 @@ def _arch_kwargs(
         "col_enc": str(col_enc),
         "stoch_inject": str(stoch_inject),
         "fuse_kind": str(fuse_kind),
+        "gno_rh_dilate": bool(gno_rh_dilate),
+        "kernel_k": int(kernel_k),
+        "latent_fno": bool(latent_fno),
+        "n_latent": int(n_latent),
     }
 
 
@@ -664,6 +761,11 @@ def train_from_datasets(
     col_enc: str = "conv",
     stoch_inject: str = "mlp",
     fuse_kind: str = "mlp",
+    gno_rh_dilate: bool = False,
+    encoder_lr: float | None = None,
+    kernel_k: int = 2,
+    latent_fno: bool = False,
+    n_latent: int = 32,
 ) -> dict[str, Any]:
     """Train on already-built datasets; evaluate extra_tests with train-split norms."""
     from torch.utils.data import DataLoader as _DL
@@ -764,6 +866,10 @@ def train_from_datasets(
         col_enc=col_enc,
         stoch_inject=stoch_inject,
         fuse_kind=fuse_kind,
+        gno_rh_dilate=gno_rh_dilate,
+        kernel_k=kernel_k,
+        latent_fno=latent_fno,
+        n_latent=n_latent,
     )
     arch_kw["boost_shrink"] = float(boost_shrink)
     build_kw = dict(arch_kw)
@@ -857,18 +963,57 @@ def train_from_datasets(
         print(f"[train] froze GNO encoder params n={n_frozen}", flush=True)
         if n_frozen == 0:
             print("[train] WARNING: --freeze-gno found no col_enc/gno params", flush=True)
+        if str(field_encoder) == "kernel":
+            print(
+                "[train] kernel mixer stays trainable (--freeze-gno only froze col_enc)",
+                flush=True,
+            )
     if freeze_fno:
         n_fno = freeze_fno_head(model)
         print(f"[train] froze FNO leftover head params n={n_fno}", flush=True)
         if n_fno == 0:
             print("[train] WARNING: --freeze-fno found no DeepONetFNO params", flush=True)
 
-    opt = torch.optim.AdamW(
-        filter(lambda p: p.requires_grad, model.parameters()),
-        lr=lr,
-        betas=config.ADAMW_BETAS,
-        weight_decay=config.WEIGHT_DECAY,
-    )
+    enc_lr = encoder_lr
+    if enc_lr is None and gno_rh_dilate and not freeze_gno:
+        enc_lr = float(lr) * 0.1
+    trainable = [p for p in model.parameters() if p.requires_grad]
+    if enc_lr is not None and enc_lr > 0 and not freeze_gno:
+        core = gno_core(model)
+        enc_params: list[nn.Parameter] = []
+        enc_ids: set[int] = set()
+        for name in ("col_enc", "gno"):
+            sub = getattr(core, name, None)
+            if sub is None:
+                continue
+            for p in sub.parameters():
+                if p.requires_grad:
+                    enc_params.append(p)
+                    enc_ids.add(id(p))
+        other = [p for p in trainable if id(p) not in enc_ids]
+        groups = []
+        if other:
+            groups.append({"params": other, "lr": lr})
+        if enc_params:
+            groups.append({"params": enc_params, "lr": float(enc_lr)})
+            print(
+                f"[train] encoder lr={float(enc_lr):.1e} "
+                f"(col_enc/gno n={sum(p.numel() for p in enc_params)})",
+                flush=True,
+            )
+        opt = torch.optim.AdamW(
+            groups or trainable,
+            lr=lr,
+            betas=config.ADAMW_BETAS,
+            weight_decay=config.WEIGHT_DECAY,
+        )
+    else:
+        opt = torch.optim.AdamW(
+            trainable,
+            lr=lr,
+            betas=config.ADAMW_BETAS,
+            weight_decay=config.WEIGHT_DECAY,
+        )
     sched: torch.optim.lr_scheduler.ReduceLROnPlateau | None = None
     if use_lr_sched:
         sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -919,6 +1064,11 @@ def train_from_datasets(
             "col_enc": str(col_enc),
             "stoch_inject": str(stoch_inject),
             "fuse_kind": str(fuse_kind),
+            "gno_rh_dilate": bool(gno_rh_dilate),
+            "kernel_k": int(kernel_k),
+            "latent_fno": bool(latent_fno),
+            "n_latent": int(n_latent),
+            "encoder_lr": None if encoder_lr is None else float(encoder_lr),
             "seed": seed,
             "iid_frac": iid_frac,
             "aux_tf_rel_l2": aux_tf_rel_l2,
@@ -966,6 +1116,9 @@ def train_from_datasets(
                 trunk_y,
                 branch_mode,
                 geom_flags=batch.get("geom_flags"),
+                rH=batch.get("rH"),
+                query_x=batch.get("query_x"),
+                support_x=batch.get("support_x"),
             )
             loss = crit(pred, target_t)
             if radial_crit is not None:
@@ -1256,6 +1409,8 @@ def train_from_datasets(
             "fstar_kind": str(getattr(train_ds, "fstar_kind", "legacy")),
             "x_coord": str(getattr(train_ds, "x_coord", "x_over_lambda")),
             "nom_variant": str(getattr(train_ds, "nom_variant", "default")),
+            "query_split": str(getattr(train_ds, "query_split", "all")),
+            "support_stride": int(getattr(train_ds, "support_stride", 0) or 0),
             "pod_modes": None if pod_modes is None else np.asarray(pod_modes),
             "pod_mean": None if pod_mean is None else np.asarray(pod_mean),
             "boost_ckpt": str(boost_ckpt) if boost_ckpt else None,
@@ -1287,6 +1442,11 @@ def train_from_datasets(
         "col_enc": str(col_enc),
         "stoch_inject": str(stoch_inject),
         "fuse_kind": str(fuse_kind),
+        "gno_rh_dilate": bool(gno_rh_dilate),
+        "kernel_k": int(kernel_k),
+        "latent_fno": bool(latent_fno),
+        "n_latent": int(n_latent),
+        "encoder_lr": None if encoder_lr is None else float(encoder_lr),
         "best_epoch": int(best_epoch),
         "seed": seed,
         "iid_frac": iid_frac,
@@ -1305,6 +1465,8 @@ def train_from_datasets(
         "fstar_kind": str(getattr(train_ds, "fstar_kind", "legacy")),
         "x_coord": str(getattr(train_ds, "x_coord", "x_over_lambda")),
         "nom_variant": str(getattr(train_ds, "nom_variant", "default")),
+        "query_split": str(getattr(train_ds, "query_split", "all")),
+        "support_stride": int(getattr(train_ds, "support_stride", 0) or 0),
         "three_layer_kill": bool(
             (per_domain.get("ood_three_layer") or {}).get("rel_l2_TF", 0)
             > config.THREE_LAYER_KILL_REL_L2
@@ -1453,7 +1615,7 @@ def main() -> None:
     p.add_argument("--no-early-stop", action="store_true")
     p.add_argument(
         "--field-encoder",
-        choices=["conv", "resunet", "gno", "attn", "gat"],
+        choices=["conv", "resunet", "gno", "attn", "gat", "kernel"],
         default=config.DEFAULT_FIELD_ENCODER,
     )
     p.add_argument(

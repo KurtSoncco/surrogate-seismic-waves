@@ -40,6 +40,36 @@ def peak_af(
     return float(freq[mask][i]), float(af[mask][i])
 
 
+def odd_quarter_wave_peaks(
+    freq: np.ndarray,
+    af: np.ndarray,
+    *,
+    f0: float,
+    n_modes: int = 3,
+    fmin: float = 0.1,
+    fmax: float = 10.0,
+) -> list[tuple[float, float]]:
+    """Local |TF| max in trough-to-trough windows around (2k−1) f0.
+
+    Windows are ``[2(k−1) f0, 2k f0]`` clipped to ``[fmin, fmax]`` — the
+    even-harmonic troughs of a 1-D column — so mode 3 is not stolen by a
+    taller mode-2 lobe (or a 0.1–10 Hz pooled argmax).
+    """
+    freq = np.asarray(freq, dtype=float).ravel()
+    af = np.asarray(af, dtype=float).ravel()
+    out: list[tuple[float, float]] = []
+    if not np.isfinite(f0) or f0 <= 0:
+        return [(float("nan"), float("nan"))] * n_modes
+    for k in range(1, n_modes + 1):
+        lo = max(fmin, (2 * (k - 1)) * f0)
+        hi = min(fmax, (2 * k) * f0)
+        if hi <= lo:
+            out.append((float("nan"), float("nan")))
+            continue
+        out.append(peak_af(freq, af, fmin=lo, fmax=hi))
+    return out
+
+
 def anderson_frequency_domain(
     freq: np.ndarray,
     ref_af: np.ndarray,
@@ -174,6 +204,34 @@ def band_pearson(
     if not np.any(finite):
         return float("nan")
     return float(np.mean(np.asarray(cors)[finite]))
+
+
+def band_anderson(
+    pred: np.ndarray,
+    true: np.ndarray,
+    freq: np.ndarray,
+    *,
+    lo: float,
+    hi: float,
+) -> float:
+    """Anderson ln|TF| L1 on a frequency band (uniform weights; mean over recorders if 2-D)."""
+    f = np.asarray(freq, dtype=float).ravel()
+    m = band_mask(f, lo, hi)
+    p = np.asarray(pred, dtype=float)
+    t = np.asarray(true, dtype=float)
+    if p.ndim == 1:
+        if not np.any(m):
+            return float("nan")
+        return anderson_frequency_domain(f[m], t[m], p[m])
+    vals = []
+    for r in range(p.shape[0]):
+        if not np.any(m):
+            continue
+        vals.append(anderson_frequency_domain(f[m], t[r, m], p[r, m]))
+    finite = np.isfinite(vals)
+    if not np.any(finite):
+        return float("nan")
+    return float(np.mean(np.asarray(vals)[finite]))
 
 
 def method_vs_reference(

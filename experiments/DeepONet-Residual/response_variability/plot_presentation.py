@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Nature-style presentation figures for the shipped residual GINO.
 
-Nine 2×3 case comparisons (3 domains × 3 pages × 2 cases), a 1×3 Pearson
-histogram, and a 2×3 Vs mosaic. Packs cache GINO + Pretell geomean so plots
-can rerun without a GPU.
+2×3 case comparisons (3 pages × 2 cases per domain), a Pearson histogram, and
+a Vs mosaic, one column per domain (default: iid, dipping, three_layer; use
+--domain to restrict). Packs cache GINO + Pretell geomean so plots can rerun
+without a GPU.
 
     uv run python experiments/DeepONet-Residual/response_variability/plot_presentation.py
     uv run python .../plot_presentation.py --skip-predict
+    uv run python .../plot_presentation.py --domain iid --domain dipping --skip-predict
 """
 
 from __future__ import annotations
@@ -27,14 +29,17 @@ if str(_EXP) not in sys.path:
 import config  # noqa: E402
 
 from response_variability.names import (  # noqa: E402
+    DMULT,
     GINO,
     HASKELL_NOMINAL,
     METHOD_COLORS,
     METHOD_LINESTYLES,
     METHOD_ZORDER,
     OPENSEES,
+    PASSERI,
     PRETELL,
     PRETELL_P84,
+    TORO,
 )
 from response_variability.style import (  # noqa: E402
     apply_nature_style,
@@ -212,8 +217,7 @@ def _central(tf_i: np.ndarray) -> np.ndarray:
     a = np.asarray(tf_i, dtype=np.float64)
     if a.ndim == 1:
         return a
-    rec = min(CENTRAL_REC, a.shape[0] - 1)
-    return a[rec]
+    return a[a.shape[0] // 2]
 
 
 def _meta_col(meta: dict[str, Any], key: str, idx: np.ndarray, default: float | None = None):
@@ -257,6 +261,7 @@ def load_domain_arrays(cache_dir: Path, test_idx: np.ndarray) -> dict[str, np.nd
         "aHV": np.asarray(_meta_col(meta, "aHV", test_idx, float("nan")), dtype=float),
         "soil_nz": np.asarray(_meta_col(meta, "soil_nz", test_idx, config.NZ_MAX), dtype=int),
         "sample_idx": np.asarray(_meta_col(meta, "sample_idx", test_idx), dtype=int),
+        "rf_seed": np.asarray(_meta_col(meta, "rf_seed", test_idx, -1), dtype=int),
         "local_idx": np.asarray(test_idx, dtype=int),
         "h5_path": np.asarray(_meta_col(meta, "h5_path", test_idx)),
         "recorder_x": np.asarray(recorder_x, dtype=int),
@@ -420,6 +425,13 @@ def load_pack(path: Path) -> dict[str, np.ndarray]:
     return {k: blob[k] for k in blob.files}
 
 
+def _merge_sota_arms(pack: dict[str, np.ndarray], domain: str) -> dict[str, np.ndarray]:
+    """Overlay Toro / Passeri / Dmult when those NPZs exist (IID SOTA pages)."""
+    from response_variability.eval_classical import merge_classical_into_pack
+
+    return merge_classical_into_pack(pack, domain)
+
+
 def build_domain_pack(
     domain: str,
     *,
@@ -434,6 +446,7 @@ def build_domain_pack(
         if not path.is_file():
             raise FileNotFoundError(f"--skip-predict needs {path}")
         pack = load_pack(path)
+        pack = _merge_sota_arms(pack, domain)
         return finalize_pearson(pack)
 
     from mix_ladder import mix_test_parts
@@ -484,12 +497,14 @@ def make_synthetic_pack(
     vs_2d = np.full((n, config.NZ_MAX, nx), np.nan, dtype=np.float32)
     z = np.arange(nz, dtype=np.float32)
     three = domain == "three_layer"
-    vs1 = np.full(n, 180.0)
-    H = np.full(n, 28.0 if not three else 50.0)
-    vs2 = np.full(n, 800.0)
-    h1 = np.full(n, 20.0 if three else np.nan)
-    h2 = np.full(n, 30.0 if three else np.nan)
-    vs_mid = np.full(n, 350.0 if three else np.nan)
+    vs1 = np.linspace(150.0, 240.0, n)
+    H = np.linspace(22.0, 50.0, n) if not three else np.linspace(40.0, 70.0, n)
+    vs2 = np.linspace(700.0, 1100.0, n)
+    h1 = np.linspace(12.0, 28.0, n) if three else np.full(n, np.nan)
+    h2 = np.linspace(18.0, 42.0, n) if three else np.full(n, np.nan)
+    vs_mid = np.linspace(280.0, 480.0, n) if three else np.full(n, np.nan)
+    if three:
+        H = h1 + h2
     for i in range(n):
         col = 150.0 + 40.0 * np.exp(-z / 18.0) + 8.0 * rng.standard_normal(nz)
         vs_column[i, :nz] = col
@@ -513,18 +528,24 @@ def make_synthetic_pack(
         "H1": h1,
         "H2": h2,
         "vs_mid": vs_mid,
-        "cov": np.full(n, 0.2),
+        "cov": np.linspace(0.12, 0.32, n),
         "rH": np.linspace(20.0, 80.0, n),
         "aHV": np.linspace(12.0, 40.0, n),
         "soil_nz": np.full(n, nz, dtype=int),
         "sample_idx": np.arange(n, dtype=int),
         "local_idx": np.arange(n, dtype=int),
+        "rf_seed": np.arange(n, dtype=int),
         "vs_column": vs_column,
         "vs_2d": vs_2d,
         "recorder_x": np.linspace(0, nx - 1, n_rec, dtype=int),
         "h5_path": np.array([f"synthetic_{i}.h5" for i in range(n)]),
         "domain": np.array(domain),
     }
+    if domain == "dipping":
+        pack["dip_angle_deg"] = np.linspace(8.0, 36.0, n)
+        pack["dip_span"] = np.linspace(50.0, 140.0, n)
+        pack["bedrock_H"] = np.linspace(6.0, 18.0, n)
+        pack["dip_direction"] = np.linspace(-1.0, 1.0, n)
     return finalize_pearson(pack)
 
 
@@ -649,6 +670,41 @@ def _plot_tf_panel(ax, pack: dict[str, np.ndarray], i: int) -> None:
             zorder=METHOD_ZORDER[PRETELL_P84],
             label=PRETELL_P84,
         )
+    if "tf_dmult" in pack and np.isfinite(pack["tf_dmult"][i]).any():
+        from response_variability.tf_atlas import ATLAS_CURVE_STYLE
+
+        dstyle = ATLAS_CURVE_STYLE[DMULT]
+        ax.plot(
+            freq,
+            np.maximum(np.asarray(pack["tf_dmult"][i], dtype=np.float64), 1e-6),
+            color=dstyle["color"],
+            ls=dstyle["ls"],
+            lw=dstyle["lw"],
+            zorder=5,
+            label=DMULT,
+        )
+    if "tf_toro" in pack and np.isfinite(pack["tf_toro"][i]).any():
+        ax.plot(
+            freq,
+            np.maximum(np.asarray(pack["tf_toro"][i], dtype=np.float64), 1e-6),
+            color=METHOD_COLORS[TORO],
+            ls=METHOD_LINESTYLES[TORO],
+            lw=0.9,
+            zorder=METHOD_ZORDER[TORO],
+            alpha=0.85,
+            label="Toro geomean",
+        )
+    if "tf_passeri" in pack and np.isfinite(pack["tf_passeri"][i]).any():
+        ax.plot(
+            freq,
+            np.maximum(np.asarray(pack["tf_passeri"][i], dtype=np.float64), 1e-6),
+            color=METHOD_COLORS[PASSERI],
+            ls=METHOD_LINESTYLES[PASSERI],
+            lw=0.9,
+            zorder=METHOD_ZORDER[PASSERI],
+            alpha=0.85,
+            label="Passeri geomean",
+        )
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlim(float(freq.min()), float(freq.max()))
@@ -656,47 +712,40 @@ def _plot_tf_panel(ax, pack: dict[str, np.ndarray], i: int) -> None:
     ax.set_ylabel(r"$|\mathrm{TF}|$")
 
 
+def leftover_central(pack: dict[str, np.ndarray], i: int) -> tuple[np.ndarray, np.ndarray]:
+    """Return (R_true, R_hat) on the central recorder: TF_2D − TF_1D vs GINO − TF_1D."""
+    ops = _central(pack["tf_opensees"][i])
+    nom = _central(pack["tf_haskell_nominal"][i])
+    gino = _central(pack["tf_gino"][i])
+    return ops - nom, gino - nom
+
+
 def _plot_diff_panel(ax, pack: dict[str, np.ndarray], i: int) -> None:
     freq = pack["freq"]
-    ops = _central(pack["tf_opensees"][i])
-    gino = _central(pack["tf_gino"][i])
+    r_true, r_hat = leftover_central(pack, i)
     ax.axhline(0.0, color="0.55", lw=0.5, zorder=0)
     ax.plot(
         freq,
-        gino - ops,
+        r_true,
+        color=METHOD_COLORS[OPENSEES],
+        ls=METHOD_LINESTYLES[OPENSEES],
+        lw=1.2,
+        zorder=METHOD_ZORDER[OPENSEES],
+        label=r"$R=\mathrm{TF}_{2D}-\mathrm{TF}_{1D}$",
+    )
+    ax.plot(
+        freq,
+        r_hat,
         color=METHOD_COLORS[GINO],
         ls=METHOD_LINESTYLES[GINO],
         lw=1.2,
         zorder=METHOD_ZORDER[GINO],
-        label=rf"{GINO} $-$ {OPENSEES}",
+        label=r"$\hat R$",
     )
-    if "tf_pretell" in pack and np.isfinite(pack["tf_pretell"][i]).any():
-        geo = np.asarray(pack["tf_pretell"][i], dtype=np.float64)
-        ax.plot(
-            freq,
-            geo - ops,
-            color=METHOD_COLORS[PRETELL],
-            ls=METHOD_LINESTYLES[PRETELL],
-            lw=1.05,
-            zorder=METHOD_ZORDER[PRETELL],
-            label=rf"{PRETELL} $-$ {OPENSEES}",
-        )
-        if "sigma_ln_pretell" in pack:
-            sig = np.asarray(pack["sigma_ln_pretell"][i], dtype=np.float64)
-            p84 = geo * np.exp(sig)
-            ax.plot(
-                freq,
-                p84 - ops,
-                color=METHOD_COLORS[PRETELL_P84],
-                ls=METHOD_LINESTYLES[PRETELL_P84],
-                lw=1.35,
-                zorder=METHOD_ZORDER[PRETELL_P84],
-                label=rf"{PRETELL_P84} $-$ {OPENSEES}",
-            )
     ax.set_xscale("log")
     ax.set_xlim(float(freq.min()), float(freq.max()))
     ax.set_xlabel(r"$f$ (Hz)")
-    ax.set_ylabel(r"$\Delta|\mathrm{TF}|$")
+    ax.set_ylabel(r"$R$")
 
 
 def attach_stoch_from_cache(pack: dict[str, np.ndarray], domain: str) -> dict[str, np.ndarray]:
@@ -760,7 +809,7 @@ def _case_title(pack: dict[str, np.ndarray], i: int, q: float, domain: str) -> s
     return "\n".join(lines)
 
 
-def _compare_legend() -> list:
+def _compare_legend(pack: dict[str, np.ndarray] | None = None) -> list:
     handles: list = [
         Line2D(
             [0],
@@ -806,9 +855,49 @@ def _compare_legend() -> list:
             facecolor=METHOD_COLORS[PRETELL_P84],
             edgecolor="none",
             alpha=0.25,
-            label=r"Pretell 16–84% ($\mathrm{geomean}\times e^{\pm\sigma_{\ln}}$)",
+            label=r"Pretell percentile band ($\mathrm{median}\times e^{\pm\sigma_{\ln}}$)",
+        ),
+        Line2D(
+            [0],
+            [0],
+            color=METHOD_COLORS[OPENSEES],
+            ls=METHOD_LINESTYLES[OPENSEES],
+            lw=1.1,
+            label=r"$R=\mathrm{TF}_{2D}-\mathrm{TF}_{1D}$",
+        ),
+        Line2D(
+            [0],
+            [0],
+            color=METHOD_COLORS[GINO],
+            ls=METHOD_LINESTYLES[GINO],
+            lw=1.1,
+            label=r"$\hat R$",
         ),
     ]
+    if pack is not None:
+        extras = (
+            (DMULT, "tf_dmult"),
+            (TORO, "tf_toro"),
+            (PASSERI, "tf_passeri"),
+        )
+        from response_variability.tf_atlas import ATLAS_CURVE_STYLE
+
+        for method, key in extras:
+            if key in pack and np.isfinite(np.asarray(pack[key])).any():
+                style = ATLAS_CURVE_STYLE.get(method)
+                handles.append(
+                    Line2D(
+                        [0],
+                        [0],
+                        color=style["color"] if style else METHOD_COLORS[method],
+                        ls=style["ls"] if style else METHOD_LINESTYLES[method],
+                        lw=style["lw"] if style else 0.9,
+                        alpha=0.85,
+                        label={"Toro Vs": "Toro geomean", "Passeri tts": "Passeri geomean"}.get(
+                            method, method
+                        ),
+                    )
+                )
     return handles
 
 
@@ -838,7 +927,7 @@ def plot_compare_page(
         for col, letter in enumerate(letters):
             panel_letter(axes[row, col], letter, x=0.02, y=0.98)
     fig.legend(
-        handles=_compare_legend(),
+        handles=_compare_legend(pack),
         loc="upper center",
         ncol=3,
         bbox_to_anchor=(0.5, -0.02),
@@ -889,9 +978,12 @@ def plot_pearson_histograms(
     import matplotlib.pyplot as plt
 
     apply_nature_style()
-    fig, axes = plt.subplots(1, 3, figsize=figsize("double", height_mm=72), sharey=True)
+    domains = list(packs)
+    fig, axes = plt.subplots(
+        1, len(domains), figsize=figsize("double", height_mm=72), sharey=True
+    )
     bins = np.linspace(0.0, 1.0, 21)
-    for ax, domain in zip(axes, DOMAIN_SPECS):
+    for ax, domain in zip(axes, domains):
         pack = packs[domain]
         ax.hist(
             pack["pearson_gino"],
@@ -939,7 +1031,7 @@ def plot_pearson_histograms(
         ax.set_xlim(0.0, 1.0)
         ax.set_xlabel(r"Pearson of $|\mathrm{TF}|$ along $f$")
         ax.set_title(DOMAIN_SPECS[domain]["title"])
-        panel_letter(ax, "abc"[list(DOMAIN_SPECS).index(domain)], x=0.02, y=0.98)
+        panel_letter(ax, _PAGE_LETTERS[domains.index(domain)], x=0.02, y=0.98)
     axes[0].set_ylabel("density")
     axes[0].legend(loc="upper left", fontsize=6.5)
     fig.tight_layout(w_pad=0.6)
@@ -953,11 +1045,12 @@ def plot_vs_mosaic(
     import matplotlib.pyplot as plt
 
     apply_nature_style()
-    fig, axes = plt.subplots(2, 3, figsize=figsize("double", height_mm=110))
+    domains = list(packs)
+    fig, axes = plt.subplots(2, len(domains), figsize=figsize("double", height_mm=110))
     row_labels = ("median Pearson", r"$\approx$85th-pct Pearson")
     vmin, vmax = np.inf, -np.inf
     tiles: list[tuple[Any, np.ndarray, int]] = []
-    for col, domain in enumerate(DOMAIN_SPECS):
+    for col, domain in enumerate(domains):
         pack = packs[domain]
         idx = pick_pearson_quantile_indices(pack["pearson_gino"])
         q_idx = pick_pearson_quantile_indices(pack["pearson_gino"], MOSAIC_QUANTILES)
@@ -1004,7 +1097,7 @@ def plot_all_from_packs(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
-    for domain in DOMAIN_SPECS:
+    for domain in packs:
         paths.extend(plot_domain_compares(packs[domain], out_dir, domain=domain))
     paths.append(plot_pearson_histograms(packs, out_dir / "pearson_histograms.png"))
     paths.append(plot_vs_mosaic(packs, out_dir / "vs_mosaic.png"))
@@ -1031,17 +1124,17 @@ def run(
             n_pretell=n_pretell,
             skip_predict=skip_predict,
         )
-    if set(packs) != set(DOMAIN_SPECS):
+    if set(packs) != set(domains):
         # Partial rebuild: still try to plot whatever is on disk for the rest.
-        for domain in DOMAIN_SPECS:
+        for domain in domains:
             if domain in packs:
                 continue
             path = pack_path(out_dir, domain)
             if path.is_file():
-                packs[domain] = finalize_pearson(load_pack(path))
-    if set(packs) != set(DOMAIN_SPECS):
-        missing = [d for d in DOMAIN_SPECS if d not in packs]
-        raise FileNotFoundError(f"need packs for {missing} to write the full gallery")
+                packs[domain] = finalize_pearson(_merge_sota_arms(load_pack(path), domain))
+    if set(packs) != set(domains):
+        missing = [d for d in domains if d not in packs]
+        raise FileNotFoundError(f"need packs for {missing} to write the gallery")
     paths = plot_all_from_packs(packs, out_dir)
     for p in paths:
         print(f"Wrote {p}", flush=True)
@@ -1069,7 +1162,7 @@ def main() -> None:
         action="append",
         choices=list(DOMAIN_SPECS),
         default=None,
-        help="Restrict scoring (repeatable). Plots still need all three packs.",
+        help="Restrict scoring and plotting to these domains (repeatable). Default: all.",
     )
     args = p.parse_args()
     run(
