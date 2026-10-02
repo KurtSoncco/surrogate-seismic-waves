@@ -77,7 +77,7 @@ Use `f0_effective` for the nominal quarter-wave / travel-time frequency. Do not 
 
 `data/gifno_screen/` copies the **entire** TF cache (7680 rows) but only **3000** H5 files listed in `n3000_h5_names.txt`. Those 3000 are the nested CoV×H stratified subset `n1000 ⊂ n2000 ⊂ n3000` (seed 42), **not** `run_0`…`run_2999`. Full-corpus training still needs Box (or HPC) `h5/` for the remaining 4680 runs. There is **no** `n7680_seed42` Haskell cache on this machine.
 
-Stage a pack: `experiments/DeepONet-Residual/stage_screen_pack.sh`.
+Stage a pack: `experiments/DeepONet-Residual/hpc/stage_screen_pack.sh`.
 
 ---
 

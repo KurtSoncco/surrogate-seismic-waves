@@ -21,6 +21,7 @@ if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
 import config  # noqa: E402
+from ood_io import jsonable  # noqa: E402
 
 from response_variability.evals.eval_toro2022 import toro2022_path  # noqa: E402
 from response_variability.gino_bias import leftover, ols_ab  # noqa: E402
@@ -62,23 +63,6 @@ def _as_3d(tf: np.ndarray, n_rec: int) -> np.ndarray:
     if x.shape[1] == 1 and n_rec > 1:
         return np.broadcast_to(x, (x.shape[0], n_rec, x.shape[2])).copy()
     return x
-
-
-def _jsonable(obj: Any) -> Any:
-    if isinstance(obj, dict):
-        return {str(k): _jsonable(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_jsonable(v) for v in obj]
-    if isinstance(obj, np.ndarray):
-        return _jsonable(obj.tolist())
-    if isinstance(obj, (np.bool_, bool)):
-        return bool(obj)
-    if isinstance(obj, (np.floating, float)):
-        x = float(obj)
-        return None if not np.isfinite(x) else x
-    if isinstance(obj, (np.integer, int)):
-        return int(obj)
-    return obj
 
 
 def pearson_rows(a: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -577,11 +561,11 @@ def main() -> None:
     csv_path = args.out_dir / "spatial_leftover.csv"
     table.to_csv(csv_path, index=False)
     json_path = args.out_dir / "spatial_leftover_summary.json"
-    json_path.write_text(json.dumps(_jsonable(agg), indent=2))
+    json_path.write_text(json.dumps(jsonable(agg), indent=2))
     if args.plot:
         plot_cov(table, agg, args.out_dir / "spatial_leftover_cov.png")
     write_markdown(agg, args.out_dir / "SPATIAL_LEFTOVER.md")
-    print(json.dumps(_jsonable(agg), indent=2), flush=True)
+    print(json.dumps(jsonable(agg), indent=2), flush=True)
     print(f"Wrote {csv_path}", flush=True)
 
 

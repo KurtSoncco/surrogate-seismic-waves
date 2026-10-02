@@ -17,7 +17,7 @@ Usage (Lambda):
   export GIFNO_POD_NUM_MODES=64 GIFNO_LATENT_CHANNELS=128 GIFNO_NUM_FNO_LAYERS=5
   export GIFNO_DEEPONET_LATENT_DIM=128
   cd experiments/DeepONet-Residual
-  python -u compare_tf_loglo_vs_deeponet.py
+  python -u scoring/compare_tf_loglo_vs_deeponet.py
 """
 
 from __future__ import annotations
@@ -30,16 +30,20 @@ from pathlib import Path
 import numpy as np
 import torch
 
-import config as dn_config
-from data import (
+_EXP = Path(__file__).resolve().parents[1]
+if str(_EXP) not in sys.path:
+    sys.path.insert(0, str(_EXP))
+
+import config as dn_config  # noqa: E402
+from data import (  # noqa: E402
     ResidualDeepONetDataset,
     build_recorder_fields,
     make_splits,
     stoch_dim,
     trunk_feature_names,
 )
-from model import build_model
-from residual_signed import resolve_h5_path
+from model import build_model  # noqa: E402
+from residual_signed import resolve_h5_path  # noqa: E402
 
 _EPS = 1e-12
 
@@ -243,9 +247,9 @@ def load_loglo(device: torch.device):
     import importlib
     import importlib.util
 
-    loglo_dir = Path(__file__).resolve().parents[1] / "GIFNO-FDO-XT-LOGLO-POD"
-    gifno_dir = Path(__file__).resolve().parents[1] / "GIFNO"
-    dn_dir = Path(__file__).resolve().parent
+    loglo_dir = Path(__file__).resolve().parents[2] / "GIFNO-FDO-XT-LOGLO-POD"
+    gifno_dir = Path(__file__).resolve().parents[2] / "GIFNO"
+    dn_dir = Path(__file__).resolve().parents[1]
 
     # Prefer LOGLO/GIFNO packages over DeepONet-Residual for create_model imports.
     sys.path = [p for p in sys.path if Path(p).resolve() != dn_dir.resolve()]

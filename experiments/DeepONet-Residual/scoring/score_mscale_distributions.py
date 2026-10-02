@@ -15,7 +15,7 @@ from typing import Any
 
 import numpy as np
 
-_EXP = Path(__file__).resolve().parent
+_EXP = Path(__file__).resolve().parents[1]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 

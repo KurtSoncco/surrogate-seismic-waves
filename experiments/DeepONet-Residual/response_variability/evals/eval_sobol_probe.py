@@ -28,6 +28,7 @@ if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
 import config  # noqa: E402
+from ood_io import jsonable  # noqa: E402
 from mix_ladder import mix_train_parts  # noqa: E402
 from response_variability.metrics import (  # noqa: E402
     FREQ_BANDS,
@@ -410,22 +411,6 @@ def nearest_iid_proxy(
     }
 
 
-def _jsonable(obj: Any) -> Any:
-    if isinstance(obj, dict):
-        return {str(k): _jsonable(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_jsonable(v) for v in obj]
-    if isinstance(obj, np.ndarray):
-        if obj.ndim == 0:
-            return _jsonable(obj.item())
-        return obj.tolist()
-    if isinstance(obj, (np.floating, np.integer, np.bool_)):
-        return obj.item()
-    if isinstance(obj, (float, int, str, bool)) or obj is None:
-        return obj
-    return str(obj)
-
-
 def compute(pack_dir: Path) -> dict[str, Any]:
     clouds: dict[str, dict[str, np.ndarray]] = {}
     for tag in MIX_TAGS:
@@ -592,7 +577,9 @@ def compute(pack_dir: Path) -> dict[str, Any]:
 def write_outputs(blob: dict[str, Any], out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     summary_path = out_dir / "summary.json"
-    summary_path.write_text(json.dumps(_jsonable(blob["summary"]), indent=2))
+    summary_path.write_text(
+        json.dumps(jsonable(blob["summary"], nan_to_none=False), indent=2)
+    )
     rv = blob["rv"]
     proxy = blob["proxy"]
     lines = [

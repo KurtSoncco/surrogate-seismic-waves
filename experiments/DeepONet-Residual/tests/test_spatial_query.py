@@ -12,7 +12,7 @@ from data import (
     query_station_indices,
     support_column_indices,
 )
-from eval_spatial_query import _metrics_from_arrays, write_markdown
+from scoring.eval_spatial_query import _metrics_from_arrays, write_markdown
 from model import interp_along_x
 from residual_signed import stack_field_columns
 

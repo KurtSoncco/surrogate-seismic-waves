@@ -29,11 +29,11 @@ if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
 import config  # noqa: E402
+from ood_io import jsonable  # noqa: E402
 from haskell_baseline import haskell_nominal_af_within  # noqa: E402
 from residual_signed import soil_mean_xi  # noqa: E402
 
 from response_variability.evals.eval_iid import _as_central  # noqa: E402
-from response_variability.evals.eval_spatial_leftover import _jsonable  # noqa: E402
 from response_variability.metrics import (  # noqa: E402
     fmt_iqr,
     median_iqr,
@@ -363,9 +363,9 @@ def main() -> None:
     csv_path = args.out_dir / "haskell_xi_vs_2d.csv"
     pd.concat(frames, ignore_index=True).to_csv(csv_path, index=False)
     json_path = args.out_dir / "haskell_xi_vs_2d_summary.json"
-    json_path.write_text(json.dumps(_jsonable(agg), indent=2))
+    json_path.write_text(json.dumps(jsonable(agg), indent=2))
     write_markdown(agg, args.out_dir / "HASKELL_XI.md")
-    print(json.dumps(_jsonable(agg), indent=2), flush=True)
+    print(json.dumps(jsonable(agg), indent=2), flush=True)
     print(f"Wrote {csv_path}", flush=True)
 
 

@@ -4,7 +4,7 @@
 # Architecture change vs v1 (global ResUNet branch) — do not warm-start from v1 ckpt.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DATA_ROOT="${GIFNO_DATA_ROOT:-$HOME/gifno_data}"
 

@@ -51,28 +51,18 @@ _hs_spec.loader.exec_module(_hs_mod)
 haskell_af_within = _hs_mod.haskell_af_within
 
 from capability_check import (  # noqa: E402
+    _rel_l2,
     build_input_from_h5,
     load_model,
     predict_tf,
 )
 from data_loader import _resolve_h5_path, load_manifest  # noqa: E402
+from score_ood_campaign import _pearson  # noqa: E402
 
 _EPS = 1e-12
 DEFAULT_OUT = (
     Path.home() / "surrogate-seismic-waves" / "checkpoints" / "sanity_homog_depth"
 )
-
-
-def _rel_l2(a: np.ndarray, b: np.ndarray) -> float:
-    return float(np.linalg.norm(a - b) / (np.linalg.norm(b) + _EPS))
-
-
-def _pearson(a: np.ndarray, b: np.ndarray) -> float:
-    a = np.asarray(a, dtype=np.float64).ravel()
-    b = np.asarray(b, dtype=np.float64).ravel()
-    if a.std() < 1e-12 or b.std() < 1e-12:
-        return float("nan")
-    return float(np.corrcoef(a, b)[0, 1])
 
 
 def _cov_from_row(row: dict) -> float | None:
@@ -238,7 +228,7 @@ def ood_depth_compare(
     out_dir: Path,
 ) -> dict[str, Any]:
     """Re-score a subset of OOD cases with baseline and optional depth ckpt."""
-    from score_ood_campaign import metrics_from_tfs  # noqa: WPS433
+    from score_ood_campaign import metrics_from_tfs  # noqa: PLC0415
 
     results: dict[str, Any] = {"baseline": str(baseline_ckpt), "depth": None}
     model_base = load_model(baseline_ckpt, device)

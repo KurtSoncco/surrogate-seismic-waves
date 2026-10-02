@@ -5,8 +5,8 @@ The stochastic branch is ``ξ (2 K_XI) + CoV`` (17-d). Old leftover
 checkpoints still use ``ξ + [rH, aHV, CoV, ξ_damp]`` (20-d); layout is
 inferred from ``stoch_mlp`` in-features.
 
-    python score_stoch_permutation.py --batch-size 16
-    python score_stoch_permutation.py --arm mscale_T4B4=checkpoints/iid2000_gino_fno_mscaleT4B4.pt
+    python scoring/score_stoch_permutation.py --batch-size 16
+    python scoring/score_stoch_permutation.py --arm mscale_T4B4=checkpoints/iid2000_gino_fno_mscaleT4B4.pt
 """
 
 from __future__ import annotations
@@ -20,13 +20,13 @@ from typing import Any
 import numpy as np
 import torch
 
-_EXP = Path(__file__).resolve().parent
+_EXP = Path(__file__).resolve().parents[1]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
 import config  # noqa: E402
 from mix_ladder import mix_test_parts  # noqa: E402
-from score_mscale_distributions import (  # noqa: E402
+from scoring.score_mscale_distributions import (  # noqa: E402
     default_ckpt_map,
     gof_af_per_sample,
     load_domain_arrays,
@@ -338,7 +338,7 @@ def run(*, ckpts: dict[str, Path], batch_size: int) -> dict[str, Any]:
     arrays_by = {d: load_domain_arrays(cache, idx) for d, (cache, idx) in tests.items()}
     present = {n: p for n, p in ckpts.items() if p.is_file()}
     missing = [n for n, p in ckpts.items() if not p.is_file()]
-    from eval_ood import _load_residual_model
+    from scoring.eval_ood import _load_residual_model
 
     arms_out: dict[str, Any] = {}
     for name, ckpt in present.items():

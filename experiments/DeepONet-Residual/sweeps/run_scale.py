@@ -5,9 +5,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
+from pathlib import Path
 
-import config
-from train import train_one
+_EXP = Path(__file__).resolve().parents[1]
+if str(_EXP) not in sys.path:
+    sys.path.insert(0, str(_EXP))
+
+import config  # noqa: E402
+from train import train_one  # noqa: E402
 
 
 def main() -> None:

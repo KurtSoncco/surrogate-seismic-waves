@@ -105,15 +105,15 @@ case "${PART}" in
         ;;
     spatial_score)
         echo "[spatial] hold-out vs interpolate-p + nested 21-station gates"
-        run_py "${EXP_DIR}/eval_spatial_query.py" \
+        run_py "${EXP_DIR}/scoring/eval_spatial_query.py" \
             --ckpt "${EXP_DIR}/checkpoints/M7680_kernel_spatial_even.pt" \
             --ship-ckpt "${INIT_CKPT}" \
             --hold-out odd
-        run_py "${EXP_DIR}/eval_spatial_query.py" \
+        run_py "${EXP_DIR}/scoring/eval_spatial_query.py" \
             --ckpt "${EXP_DIR}/checkpoints/M7680_kernel_spatial_interior.pt" \
             --ship-ckpt "${INIT_CKPT}" \
             --hold-out edge
-        run_py "${EXP_DIR}/score_ship_gates.py" \
+        run_py "${EXP_DIR}/scoring/score_ship_gates.py" \
             "${EXP_DIR}/results/arch_train/M7680_kernel_spatial_all.json" \
             --out "${EXP_DIR}/results/arch_train/spatial_query_ship_gates.json"
         echo "Done scoring. Do not replace ${INIT_CKPT} unless both gates pass."

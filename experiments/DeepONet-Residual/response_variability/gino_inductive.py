@@ -246,7 +246,7 @@ def extract_iid_branch_latents(
     from torch.utils.data import DataLoader
 
     from data import ResidualDeepONetDataset
-    from eval_ood import _load_residual_model
+    from scoring.eval_ood import _load_residual_model
     from model import gno_core
     from train import _device, _forward, apply_norms
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from score_trunk_permutation import shuffle_trunk_channel, trunk_channel_names
+from scoring.score_trunk_permutation import shuffle_trunk_channel, trunk_channel_names
 
 
 def test_trunk_channel_names_serial():

@@ -24,15 +24,21 @@ from typing import Any
 
 import numpy as np
 import torch
+import sys
 from torch.utils.data import DataLoader
 
-import config
-from data import ResidualDeepONetDataset, query_station_indices
-from mix_ladder import mix_test_parts
-from model import apply_query_freq, gno_core, interp_along_x
-from response_variability.metrics import anderson_frequency_domain, pearson
-from unified_metrics import flat_r2, flat_rel_l2, pearson_across_freq
-from train import (
+_EXP = Path(__file__).resolve().parents[1]
+if str(_EXP) not in sys.path:
+    sys.path.insert(0, str(_EXP))
+
+import config  # noqa: E402
+from data import ResidualDeepONetDataset, query_station_indices  # noqa: E402
+from mix_ladder import mix_test_parts  # noqa: E402
+from ood_io import jsonable  # noqa: E402
+from model import apply_query_freq, gno_core, interp_along_x  # noqa: E402
+from response_variability.metrics import anderson_frequency_domain, pearson  # noqa: E402
+from unified_metrics import flat_r2, flat_rel_l2, pearson_across_freq  # noqa: E402
+from train import (  # noqa: E402
     _forward,
     apply_checkpoint_stats,
     evaluate,
@@ -46,23 +52,6 @@ TRAIN_FROM_HOLD = {"odd": "even", "edge": "interior"}
 
 def _device() -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-def _jsonable(obj: Any) -> Any:
-    if isinstance(obj, dict):
-        return {str(k): _jsonable(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_jsonable(v) for v in obj]
-    if isinstance(obj, np.ndarray):
-        return _jsonable(obj.tolist())
-    if isinstance(obj, (np.floating, float)):
-        x = float(obj)
-        return None if not np.isfinite(x) else x
-    if isinstance(obj, (np.integer, int)):
-        return int(obj)
-    if isinstance(obj, (np.bool_, bool)):
-        return bool(obj)
-    return obj
 
 
 def _metrics_from_arrays(
@@ -111,7 +100,7 @@ def _per_recorder_rel_l2(
 
 
 def _load_model(ckpt: Path, device: torch.device):
-    from eval_ood import _load_residual_model
+    from scoring.eval_ood import _load_residual_model
 
     model, blob, stats, trunk_set = _load_residual_model(ckpt, device)
     return model, blob, stats, trunk_set
@@ -482,10 +471,10 @@ def main() -> None:
     }
     out = args.out or (OUT_DIR / f"spatial_query_{args.hold_out}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(_jsonable(report), indent=2))
+    out.write_text(json.dumps(jsonable(report), indent=2))
     md = out.with_suffix(".md")
     write_markdown(report, md)
-    print(json.dumps(_jsonable({"out": str(out), "kill_keep_ship": kill}), indent=2))
+    print(json.dumps(jsonable({"out": str(out), "kill_keep_ship": kill}), indent=2))
     if kill:
         print(
             "[spatial-query] KILL: hold-out Pearson is not better than interpolate-p; "

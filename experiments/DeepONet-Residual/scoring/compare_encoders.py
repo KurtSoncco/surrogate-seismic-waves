@@ -16,13 +16,18 @@ from typing import Any, Dict, List
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import sys
 from torch.utils.data import DataLoader
 
-import config
-from data import ResidualDeepONetDataset, make_splits, stoch_dim, trunk_feature_names
-from model import FieldEncoderKind, build_model
-from unified_metrics import flat_pearson, flat_r2, flat_rel_l2, pearson_across_freq
-from train import (
+_EXP = Path(__file__).resolve().parents[1]
+if str(_EXP) not in sys.path:
+    sys.path.insert(0, str(_EXP))
+
+import config  # noqa: E402
+from data import ResidualDeepONetDataset, make_splits, stoch_dim, trunk_feature_names  # noqa: E402
+from model import FieldEncoderKind, build_model  # noqa: E402
+from unified_metrics import flat_pearson, flat_r2, flat_rel_l2, pearson_across_freq  # noqa: E402
+from train import (  # noqa: E402
     _build_signed_cache,
     _device,
     _forward,

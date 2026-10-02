@@ -9,14 +9,14 @@
 #   sample_indices.npy
 #
 # Usage:
-#   experiments/DeepONet-Residual/stage_screen_pack.sh [DEST]
-#   N_SAMPLES=2000 ./experiments/DeepONet-Residual/stage_screen_pack.sh /tmp/gifno_screen
-#   OOD_ONLY=1 ./experiments/DeepONet-Residual/stage_screen_pack.sh
+#   experiments/DeepONet-Residual/hpc/stage_screen_pack.sh [DEST]
+#   N_SAMPLES=2000 ./experiments/DeepONet-Residual/hpc/stage_screen_pack.sh /tmp/gifno_screen
+#   OOD_ONLY=1 ./experiments/DeepONet-Residual/hpc/stage_screen_pack.sh
 #
 # Then: export GIFNO_DATA_ROOT=/path/to/gifno_screen
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SRC="${GIFNO_DATA_ROOT:-/mnt/box/GIG Lab - UC Berkeley/Projects/Neural Operator/data}"
 DEST="${1:-${ROOT}/data/gifno_screen}"
 N_SAMPLES="${N_SAMPLES:-3000}"

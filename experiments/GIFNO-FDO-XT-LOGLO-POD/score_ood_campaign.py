@@ -39,6 +39,7 @@ import config
 config.setup_import_paths()
 
 from capability_check import (  # noqa: E402
+    _rel_l2,
     build_input_from_h5,
     compare_tfs,
     load_model,
@@ -98,19 +99,15 @@ def _gt_worker(args: tuple[str, str, str, bool]) -> tuple[str, str, float]:
         return (cache_str, "cached", time.time() - t0)
     # Late import so workers pick up SEISKIT_ROOT
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    import config as _cfg  # noqa: WPS433
+    import config as _cfg  # noqa: PLC0415
 
     _cfg.setup_import_paths()
-    from capability_check import compute_ground_truth_tf  # noqa: WPS433
+    from capability_check import compute_ground_truth_tf  # noqa: PLC0415
 
     tf, freq = compute_ground_truth_tf(h5_path)
     np.save(tf_path, tf)
     np.save(freq_path, freq)
     return (cache_str, "computed", time.time() - t0)
-
-
-def _rel_l2(a: np.ndarray, b: np.ndarray) -> float:
-    return float(np.linalg.norm(a - b) / (np.linalg.norm(b) + _EPS))
 
 
 def _pearson(a: np.ndarray, b: np.ndarray) -> float:

@@ -15,9 +15,14 @@ from typing import Any
 
 import numpy as np
 import torch
+import sys
 
-import config as dn_config
-from compare_tf_loglo_vs_deeponet import (
+_EXP = Path(__file__).resolve().parents[1]
+if str(_EXP) not in sys.path:
+    sys.path.insert(0, str(_EXP))
+
+import config as dn_config  # noqa: E402
+from scoring.compare_tf_loglo_vs_deeponet import (  # noqa: E402
     _pearson_across_freq,
     _r2,
     _rel_l2,
@@ -26,8 +31,8 @@ from compare_tf_loglo_vs_deeponet import (
     load_deeponet,
     load_loglo,
 )
-from data import build_recorder_fields
-from residual_signed import _read_sample
+from data import build_recorder_fields  # noqa: E402
+from residual_signed import _read_sample  # noqa: E402
 
 _EPS = 1e-12
 

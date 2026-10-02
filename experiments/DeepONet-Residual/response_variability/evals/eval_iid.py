@@ -20,7 +20,7 @@ if str(_EXP) not in sys.path:
 
 import config  # noqa: E402
 from data import ResidualDeepONetDataset  # noqa: E402
-from eval_ood import _load_residual_model  # noqa: E402
+from scoring.eval_ood import _load_residual_model  # noqa: E402
 from mix_ladder import iid_n1000_split  # noqa: E402
 from train import _device, _forward, apply_norms  # noqa: E402
 

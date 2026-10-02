@@ -20,7 +20,7 @@ if str(_EXP) not in sys.path:
 
 import config  # noqa: E402
 from data import ResidualDeepONetDataset, dataset_kwargs_from_blob  # noqa: E402
-from eval_ood import _load_residual_model  # noqa: E402
+from scoring.eval_ood import _load_residual_model  # noqa: E402
 from haskell_baseline import haskell_nominal_af_within  # noqa: E402
 from model import apply_query_freq  # noqa: E402
 from residual_signed import (  # noqa: E402

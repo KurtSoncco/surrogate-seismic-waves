@@ -5,8 +5,8 @@ Shuffles one trunk channel at a time across the sample axis (``f*``, ``sin``,
 ``cos``, ``x/λ``, ``log TF1D`` when serial). Default target is the M1400 T4B4
 ξ+CoV control. Scores central-recorder Pearson / Anderson on IID and dipping.
 
-    python score_trunk_permutation.py
-    python score_trunk_permutation.py --ckpt checkpoints/m1400_gino_fno_mscaleT4B4_xicov.pt
+    python scoring/score_trunk_permutation.py
+    python scoring/score_trunk_permutation.py --ckpt checkpoints/m1400_gino_fno_mscaleT4B4_xicov.pt
 """
 
 from __future__ import annotations
@@ -20,20 +20,20 @@ from typing import Any
 import numpy as np
 import torch
 
-_EXP = Path(__file__).resolve().parent
+_EXP = Path(__file__).resolve().parents[1]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
 import config  # noqa: E402
 from mix_ladder import mix_test_parts  # noqa: E402
-from score_mscale_distributions import (  # noqa: E402
+from scoring.score_mscale_distributions import (  # noqa: E402
     CENTRAL_REC,
     gof_af_per_sample,
     load_domain_arrays,
     pearson_freq_per_sample,
     summarize_values,
 )
-from score_stoch_permutation import (  # noqa: E402
+from scoring.score_stoch_permutation import (  # noqa: E402
     _predict,
     _public_metrics,
     delta_pack,
@@ -175,7 +175,7 @@ def score_ckpt_domain(
 
 
 def run(*, ckpt: Path, batch_size: int) -> dict[str, Any]:
-    from eval_ood import _load_residual_model
+    from scoring.eval_ood import _load_residual_model
     from train import _device
 
     device = _device()

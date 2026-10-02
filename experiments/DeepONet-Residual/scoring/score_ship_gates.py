@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare leftover mix-test JSONs to shipped M700 GINO gates.
 
-    python score_ship_gates.py results/arch_train/M7680_gino_rebal_ft.json \\
+    python scoring/score_ship_gates.py results/arch_train/M7680_gino_rebal_ft.json \\
         results/arch_train/M7680_gino_tf_ft.json
 """
 

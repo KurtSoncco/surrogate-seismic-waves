@@ -8,8 +8,12 @@ import json
 import sys
 from pathlib import Path
 
-import config
-from ood_io import default_ood_roots, probe_corpus
+_EXP = Path(__file__).resolve().parents[1]
+if str(_EXP) not in sys.path:
+    sys.path.insert(0, str(_EXP))
+
+import config  # noqa: E402
+from ood_io import default_ood_roots, probe_corpus  # noqa: E402
 
 
 def main() -> int:

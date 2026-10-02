@@ -51,6 +51,6 @@ srun ls -lh \
     "${EXP_DIR}/checkpoints/m1400_gino_fno_mscaleT4B4.pt" \
     "${EXP_DIR}/checkpoints/M7680_gino_rebal_ft.pt"
 
-srun python -u "${EXP_DIR}/score_stoch_permutation.py" --batch-size 16 \
+srun python -u "${EXP_DIR}/scoring/score_stoch_permutation.py" --batch-size 16 \
     --out "${EXP_DIR}/results/arch_train/stoch_permutation.json"
 echo "=== done $(date -Is) ==="

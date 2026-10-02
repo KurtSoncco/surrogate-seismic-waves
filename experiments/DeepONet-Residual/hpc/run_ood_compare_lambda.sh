@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 export GIFNO_DATA_ROOT="${GIFNO_DATA_ROOT:-$HOME/gifno_data}"
 export GIFNO_H5_DIR="${GIFNO_H5_DIR:-$GIFNO_DATA_ROOT/h5}"
@@ -14,4 +14,4 @@ cd "$PROJECT_ROOT" && source .venv/bin/activate
 cd "$SCRIPT_DIR"
 echo "=== OOD TF compare LOGLO vs DeepONet ==="
 nvidia-smi --query-gpu=name,memory.used --format=csv,noheader 2>/dev/null || true
-python -u compare_tf_ood_loglo_vs_deeponet.py
+python -u scoring/compare_tf_ood_loglo_vs_deeponet.py

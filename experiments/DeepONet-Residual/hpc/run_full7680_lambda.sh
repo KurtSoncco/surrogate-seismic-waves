@@ -4,7 +4,7 @@
 # Pipeline: signed cache (Haskell TF1D + fields) → train → W&B offline sync.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DATA_ROOT="${GIFNO_DATA_ROOT:-$HOME/gifno_data}"
 

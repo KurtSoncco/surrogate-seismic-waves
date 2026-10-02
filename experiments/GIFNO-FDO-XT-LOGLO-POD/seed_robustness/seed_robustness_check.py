@@ -41,6 +41,7 @@ import config  # noqa: E402
 config.setup_import_paths()
 
 from capability_check import (  # noqa: E402
+    _rel_l2,
     build_input_from_h5,
     compute_ground_truth_tf,
     load_model,
@@ -244,12 +245,6 @@ def sigma_ln_per_freq(stack: np.ndarray) -> np.ndarray:
         else:
             out[j] = float(np.std(np.log(col), ddof=1))
     return out
-
-
-def _rel_l2(pred: np.ndarray, true: np.ndarray) -> float:
-    num = np.linalg.norm(pred - true)
-    den = np.linalg.norm(true) + _EPS
-    return float(num / den)
 
 
 def central_recorder_index() -> int:

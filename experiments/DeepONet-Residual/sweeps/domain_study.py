@@ -10,21 +10,26 @@ from typing import Any
 
 import numpy as np
 import torch
+import sys
 
-import config
-from data import (
+_EXP = Path(__file__).resolve().parents[1]
+if str(_EXP) not in sys.path:
+    sys.path.insert(0, str(_EXP))
+
+import config  # noqa: E402
+from data import (  # noqa: E402
     CombinedResidualDataset,
     ResidualDeepONetDataset,
     dataset_kwargs_from_blob,
 )
-from domain_splits import ensure_splits, load_split
-from ood_signed_cache import (
+from domain_splits import ensure_splits, load_split  # noqa: E402
+from ood_signed_cache import (  # noqa: E402
     build_ood_signed_cache,
     cache_dir_for,
     materialize_n1000_from_n2000,
 )
-from unified_metrics import flat_r2, flat_rel_l2, pearson_across_freq
-from train import (
+from unified_metrics import flat_r2, flat_rel_l2, pearson_across_freq  # noqa: E402
+from train import (  # noqa: E402
     apply_norms,
     evaluate,
     train_from_datasets,
@@ -94,7 +99,7 @@ def operator_bakeoff(splits: dict[str, Path]) -> dict[str, Any]:
 
 def _eval_frozen_rhat(splits: dict[str, Path]) -> dict[str, Any]:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    from eval_ood import _load_residual_model
+    from scoring.eval_ood import _load_residual_model
     from torch.utils.data import DataLoader
 
     model, blob, stats, trunk_set = _load_residual_model(E2_CKPT, device)

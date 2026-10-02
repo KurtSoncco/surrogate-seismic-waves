@@ -36,15 +36,13 @@ if _SEISKIT.is_dir() and str(_SEISKIT) not in sys.path:
     sys.path.insert(0, str(_SEISKIT))
 
 import config  # noqa: E402
+from ood_io import jsonable  # noqa: E402
 
 from response_variability.evals.eval_haskell_xi import (  # noqa: E402
     read_soil_xi,
     resolve_h5,
 )
 from response_variability.evals.eval_iid import _as_central  # noqa: E402
-from response_variability.evals.eval_spatial_leftover import (  # noqa: E402
-    _jsonable,
-)
 from response_variability.metrics import (  # noqa: E402
     fmt_iqr,
     median_iqr,
@@ -859,7 +857,7 @@ def main() -> None:
     if frames:
         pd.concat(frames, ignore_index=True).to_csv(csv_path, index=False)
     json_path = args.out_dir / "opensees1d_vs_haskell_summary.json"
-    json_path.write_text(json.dumps(_jsonable(agg), indent=2))
+    json_path.write_text(json.dumps(jsonable(agg), indent=2))
     write_markdown(agg, args.out_dir / "OPENSEES1D.md")
     plot_opensees1d(agg, arrays_by_domain, args.out_dir / "opensees1d_vs_haskell.png")
     n_fail = sum(1 for r in run_reports if not r.get("ok", True))
@@ -869,7 +867,7 @@ def main() -> None:
             json.dumps([r for r in run_reports if not r.get("ok", True)], indent=2)
         )
         print(f"OpenSees failures: {n_fail} (see {err_path})", flush=True)
-    print(json.dumps(_jsonable(agg), indent=2), flush=True)
+    print(json.dumps(jsonable(agg), indent=2), flush=True)
     print(f"Wrote {csv_path}", flush=True)
 
 

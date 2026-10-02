@@ -11,20 +11,25 @@ import argparse
 import json
 from pathlib import Path
 from typing import Any
+import sys
 
-import config
-import numpy as np
-import torch
-from tqdm import tqdm
-from unified_metrics import flat_pearson, flat_r2, flat_rel_l2, pearson_across_freq
-from wandb_util import finish_wandb, init_wandb, log_wandb, summary_wandb
+_EXP = Path(__file__).resolve().parents[1]
+if str(_EXP) not in sys.path:
+    sys.path.insert(0, str(_EXP))
 
-from haskell_baseline import (
+import config  # noqa: E402
+import numpy as np  # noqa: E402
+import torch  # noqa: E402
+from tqdm import tqdm  # noqa: E402
+from unified_metrics import flat_pearson, flat_r2, flat_rel_l2, pearson_across_freq  # noqa: E402
+from wandb_util import finish_wandb, init_wandb, log_wandb, summary_wandb  # noqa: E402
+
+from haskell_baseline import (  # noqa: E402
     haskell_at_columns,
     haskell_nominal_af_within,
     haskell_nominal_layered_af_within,
 )
-from ood_io import (
+from ood_io import (  # noqa: E402
     clamp_residual,
     crop_variability,
     default_ood_roots,

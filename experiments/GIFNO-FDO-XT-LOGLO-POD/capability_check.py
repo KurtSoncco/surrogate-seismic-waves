@@ -150,7 +150,7 @@ def _gt_cache_valid(h5_path: Path, case_dir: Path) -> bool:
 def compute_ground_truth_tf(h5_path: Path) -> tuple[np.ndarray, np.ndarray]:
     """OpenSees accel -> (n_recorders, n_freq) via seiskit TTF_batch_fast."""
     _ensure_seiskit_on_path()
-    from seiskit.ttf.TTF import TTF_batch_fast  # noqa: WPS433
+    from seiskit.ttf.TTF import TTF_batch_fast  # noqa: PLC0415
 
     n_lateral = config.N_LATERAL
     with h5py.File(h5_path, "r") as f:

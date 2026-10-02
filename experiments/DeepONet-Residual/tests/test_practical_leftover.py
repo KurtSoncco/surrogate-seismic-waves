@@ -160,7 +160,7 @@ def test_cov_only_dim_and_vector():
 
 
 def test_default_score_domains_omit_three_layer():
-    from score_mscale_distributions import DEFAULT_SCORE_DOMAINS, DOMAINS
+    from scoring.score_mscale_distributions import DEFAULT_SCORE_DOMAINS, DOMAINS
 
     assert DEFAULT_SCORE_DOMAINS == ("iid", "ood_dipping")
     assert "ood_three_layer" in DOMAINS

@@ -18,7 +18,7 @@
 #   ssh "$HOST"
 #   cd ~/surrogate-seismic-waves && source .venv/bin/activate
 #   tmux new-session -d -s gino \
-#     "bash experiments/DeepONet-Residual/lambda_train.sh \
+#     "bash experiments/DeepONet-Residual/hpc/lambda_train.sh \
 #        --mix M2100 --encoder gno --fno --batch-size 32 \
 #        --fno-width 64 --fno-modes 8,32 --fno-layers 4 \
 #        --run-name M2100_gino_wide_lambda 2>&1 | tee train_gino.log"

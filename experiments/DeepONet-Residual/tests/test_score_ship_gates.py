@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from score_ship_gates import score_one
+from scoring.score_ship_gates import score_one
 
 
 def test_score_ship_gates_beats_and_misses(tmp_path: Path):

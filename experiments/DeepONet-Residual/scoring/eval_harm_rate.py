@@ -5,9 +5,9 @@ No training. Scores an existing residual checkpoint on mix held-out slices
 and optionally LOGLO on the *same* files if a LOGLO ckpt is set.
 
     cd experiments/DeepONet-Residual
-    python eval_harm_rate.py --ckpt checkpoints/M7680_gino_rebal_ft.pt
-    python eval_harm_rate.py --synthetic
-    python eval_harm_rate.py --ckpt checkpoints/M7680_gino_rebal_ft.pt --full7680
+    python scoring/eval_harm_rate.py --ckpt checkpoints/M7680_gino_rebal_ft.pt
+    python scoring/eval_harm_rate.py --synthetic
+    python scoring/eval_harm_rate.py --ckpt checkpoints/M7680_gino_rebal_ft.pt --full7680
 """
 
 from __future__ import annotations
@@ -20,11 +20,14 @@ from typing import Any
 
 import numpy as np
 import torch
+import sys
 
-import config
-from unified_metrics import score_leftover_batch, win_rate
+_EXP = Path(__file__).resolve().parents[1]
+if str(_EXP) not in sys.path:
+    sys.path.insert(0, str(_EXP))
 
-_EXP = Path(__file__).resolve().parent
+import config  # noqa: E402
+from unified_metrics import score_leftover_batch, win_rate  # noqa: E402
 
 
 def _freq_grid() -> np.ndarray:
@@ -304,7 +307,7 @@ def score_loglo_on_mix(
             "reason": "set GIFNO_MODEL_DIR or LOGLO_CKPT to score LOGLO on the same slices",
         }
     try:
-        from compare_tf_loglo_vs_deeponet import load_loglo
+        from scoring.compare_tf_loglo_vs_deeponet import load_loglo
         from residual_signed import resolve_h5_path
         from data import freq_screen_indices
     except Exception as exc:

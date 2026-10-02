@@ -120,7 +120,7 @@ def test_learned_1d_head_matches_query_grid():
 
 
 def test_eval_harm_rate_synthetic():
-    import eval_harm_rate as ehr
+    import scoring.eval_harm_rate as ehr
 
     rep = ehr.synthetic_report()
     assert rep["good_residual"]["harm_rate"] < rep["harmful_residual"]["harm_rate"]

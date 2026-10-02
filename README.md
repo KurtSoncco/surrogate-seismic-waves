@@ -70,7 +70,7 @@ Datasets are **not stored in this repository** due to size. Split sizes, tensor 
 export GIFNO_DATA_ROOT="/path/to/data"   # must contain h5/ and transfer_function/
 ```
 
-On HPC (NCSA Delta, Savio), use the shell scripts in `experiments/GIFNO/` (`delta_run_all.sh`, `savio_train.sh`, `lambda_train.sh`).
+On HPC (NCSA Delta, Savio), use the shell scripts in `experiments/GIFNO/` (`delta_run_all.sh`, `hpc/savio_train.sh`, `hpc/lambda_train.sh`).
 
 ---
 
@@ -103,7 +103,7 @@ Shipped leftover on geometry-aware Haskell nom: freeze-GNO fine-tune of mix **M7
 GIFNO_DATA_ROOT=data/gifno_screen \
 GIFNO_OOD_DIPPING=data/gifno_screen/ood_dipping \
 GIFNO_OOD_THREE_LAYER=data/gifno_screen/ood_three_layer \
-uv run python experiments/DeepONet-Residual/eval_ood.py --split test
+uv run python experiments/DeepONet-Residual/scoring/eval_ood.py --split test
 ```
 
 See [`experiments/DeepONet-Residual/README.md`](experiments/DeepONet-Residual/README.md).
@@ -189,7 +189,7 @@ Point data paths via each experiment's `config.py` or environment variables, the
 cd experiments/GIFNO-FDO-XT-LOGLO-POD && uv run python capability_check.py --all
 
 # Residual GINO OOD eval (default checkpoint = M7680_gino_rebal_ft)
-uv run python experiments/DeepONet-Residual/eval_ood.py --split test
+uv run python experiments/DeepONet-Residual/scoring/eval_ood.py --split test
 ```
 
 ### 4. GIFNO on NCSA Delta (from WSL)

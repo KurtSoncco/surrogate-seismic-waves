@@ -4,17 +4,29 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import subprocess
 import sys
-from dataclasses import dataclass, field
 from pathlib import Path
 
 
-@dataclass
-class SweepVariant:
-    name: str
-    overrides: dict[str, str] = field(default_factory=dict)
+def _load_gifno_sweep_launch():
+    """Parser and run-tag helpers are shared with ``experiments/GIFNO/sweep_launch.py``."""
+    path = Path(__file__).resolve().parents[1] / "GIFNO" / "sweep_launch.py"
+    spec = importlib.util.spec_from_file_location("gifno_sweep_launch", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load {path}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["gifno_sweep_launch"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_gifno_sweep = _load_gifno_sweep_launch()
+SweepVariant = _gifno_sweep.SweepVariant
+load_variants_from_text = _gifno_sweep.load_variants_from_text
+sweep_run_tag = _gifno_sweep.sweep_run_tag
 
 
 DEFAULT_VARIANTS_LOGLO_POD_TSV = """\
@@ -30,27 +42,6 @@ loglo_pod_latent256\tLATENT_CHANNELS=256;POD_NUM_MODES=32;LOSS_RADIAL_WEIGHT=0.2
 """
 
 
-def load_variants_from_text(text: str) -> list[SweepVariant]:
-    variants: list[SweepVariant] = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if "\t" in line:
-            name, overrides_raw = line.split("\t", 1)
-            overrides: dict[str, str] = {}
-            for pair in overrides_raw.split(";"):
-                pair = pair.strip()
-                if not pair:
-                    continue
-                key, val = pair.split("=", 1)
-                overrides[key.strip()] = val.strip()
-        else:
-            name, overrides = line, {}
-        variants.append(SweepVariant(name=name.strip(), overrides=overrides))
-    return variants
-
-
 def load_variants(path: Path) -> list[SweepVariant]:
     if path.is_file():
         return load_variants_from_text(path.read_text())
@@ -60,12 +51,6 @@ def load_variants(path: Path) -> list[SweepVariant]:
         flush=True,
     )
     return load_variants_from_text(DEFAULT_VARIANTS_LOGLO_POD_TSV)
-
-
-def sweep_run_tag(*, screen: bool, limit: int | None) -> str:
-    if not screen:
-        return "full"
-    return f"n{limit}" if limit is not None else "screen"
 
 
 def build_export_env(
