@@ -1,0 +1,9 @@
+domain,split,n_files,n_unique,n_axes
+iid,train,700,242,6
+iid,val,150,117,6
+iid,test,150,116,6
+iid,val+test,300,187,6
+dipping,train,672,33,7
+dipping,val,144,32,7
+dipping,test,144,31,7
+dipping,val+test,288,32,7

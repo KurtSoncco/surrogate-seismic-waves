@@ -1,0 +1,20 @@
+{
+  "iid": {
+    "n_val": 150,
+    "n_test": 150,
+    "n_heldout": 300,
+    "n_methods": 7
+  },
+  "dipping": {
+    "n_val": 144,
+    "n_test": 144,
+    "n_heldout": 288,
+    "n_methods": 7
+  },
+  "ood_dipping": {
+    "n_val": 144,
+    "n_test": 144,
+    "n_heldout": 288,
+    "n_methods": 8
+  }
+}

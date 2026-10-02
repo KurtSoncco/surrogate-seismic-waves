@@ -1,0 +1,3 @@
+domain,n_train,n_held,n_overlap,n_held_only
+iid,242,187,177,10
+dipping,33,32,32,0

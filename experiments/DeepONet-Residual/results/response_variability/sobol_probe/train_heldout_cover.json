@@ -1,0 +1,76 @@
+{
+  "occupancy": [
+    {
+      "domain": "iid",
+      "split": "train",
+      "n_files": 700,
+      "n_unique": 242,
+      "n_axes": 6
+    },
+    {
+      "domain": "iid",
+      "split": "val",
+      "n_files": 150,
+      "n_unique": 117,
+      "n_axes": 6
+    },
+    {
+      "domain": "iid",
+      "split": "test",
+      "n_files": 150,
+      "n_unique": 116,
+      "n_axes": 6
+    },
+    {
+      "domain": "iid",
+      "split": "val+test",
+      "n_files": 300,
+      "n_unique": 187,
+      "n_axes": 6
+    },
+    {
+      "domain": "dipping",
+      "split": "train",
+      "n_files": 672,
+      "n_unique": 33,
+      "n_axes": 7
+    },
+    {
+      "domain": "dipping",
+      "split": "val",
+      "n_files": 144,
+      "n_unique": 32,
+      "n_axes": 7
+    },
+    {
+      "domain": "dipping",
+      "split": "test",
+      "n_files": 144,
+      "n_unique": 31,
+      "n_axes": 7
+    },
+    {
+      "domain": "dipping",
+      "split": "val+test",
+      "n_files": 288,
+      "n_unique": 32,
+      "n_axes": 7
+    }
+  ],
+  "overlap": [
+    {
+      "n_train": 242,
+      "n_held": 187,
+      "n_overlap": 177,
+      "n_held_only": 10,
+      "domain": "iid"
+    },
+    {
+      "n_train": 33,
+      "n_held": 32,
+      "n_overlap": 32,
+      "n_held_only": 0,
+      "domain": "dipping"
+    }
+  ]
+}
