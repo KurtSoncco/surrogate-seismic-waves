@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -20,14 +19,6 @@ from model import build_model
 from train import train_from_datasets
 
 ARCH_DIR = config.RESULTS_DIR / "arch_train"
-
-
-def _set_local_ood_env() -> None:
-    local = Path(__file__).resolve().parents[2] / "data" / "gifno_screen"
-    if (local / "ood_dipping").is_dir():
-        os.environ.setdefault("GIFNO_OOD_DIPPING", str(local / "ood_dipping"))
-    if (local / "ood_three_layer").is_dir():
-        os.environ.setdefault("GIFNO_OOD_THREE_LAYER", str(local / "ood_three_layer"))
 
 
 def _ds(
@@ -710,7 +701,7 @@ def main() -> None:
         raise SystemExit(
             "IID* mixes have no three-layer val slice; use --val-monitor smooth_l1"
         )
-    _set_local_ood_env()
+    config.set_local_ood_env()
     ARCH_DIR.mkdir(parents=True, exist_ok=True)
     fno_modes = _parse_modes(args.fno_modes)
     if args.dump_m700:

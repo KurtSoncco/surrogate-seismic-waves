@@ -147,7 +147,7 @@ def default_ckpt_map() -> dict[str, Path]:
 
 
 def run(*, ckpts: dict[str, Path], batch_size: int, include_haskell: bool) -> dict[str, Any]:
-    from response_variability.eval_iid import predict_gino
+    from response_variability.evals.eval_iid import predict_gino
 
     tests = mix_test_parts()
     arrays_by = {d: load_domain_arrays(cache, idx) for d, (cache, idx) in tests.items()}

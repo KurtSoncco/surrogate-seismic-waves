@@ -219,6 +219,51 @@ def peak_dlnA_df0_per_sample(
     return dln, df0, df0_true_vs_calc, df0_hat_vs_calc
 
 
+def flat_r2(y: np.ndarray, p: np.ndarray) -> float:
+    ss_res = float(np.sum((y - p) ** 2))
+    ss_tot = float(np.sum((y - y.mean()) ** 2))
+    return 1.0 - ss_res / max(ss_tot, 1e-12)
+
+
+def flat_rel_l2(y: np.ndarray, p: np.ndarray) -> float:
+    return float(np.linalg.norm(y - p) / max(np.linalg.norm(y), 1e-12))
+
+
+def flat_pearson(y: np.ndarray, p: np.ndarray) -> float:
+    y = y.astype(np.float64).ravel()
+    p = p.astype(np.float64).ravel()
+    if y.size < 2 or y.std() < 1e-12 or p.std() < 1e-12:
+        return 0.0
+    return float(np.corrcoef(y, p)[0, 1])
+
+
+def pearson_across_freq(
+    y: np.ndarray,
+    p: np.ndarray,
+    *,
+    n_rec: int,
+    n_freq: int,
+) -> float:
+    """Mean Pearson correlation of spectra along frequency for each (sample, recorder)."""
+    y = y.astype(np.float64).ravel()
+    p = p.astype(np.float64).ravel()
+    q = n_rec * n_freq
+    if y.size % q != 0:
+        # fallback: global pearson if layout unexpected
+        return flat_pearson(y, p)
+    n_s = y.size // q
+    Y = y.reshape(n_s, n_rec, n_freq)
+    P = p.reshape(n_s, n_rec, n_freq)
+    cors: list[float] = []
+    for i in range(n_s):
+        for r in range(n_rec):
+            a, b = Y[i, r], P[i, r]
+            if a.std() < 1e-12 or b.std() < 1e-12:
+                continue
+            cors.append(float(np.corrcoef(a, b)[0, 1]))
+    return float(np.mean(cors)) if cors else 0.0
+
+
 def pearson_rows(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     a = np.asarray(a, dtype=np.float64)
     b = np.asarray(b, dtype=np.float64)

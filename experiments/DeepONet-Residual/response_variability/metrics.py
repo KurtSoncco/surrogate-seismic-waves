@@ -161,7 +161,7 @@ def pearson(a: np.ndarray, b: np.ndarray, *, mask: np.ndarray | None = None) -> 
     return float(np.corrcoef(a, b)[0, 1])
 
 
-def band_mask(freq: np.ndarray, lo: float, hi: float) -> np.ndarray:
+def band_mask(freq: np.ndarray, lo: float = 0.1, hi: float = 10.0) -> np.ndarray:
     f = np.asarray(freq, dtype=float).ravel()
     return (f >= lo) & (f <= hi)
 
@@ -266,3 +266,30 @@ def method_vs_reference(
         out["delta_sigma_ln_spatial_mean"] = float(np.mean(sig_c - sig_r))
         out["rel_l2_spatial"] = rel_l2(af_cand_spatial, af_ref_spatial)
     return out
+
+
+def central_recorder(tf_i: np.ndarray) -> np.ndarray:
+    """Central-recorder curve of one sample: (n_freq,) passes through, (n_rec, n_freq) picks mid."""
+    a = np.asarray(tf_i, dtype=np.float64)
+    if a.ndim == 1:
+        return a
+    return a[a.shape[0] // 2]
+
+
+def median_iqr(x: np.ndarray) -> dict[str, float]:
+    v = np.asarray(x, dtype=np.float64).ravel()
+    v = v[np.isfinite(v)]
+    if v.size == 0:
+        return {"median": float("nan"), "q25": float("nan"), "q75": float("nan")}
+    return {
+        "median": float(np.median(v)),
+        "q25": float(np.percentile(v, 25)),
+        "q75": float(np.percentile(v, 75)),
+    }
+
+
+def fmt_iqr(d: dict[str, float] | None) -> str:
+    """``median [q25, q75]`` cell for the markdown tables."""
+    if not d or not np.isfinite(d.get("median", float("nan"))):
+        return "—"
+    return f"{d['median']:.3f} [{d['q25']:.3f}, {d['q75']:.3f}]"

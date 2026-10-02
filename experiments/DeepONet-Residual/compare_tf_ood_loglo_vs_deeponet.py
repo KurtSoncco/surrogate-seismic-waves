@@ -13,7 +13,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-import h5py
 import numpy as np
 import torch
 
@@ -28,6 +27,7 @@ from compare_tf_loglo_vs_deeponet import (
     load_loglo,
 )
 from data import build_recorder_fields
+from residual_signed import _read_sample
 
 _EPS = 1e-12
 
@@ -74,14 +74,6 @@ def _normalize_ood_params(params: dict[str, Any]) -> dict[str, float | int]:
     }
 
 
-def _read_h5_fields(h5_path: Path) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
-    with h5py.File(h5_path, "r") as f:
-        vs = np.asarray(f["Vs_realization_2D"][:], dtype=np.float64)
-        zeta = np.asarray(f["Damping_zeta"][:], dtype=np.float64)
-        params = {k: f["params"].attrs[k] for k in f["params"].attrs}
-    return vs, zeta, params
-
-
 def _ood_roots() -> tuple[Path, Path]:
     ood_root = Path(
         os.environ.get(
@@ -106,7 +98,7 @@ def _haskell_nom_tf1d(
 ) -> np.ndarray:
     from haskell_baseline import haskell_at_columns, haskell_nominal_af_within
 
-    vs, zeta, params = _read_h5_fields(h5_path)
+    vs, zeta, params = _read_sample(h5_path)
     norm = _normalize_ood_params(params)
     vs_crop = vs[:, dn_config.X_SLICE_START : dn_config.X_SLICE_END]
     zeta_crop = zeta[:, dn_config.X_SLICE_START : dn_config.X_SLICE_END]
@@ -145,7 +137,7 @@ def predict_deeponet_ood(
     """Return (TF_hat, TF1D_nom) shape (n_rec, n_freq)."""
     from features import fourier_freq_features, spectral_kl_coefficients
 
-    vs, zeta, params = _read_h5_fields(h5_path)
+    vs, zeta, params = _read_sample(h5_path)
     norm = _normalize_ood_params(params)
     vs = vs[:, dn_config.X_SLICE_START : dn_config.X_SLICE_END]
     zeta = zeta[:, dn_config.X_SLICE_START : dn_config.X_SLICE_END]

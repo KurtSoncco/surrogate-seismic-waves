@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from ood_io import corpus_root, default_ood_roots
-from response_variability.eval_corner_is import split_corner_summaries
+from response_variability.evals.eval_corner_is import split_corner_summaries
 
 
 def test_corner_is_is_an_ood_root():

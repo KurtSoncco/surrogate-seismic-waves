@@ -31,11 +31,9 @@ from data import ResidualDeepONetDataset, query_station_indices
 from mix_ladder import mix_test_parts
 from model import apply_query_freq, gno_core, interp_along_x
 from response_variability.metrics import anderson_frequency_domain, pearson
+from unified_metrics import flat_r2, flat_rel_l2, pearson_across_freq
 from train import (
     _forward,
-    _pearson_across_freq,
-    _r2,
-    _rel_l2,
     apply_checkpoint_stats,
     evaluate,
     stats_from_checkpoint,
@@ -84,13 +82,13 @@ def _metrics_from_arrays(
         for r in range(n_rec)
     ]
     return {
-        "r2_R": _r2(r_true, r_hat),
-        "rel_l2_R": _rel_l2(r_true, r_hat),
+        "r2_R": flat_r2(r_true, r_hat),
+        "rel_l2_R": flat_rel_l2(r_true, r_hat),
         "pearson_R": pearson(r_true, r_hat),
-        "pearson_R_freq": _pearson_across_freq(
+        "pearson_R_freq": pearson_across_freq(
             r_true.ravel(), r_hat.ravel(), n_rec=n_rec, n_freq=n_freq
         ),
-        "rel_l2_TF": _rel_l2(tf2d, tf_hat),
+        "rel_l2_TF": flat_rel_l2(tf2d, tf_hat),
         "pearson_TF": pearson(tf2d, tf_hat),
         "anderson_mean": float(np.nanmean(anderson)) if anderson else float("nan"),
     }
@@ -106,7 +104,7 @@ def _per_recorder_rel_l2(
             {
                 "recorder": int(i),
                 "x_m": float(x_m[i]),
-                "rel_l2_R": _rel_l2(r_true[:, i], r_hat[:, i]),
+                "rel_l2_R": flat_rel_l2(r_true[:, i], r_hat[:, i]),
             }
         )
     return rows

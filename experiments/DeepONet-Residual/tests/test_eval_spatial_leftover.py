@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import numpy as np
 
-from response_variability.eval_spatial_leftover import (
+from response_variability.evals.eval_spatial_leftover import (
     attach_toro,
     score_domain,
     spatial_pattern_pearson_one,
     write_markdown,
 )
 from response_variability.names import GINO, HASKELL_NOMINAL, PRETELL, TORO
-from response_variability.plot_presentation import make_synthetic_pack
+from response_variability.plots.plot_presentation import make_synthetic_pack
 
 
 def test_spatial_pattern_undefined_when_flat_in_x():

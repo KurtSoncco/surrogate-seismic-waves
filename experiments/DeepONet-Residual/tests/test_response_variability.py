@@ -30,7 +30,7 @@ from response_variability.names import (
     PRETELL_P84,
     TORO,
 )
-from response_variability.plot_iid import (
+from response_variability.plots.plot_iid import (
     _panel_title,
     compare_methods_in,
     select_diverse_indices,
@@ -133,7 +133,7 @@ def test_dmult_multipliers_match_seiskit():
 
 
 def test_leftover_panel_is_r_not_prediction_error():
-    from response_variability.plot_presentation import leftover_central, make_synthetic_pack
+    from response_variability.plots.plot_presentation import leftover_central, make_synthetic_pack
 
     pack = make_synthetic_pack(n=4, seed=1)
     i = 0
@@ -381,7 +381,7 @@ def test_default_checkpoint_is_rebal_ft():
 
 
 def test_pearson_tf_freq_perfect_is_one():
-    from response_variability.plot_presentation import pearson_tf_freq_per_sample
+    from response_variability.plots.plot_presentation import pearson_tf_freq_per_sample
 
     tf = np.linspace(1.0, 3.0, 40).reshape(1, 1, 40)
     tf = np.broadcast_to(tf, (4, 21, 40)).copy()
@@ -391,7 +391,7 @@ def test_pearson_tf_freq_perfect_is_one():
 
 
 def test_pick_pearson_quantile_indices_unique_and_spread():
-    from response_variability.plot_presentation import (
+    from response_variability.plots.plot_presentation import (
         PEARSON_QUANTILES,
         pick_pearson_quantile_indices,
     )
@@ -404,7 +404,7 @@ def test_pick_pearson_quantile_indices_unique_and_spread():
 
 
 def test_nominal_vs_profile_two_and_three_layer():
-    from response_variability.plot_presentation import nominal_vs_profile
+    from response_variability.plots.plot_presentation import nominal_vs_profile
 
     z, vs = nominal_vs_profile(vs1=200.0, H=30.0, vs2=800.0, nz=60, dz=1.0)
     assert z[0] < z[-1]
@@ -424,7 +424,7 @@ def test_nominal_vs_profile_two_and_three_layer():
     assert vs3[25] == pytest.approx(350.0)
     assert vs3[70] == pytest.approx(900.0)
     assert z3.shape == vs3.shape
-    from response_variability.plot_presentation import nominal_vs_stairs
+    from response_variability.plots.plot_presentation import nominal_vs_stairs
 
     vs_s, z_s = nominal_vs_stairs(vs1=200.0, H=30.0, vs2=800.0, z_max=50.0)
     assert set(np.unique(vs_s).tolist()) == {200.0, 800.0}
@@ -438,7 +438,7 @@ def test_nominal_vs_profile_two_and_three_layer():
 
 
 def test_case_title_includes_rh_ahv_cov():
-    from response_variability.plot_presentation import _case_title, make_synthetic_pack
+    from response_variability.plots.plot_presentation import _case_title, make_synthetic_pack
 
     pack = make_synthetic_pack(n=4, seed=0)
     title = _case_title(pack, 0, 0.10, "iid")
@@ -449,7 +449,7 @@ def test_case_title_includes_rh_ahv_cov():
 
 
 def test_stored_nz_includes_bedrock_below_soil():
-    from response_variability.plot_presentation import _stored_nz, make_synthetic_pack
+    from response_variability.plots.plot_presentation import _stored_nz, make_synthetic_pack
 
     pack = make_synthetic_pack(n=4, nz=40)
     i = 0
@@ -464,7 +464,7 @@ def test_presentation_plots_write_eleven_files(tmp_path):
     import matplotlib
 
     matplotlib.use("Agg")
-    from response_variability.plot_presentation import (
+    from response_variability.plots.plot_presentation import (
         DOMAIN_SPECS,
         make_synthetic_pack,
         plot_all_from_packs,
@@ -488,7 +488,7 @@ def test_presentation_plots_write_eleven_files(tmp_path):
 
 
 def test_presentation_live_skipped_without_caches():
-    from response_variability.plot_presentation import caches_ready
+    from response_variability.plots.plot_presentation import caches_ready
 
     if caches_ready():
         pytest.skip("mix caches present; live GINO/Pretell scoring is not a unit test")

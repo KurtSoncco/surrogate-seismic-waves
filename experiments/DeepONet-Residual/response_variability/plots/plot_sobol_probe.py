@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
@@ -21,7 +21,7 @@ from response_variability.names import (  # noqa: E402
     PRETELL,
     PRETELL_P84,
 )
-from response_variability.plot_presentation import DOMAIN_SPECS  # noqa: E402
+from response_variability.plots.plot_presentation import DOMAIN_SPECS  # noqa: E402
 from response_variability.sobol_design import AHV_FIXED, RH_FIXED  # noqa: E402
 from response_variability.style import (  # noqa: E402
     apply_nature_style,

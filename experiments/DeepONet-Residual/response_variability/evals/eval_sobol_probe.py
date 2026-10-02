@@ -9,7 +9,7 @@ and mix-train caches:
 2. Extrapolation: axis-aligned hull of IID train vs seiskit RV 64 (fixed
    rH=10 m, aHV=50) and frequency train-query bins vs the other 800 eval bins.
 
-    uv run python experiments/DeepONet-Residual/response_variability/eval_sobol_probe.py
+    uv run python experiments/DeepONet-Residual/response_variability/evals/eval_sobol_probe.py
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from typing import Any
 import numpy as np
 from scipy.stats import spearmanr
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
@@ -37,7 +37,7 @@ from response_variability.metrics import (  # noqa: E402
     rel_l2,
     theoretical_f0,
 )
-from response_variability.plot_presentation import (  # noqa: E402
+from response_variability.plots.plot_presentation import (  # noqa: E402
     DOMAIN_SPECS,
     attach_stoch_from_cache,
     load_pack,
@@ -653,7 +653,7 @@ def main() -> int:
             flush=True,
         )
     if not args.skip_plots:
-        from response_variability.plot_sobol_probe import plot_all
+        from response_variability.plots.plot_sobol_probe import plot_all
 
         for pth in plot_all(blob, args.out_dir):
             print(f"  {pth}", flush=True)

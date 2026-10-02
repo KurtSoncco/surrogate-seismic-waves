@@ -5,7 +5,7 @@
 Locations with ``held_out=1`` (8 of 32) are never-train; the other 24 are
 train-eligible for a future mix. The shipped checkpoint saw none of them.
 
-    uv run python experiments/DeepONet-Residual/response_variability/eval_corner_is.py
+    uv run python experiments/DeepONet-Residual/response_variability/evals/eval_corner_is.py
     uv run python .../eval_corner_is.py --skip-predict
 """
 
@@ -18,21 +18,21 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
 import config  # noqa: E402
 
-from ood_signed_cache import build_ood_signed_cache, cache_dir_for  # noqa: E402
+from ood_signed_cache import build_ood_signed_cache  # noqa: E402
 from response_variability.covariates import attach_extracted_f0  # noqa: E402
-from response_variability.eval_classical import add_classical_1d_arms  # noqa: E402
-from response_variability.eval_iid import summarize_methods  # noqa: E402
-from response_variability.plot_eval_bias import (  # noqa: E402
+from response_variability.evals.eval_classical import add_classical_1d_arms  # noqa: E402
+from response_variability.evals.eval_iid import summarize_methods  # noqa: E402
+from response_variability.plots.plot_eval_bias import (  # noqa: E402
     CORNER_PEARSON_PANELS,
     plot_pearson_boxes_corner,
 )
-from response_variability.plot_presentation import (  # noqa: E402
+from response_variability.plots.plot_presentation import (  # noqa: E402
     N_PRETELL_DEFAULT,
     attach_vs_and_pretell,
     load_domain_arrays,

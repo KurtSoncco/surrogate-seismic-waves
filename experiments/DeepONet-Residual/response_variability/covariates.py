@@ -12,6 +12,7 @@ from response_variability.metrics import (
     anderson_frequency_domain,
     band_anderson,
     band_pearson,
+    central_recorder,
     theoretical_f0,
 )
 
@@ -54,13 +55,6 @@ COVARIATE_LABELS = {
     "vs_mid": r"$V_{s,\mathrm{mid}}$ (m s$^{-1}$)",
     "vs_contrast": r"$\ln(V_{s,\mathrm{mid}}/V_{s1})$",
 }
-
-
-def _central(tf_i: np.ndarray) -> np.ndarray:
-    a = np.asarray(tf_i, dtype=np.float64)
-    if a.ndim == 1:
-        return a
-    return a[a.shape[0] // 2]
 
 
 def f0_window_center(pack: dict[str, np.ndarray], i: int) -> float:
@@ -163,7 +157,7 @@ def attach_h5_covariates(
 
     n = int(np.asarray(pack["tf_opensees"]).shape[0])
     try:
-        from response_variability.plot_presentation import attach_stoch_from_cache
+        from response_variability.plots.plot_presentation import attach_stoch_from_cache
 
         pack = attach_stoch_from_cache(pack, domain)
     except Exception:
@@ -300,7 +294,7 @@ def pearson_anderson_per_sample(
     for i in range(n):
         pi = p[i]
         ti = t[i]
-        pc, tc = _central(pi), _central(ti)
+        pc, tc = central_recorder(pi), central_recorder(ti)
         pearson_all[i] = band_pearson(pc, tc, freq, lo=0.1, hi=10.0)
         center = float(f0[i]) if i < f0.size and np.isfinite(f0[i]) else None
         gof_all[i] = anderson_frequency_domain(

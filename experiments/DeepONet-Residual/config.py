@@ -147,3 +147,12 @@ FREQ_BAND_HIGH: tuple[float, float] = (2.0, 10.0)
 
 for d in (CACHE_DIR, RESULTS_DIR, CHECKPOINT_DIR):
     d.mkdir(parents=True, exist_ok=True)
+
+
+def set_local_ood_env() -> None:
+    """Point the OOD env vars at ``data/gifno_screen`` when that local pack exists."""
+    local = EXPERIMENT_DIR.parents[1] / "data" / "gifno_screen"
+    if (local / "ood_dipping").is_dir():
+        os.environ.setdefault("GIFNO_OOD_DIPPING", str(local / "ood_dipping"))
+    if (local / "ood_three_layer").is_dir():
+        os.environ.setdefault("GIFNO_OOD_THREE_LAYER", str(local / "ood_three_layer"))

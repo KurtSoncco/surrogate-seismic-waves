@@ -35,6 +35,7 @@ from score_mscale_distributions import (  # noqa: E402
 )
 from score_stoch_permutation import (  # noqa: E402
     _predict,
+    _public_metrics,
     delta_pack,
     rel_l2_per_sample,
 )
@@ -90,14 +91,6 @@ def _metrics_from_hats(
         "_pearson": pearson,
         "_gof": gof,
         "_rel": rel,
-    }
-
-
-def _public_metrics(rec: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "pearson_freq": rec["pearson_freq"],
-        "gof_af": rec["gof_af"],
-        "rel_l2_TF": rec["rel_l2_TF"],
     }
 
 

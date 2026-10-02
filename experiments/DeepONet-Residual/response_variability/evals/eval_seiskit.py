@@ -15,14 +15,14 @@ from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
 import config  # noqa: E402
 from residual_signed import resolve_h5_path  # noqa: E402
 
-from response_variability.eval_iid import (  # noqa: E402
+from response_variability.evals.eval_iid import (  # noqa: E402
     OUT_DIR,
     IID_CACHE,
     aggregate_json,
@@ -193,7 +193,7 @@ def main() -> None:
     (args.out_dir / "aggregate.json").write_text(json.dumps(agg, indent=2))
     print(json.dumps(agg, indent=2), flush=True)
     if args.plot:
-        from response_variability.plot_iid import plot_all
+        from response_variability.plots.plot_iid import plot_all
 
         plot_all(args.out_dir)
 

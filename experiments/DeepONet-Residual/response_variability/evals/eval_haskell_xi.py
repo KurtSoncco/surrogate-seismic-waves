@@ -24,7 +24,7 @@ except ImportError:
     pass
 import h5py
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
@@ -32,14 +32,16 @@ import config  # noqa: E402
 from haskell_baseline import haskell_nominal_af_within  # noqa: E402
 from residual_signed import soil_mean_xi  # noqa: E402
 
-from response_variability.eval_iid import _as_central  # noqa: E402
-from response_variability.eval_spatial_leftover import _jsonable, _median_iqr  # noqa: E402
+from response_variability.evals.eval_iid import _as_central  # noqa: E402
+from response_variability.evals.eval_spatial_leftover import _jsonable  # noqa: E402
 from response_variability.metrics import (  # noqa: E402
+    fmt_iqr,
+    median_iqr,
     method_vs_reference,
     pearson,
     theoretical_f0,
 )
-from response_variability.plot_presentation import (  # noqa: E402
+from response_variability.plots.plot_presentation import (  # noqa: E402
     DOMAIN_SPECS,
     load_pack,
     pack_path,
@@ -162,12 +164,12 @@ def score_domain(domain: str, pack: dict[str, np.ndarray]) -> tuple[pd.DataFrame
     df = pd.DataFrame(rows)
     rec: dict[str, Any] = {
         "n": n,
-        "xi_soil": _median_iqr(df.drop_duplicates("sample")["xi_soil"].to_numpy()),
-        "xi_bedrock": _median_iqr(df.drop_duplicates("sample")["xi_bedrock"].to_numpy()),
+        "xi_soil": median_iqr(df.drop_duplicates("sample")["xi_soil"].to_numpy()),
+        "xi_bedrock": median_iqr(df.drop_duplicates("sample")["xi_bedrock"].to_numpy()),
         "xi_fixed": XI_FIXED,
         "pack_nom_rel_err_max": float(np.nanmax(rel_pack)),
-        "pearson_05_vs_xi": _median_iqr(df.drop_duplicates("sample")["pearson_05_vs_xi"].to_numpy()),
-        "delta_ln_A_05_vs_xi": _median_iqr(
+        "pearson_05_vs_xi": median_iqr(df.drop_duplicates("sample")["pearson_05_vs_xi"].to_numpy()),
+        "delta_ln_A_05_vs_xi": median_iqr(
             df.drop_duplicates("sample")["delta_ln_A_05_vs_xi"].to_numpy()
         ),
         "methods": {},
@@ -175,10 +177,10 @@ def score_domain(domain: str, pack: dict[str, np.ndarray]) -> tuple[pd.DataFrame
     for method in (ARM_FIXED, ARM_SAMPLE):
         sub = df[df["method"] == method]
         rec["methods"][method] = {
-            "pearson": _median_iqr(sub["pearson"].to_numpy()),
-            "anderson": _median_iqr(sub["gof_af"].to_numpy()),
-            "delta_ln_A_peak": _median_iqr(sub["delta_ln_A_peak"].to_numpy()),
-            "delta_f_peak": _median_iqr(sub["delta_f_peak"].to_numpy()),
+            "pearson": median_iqr(sub["pearson"].to_numpy()),
+            "anderson": median_iqr(sub["gof_af"].to_numpy()),
+            "delta_ln_A_peak": median_iqr(sub["delta_ln_A_peak"].to_numpy()),
+            "delta_f_peak": median_iqr(sub["delta_f_peak"].to_numpy()),
         }
     rec["anderson_tail"] = _anderson_tail(df, ARM_FIXED, ARM_SAMPLE)
     return df, rec
@@ -210,12 +212,6 @@ def _anderson_tail(
     return rows
 
 
-def _fmt(d: dict[str, float] | None) -> str:
-    if not d or not np.isfinite(d.get("median", float("nan"))):
-        return "—"
-    return f"{d['median']:.3f} [{d['q25']:.3f}, {d['q75']:.3f}]"
-
-
 def write_markdown(agg: dict[str, Any], dest: Path) -> None:
     lines = [
         "# Haskell ξ vs OpenSees soil ζ",
@@ -239,7 +235,7 @@ def write_markdown(agg: dict[str, Any], dest: Path) -> None:
         if not rec:
             continue
         lines.append(
-            f"| {domain} | {_fmt(rec['xi_soil'])} | {_fmt(rec['xi_bedrock'])} | "
+            f"| {domain} | {fmt_iqr(rec['xi_soil'])} | {fmt_iqr(rec['xi_bedrock'])} | "
             f"{rec['pack_nom_rel_err_max']:.2e} |"
         )
     lines += [
@@ -254,8 +250,8 @@ def write_markdown(agg: dict[str, Any], dest: Path) -> None:
         for method in (ARM_FIXED, ARM_SAMPLE):
             m = rec["methods"][method]
             lines.append(
-                f"| {domain} | {method} | {_fmt(m['pearson'])} | "
-                f"{_fmt(m['anderson'])} | {_fmt(m['delta_ln_A_peak'])} |"
+                f"| {domain} | {method} | {fmt_iqr(m['pearson'])} | "
+                f"{fmt_iqr(m['anderson'])} | {fmt_iqr(m['delta_ln_A_peak'])} |"
             )
     lines += [
         "",
@@ -291,10 +287,10 @@ def write_markdown(agg: dict[str, Any], dest: Path) -> None:
         da = rec["methods"][ARM_FIXED]["delta_ln_A_peak"]["median"]
         db = rec["methods"][ARM_SAMPLE]["delta_ln_A_peak"]["median"]
         lines.append(
-            f"- **{domain}:** soil ζ {_fmt(rec['xi_soil'])} vs 0.05; "
+            f"- **{domain}:** soil ζ {fmt_iqr(rec['xi_soil'])} vs 0.05; "
             f"Pearson {a:.3f} (0.05) → {b:.3f} (soil ζ); "
             f"marginal $\\Delta\\ln A$ vs 2-D {da:.3f} vs {db:.3f}; "
-            f"paired 0.05 vs soil-ζ peak {_fmt(rec['delta_ln_A_05_vs_xi'])}."
+            f"paired 0.05 vs soil-ζ peak {fmt_iqr(rec['delta_ln_A_05_vs_xi'])}."
         )
     dip = agg.get("dipping") or {}
     tail = dip.get("anderson_tail") or []

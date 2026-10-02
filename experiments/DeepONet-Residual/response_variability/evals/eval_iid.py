@@ -14,7 +14,7 @@ import pandas as pd
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
@@ -438,7 +438,7 @@ def main() -> None:
         skip_predict=args.skip_predict,
     )
     if args.plot:
-        from response_variability.plot_iid import plot_all
+        from response_variability.plots.plot_iid import plot_all
 
         plot_all(args.out_dir)
 

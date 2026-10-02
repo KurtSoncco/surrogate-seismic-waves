@@ -40,9 +40,9 @@ ls -lh "${EXP_DIR}/checkpoints/M7680_xi_field_acf_ft.pt" \
        "${EXP_DIR}/checkpoints/M7680_gno_rh_dilate_ft.pt"
 
 if command -v srun >/dev/null 2>&1 && [[ -n "${SLURM_JOB_ID:-}" ]]; then
-    srun python -u "${EXP_DIR}/response_variability/score_corner_probes.py" --batch-size 4
+    srun python -u "${EXP_DIR}/response_variability/diagnostics/score_corner_probes.py" --batch-size 4
 else
-    python -u "${EXP_DIR}/response_variability/score_corner_probes.py" --batch-size 4
+    python -u "${EXP_DIR}/response_variability/diagnostics/score_corner_probes.py" --batch-size 4
 fi
 
 echo "Done. ${EXP_DIR}/results/response_variability/eval_bias/part0_probes.csv"

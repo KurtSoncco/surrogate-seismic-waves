@@ -14,6 +14,7 @@ import numpy as np
 from scipy.fft import dct
 
 from response_variability.metrics import (
+    band_mask,
     peak_af,
     rel_l2,
     spatial_sigma_ln,
@@ -61,11 +62,6 @@ def broadcast_tf(tf1d: np.ndarray, like: np.ndarray) -> np.ndarray:
 def leftover(tf: np.ndarray, tf1d: np.ndarray) -> np.ndarray:
     y = _as_3d(tf)
     return y - broadcast_tf(tf1d, y)
-
-
-def band_mask(freq: np.ndarray, lo: float = 0.1, hi: float = 10.0) -> np.ndarray:
-    f = np.asarray(freq, dtype=float).ravel()
-    return (f >= lo) & (f <= hi)
 
 
 def trough_keep_mask(af: np.ndarray, *, floor_frac: float = TROUGH_FRAC) -> np.ndarray:

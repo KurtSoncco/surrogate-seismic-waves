@@ -4,7 +4,7 @@
 Rebuilds presentation TFs when the checkpoint exists; otherwise writes pending
 rows from the shipped pack / seed_ceiling.csv.
 
-    uv run python experiments/DeepONet-Residual/response_variability/score_corner_probes.py
+    uv run python experiments/DeepONet-Residual/response_variability/diagnostics/score_corner_probes.py
 """
 
 from __future__ import annotations
@@ -18,19 +18,19 @@ from typing import Any
 
 import numpy as np
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
 import config  # noqa: E402
 from response_variability.gino_bias import central_slice  # noqa: E402
 from response_variability.metrics import band_pearson  # noqa: E402
-from response_variability.plot_presentation import (  # noqa: E402
+from response_variability.plots.plot_presentation import (  # noqa: E402
     build_domain_pack,
     load_pack,
     pack_path,
 )
-from response_variability.tail_a_vs_b import (  # noqa: E402
+from response_variability.diagnostics.tail_a_vs_b import (  # noqa: E402
     cell_ids,
     param_matrix,
     pairwise_ops_pearson,

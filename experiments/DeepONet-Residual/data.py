@@ -20,6 +20,7 @@ except ImportError:
 import config
 import h5py
 
+from residual_signed import column_x_m, support_column_indices  # noqa: F401
 from features import (
     empirical_acf_length,
     fourier_freq_features,
@@ -142,21 +143,6 @@ def stoch_dim(
     if layout == "cov_only":
         return 1
     raise ValueError(f"unknown stoch layout {layout!r}")
-
-
-def column_x_m(cols: np.ndarray | Sequence[float]) -> np.ndarray:
-    """Physical x (m) on the cropped strip: cell centers."""
-    c = np.asarray(cols, dtype=np.float64).ravel()
-    return ((c + 0.5) * float(config.DX)).astype(np.float32)
-
-
-def support_column_indices(
-    stride: int = config.SUPPORT_STRIDE,
-    nx: int = config.NX,
-) -> np.ndarray:
-    """Column indices on the cropped 500 m strip (1 m grid)."""
-    s = max(int(stride), 1)
-    return np.arange(0, int(nx), s, dtype=int)
 
 
 def query_station_indices(n_rec: int, split: str = "all") -> np.ndarray:

@@ -22,7 +22,7 @@ import config  # noqa: E402
 from mix_ladder import mix_test_parts, mix_train_parts, mix_val_lookup  # noqa: E402
 from ood_signed_cache import cache_dir_for  # noqa: E402
 from response_variability.covariates import COVARIATE_LABELS  # noqa: E402
-from response_variability.plot_presentation import DOMAIN_SPECS  # noqa: E402
+from response_variability.plots.plot_presentation import DOMAIN_SPECS  # noqa: E402
 from response_variability.sobol_design import unique_rows  # noqa: E402
 from response_variability.style import apply_nature_style, figsize, savefig  # noqa: E402
 

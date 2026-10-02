@@ -7,7 +7,7 @@ import pytest
 
 from haskell_baseline import haskell_nominal_af_within
 from residual_signed import soil_mean_xi
-from response_variability.eval_haskell_xi import resolve_h5
+from response_variability.evals.eval_haskell_xi import resolve_h5
 from response_variability.metrics import peak_af
 
 
@@ -37,7 +37,7 @@ def _median(x: float) -> dict[str, float]:
 
 
 def test_haskell_xi_markdown_names_paired_and_worse_pearson(tmp_path):
-    from response_variability.eval_haskell_xi import ARM_FIXED, ARM_SAMPLE, write_markdown
+    from response_variability.evals.eval_haskell_xi import ARM_FIXED, ARM_SAMPLE, write_markdown
 
     rec = {
         "n": 4,

@@ -6,7 +6,7 @@ a Vs mosaic, one column per domain (default: iid, dipping, three_layer; use
 --domain to restrict). Packs cache GINO + Pretell geomean so plots can rerun
 without a GPU.
 
-    uv run python experiments/DeepONet-Residual/response_variability/plot_presentation.py
+    uv run python experiments/DeepONet-Residual/response_variability/plots/plot_presentation.py
     uv run python .../plot_presentation.py --skip-predict
     uv run python .../plot_presentation.py --domain iid --domain dipping --skip-predict
 """
@@ -22,12 +22,13 @@ import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
 import config  # noqa: E402
 
+from response_variability.metrics import central_recorder  # noqa: E402
 from response_variability.names import (  # noqa: E402
     DMULT,
     GINO,
@@ -213,13 +214,6 @@ def nominal_vs_stairs(
     return np.asarray(vs, dtype=np.float64), np.asarray(z, dtype=np.float64)
 
 
-def _central(tf_i: np.ndarray) -> np.ndarray:
-    a = np.asarray(tf_i, dtype=np.float64)
-    if a.ndim == 1:
-        return a
-    return a[a.shape[0] // 2]
-
-
 def _meta_col(meta: dict[str, Any], key: str, idx: np.ndarray, default: float | None = None):
     if key not in meta:
         if default is None:
@@ -387,7 +381,7 @@ def score_gino(
     ckpt_path: Path,
     batch_size: int,
 ) -> np.ndarray:
-    from response_variability.eval_iid import predict_gino
+    from response_variability.evals.eval_iid import predict_gino
 
     return predict_gino(
         cache_dir=cache_dir,
@@ -427,7 +421,7 @@ def load_pack(path: Path) -> dict[str, np.ndarray]:
 
 def _merge_sota_arms(pack: dict[str, np.ndarray], domain: str) -> dict[str, np.ndarray]:
     """Overlay Toro / Passeri / Dmult when those NPZs exist (IID SOTA pages)."""
-    from response_variability.eval_classical import merge_classical_into_pack
+    from response_variability.evals.eval_classical import merge_classical_into_pack
 
     return merge_classical_into_pack(pack, domain)
 
@@ -598,9 +592,9 @@ def _plot_vs_panel(ax, pack: dict[str, np.ndarray], i: int) -> None:
 
 def _plot_tf_panel(ax, pack: dict[str, np.ndarray], i: int) -> None:
     freq = pack["freq"]
-    ops = _central(pack["tf_opensees"][i])
-    nom = _central(pack["tf_haskell_nominal"][i])
-    gino = _central(pack["tf_gino"][i])
+    ops = central_recorder(pack["tf_opensees"][i])
+    nom = central_recorder(pack["tf_haskell_nominal"][i])
+    gino = central_recorder(pack["tf_gino"][i])
     ax.plot(
         freq,
         ops,
@@ -671,7 +665,7 @@ def _plot_tf_panel(ax, pack: dict[str, np.ndarray], i: int) -> None:
             label=PRETELL_P84,
         )
     if "tf_dmult" in pack and np.isfinite(pack["tf_dmult"][i]).any():
-        from response_variability.tf_atlas import ATLAS_CURVE_STYLE
+        from response_variability.plots.tf_atlas import ATLAS_CURVE_STYLE
 
         dstyle = ATLAS_CURVE_STYLE[DMULT]
         ax.plot(
@@ -714,9 +708,9 @@ def _plot_tf_panel(ax, pack: dict[str, np.ndarray], i: int) -> None:
 
 def leftover_central(pack: dict[str, np.ndarray], i: int) -> tuple[np.ndarray, np.ndarray]:
     """Return (R_true, R_hat) on the central recorder: TF_2D − TF_1D vs GINO − TF_1D."""
-    ops = _central(pack["tf_opensees"][i])
-    nom = _central(pack["tf_haskell_nominal"][i])
-    gino = _central(pack["tf_gino"][i])
+    ops = central_recorder(pack["tf_opensees"][i])
+    nom = central_recorder(pack["tf_haskell_nominal"][i])
+    gino = central_recorder(pack["tf_gino"][i])
     return ops - nom, gino - nom
 
 
@@ -880,7 +874,7 @@ def _compare_legend(pack: dict[str, np.ndarray] | None = None) -> list:
             (TORO, "tf_toro"),
             (PASSERI, "tf_passeri"),
         )
-        from response_variability.tf_atlas import ATLAS_CURVE_STYLE
+        from response_variability.plots.tf_atlas import ATLAS_CURVE_STYLE
 
         for method, key in extras:
             if key in pack and np.isfinite(np.asarray(pack[key])).any():

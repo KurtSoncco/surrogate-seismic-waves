@@ -5,7 +5,7 @@ Depth is uniform along the dip and independent of the case Vs2. Toro keeps its
 lognormal soil Vs; Passeri keeps its lognormal travel-time Vs. The published
 band is the equal-weight min/max across depths, not exp(±σ_ln).
 
-    uv run python experiments/DeepONet-Residual/response_variability/eval_dip_uniform.py
+    uv run python experiments/DeepONet-Residual/response_variability/evals/eval_dip_uniform.py
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
@@ -43,7 +43,7 @@ from response_variability.names import (  # noqa: E402
     TORO,
 )
 from response_variability.style import apply_nature_style, panel_letter, savefig  # noqa: E402
-from response_variability.tf_atlas import (  # noqa: E402
+from response_variability.plots.tf_atlas import (  # noqa: E402
     ATLAS_CURVE_STYLE,
     OUT_DIR,
     atlas_panel_title,

@@ -305,7 +305,7 @@ def _ttf_batch_seiskit(
     *,
     dt: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    from seiskit.ttf.TTF import TTF_batch_fast  # noqa: WPS433
+    from seiskit.ttf.TTF import TTF_batch_fast  # noqa: PLC0415
 
     freq, mags = TTF_batch_fast(
         base_2d,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Nature figures: leftover calibration, covariate Pearson/Anderson, SOTA ranking.
 
-    uv run python experiments/DeepONet-Residual/response_variability/plot_eval_bias.py
+    uv run python experiments/DeepONet-Residual/response_variability/plots/plot_eval_bias.py
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
@@ -28,8 +28,8 @@ from response_variability.covariates import (  # noqa: E402
     pearson_anderson_per_sample,
     present_covariates,
 )
-from response_variability.eval_classical import merge_classical_into_pack  # noqa: E402
-from response_variability.eval_iid import (  # noqa: E402
+from response_variability.evals.eval_classical import merge_classical_into_pack  # noqa: E402
+from response_variability.evals.eval_iid import (  # noqa: E402
     aggregate_json,
     band_misfit_table,
     summarize_methods,
@@ -57,8 +57,8 @@ from response_variability.names import (  # noqa: E402
     TORO_DIP,
     TORO_FIXED,
 )
-from response_variability.plot_iid import _boxplot_with_points  # noqa: E402
-from response_variability.plot_presentation import (  # noqa: E402
+from response_variability.plots.plot_iid import _boxplot_with_points  # noqa: E402
+from response_variability.plots.plot_presentation import (  # noqa: E402
     DOMAIN_SPECS,
     leftover_central,
     load_pack,

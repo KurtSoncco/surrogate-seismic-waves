@@ -16,6 +16,7 @@ import config
 import numpy as np
 import torch
 from tqdm import tqdm
+from unified_metrics import flat_pearson, flat_r2, flat_rel_l2, pearson_across_freq
 from wandb_util import finish_wandb, init_wandb, log_wandb, summary_wandb
 
 from haskell_baseline import (
@@ -44,54 +45,11 @@ def _metrics(
     y = np.asarray(y, dtype=np.float64).ravel()
     p = np.asarray(p, dtype=np.float64).ravel()
     return {
-        "r2": _r2(y, p),
-        "rel_l2": _rel_l2(y, p),
-        "pearson": _pearson(y, p),
-        "pearson_freq": _pearson_across_freq(y, p, n_rec=n_rec, n_freq=n_freq),
+        "r2": flat_r2(y, p),
+        "rel_l2": flat_rel_l2(y, p),
+        "pearson": flat_pearson(y, p),
+        "pearson_freq": pearson_across_freq(y, p, n_rec=n_rec, n_freq=n_freq),
     }
-
-
-def _r2(y: np.ndarray, p: np.ndarray) -> float:
-    ss_res = float(np.sum((y - p) ** 2))
-    ss_tot = float(np.sum((y - y.mean()) ** 2))
-    return 1.0 - ss_res / max(ss_tot, 1e-12)
-
-
-def _rel_l2(y: np.ndarray, p: np.ndarray) -> float:
-    return float(np.linalg.norm(y - p) / max(np.linalg.norm(y), 1e-12))
-
-
-def _pearson(y: np.ndarray, p: np.ndarray) -> float:
-    y = y.astype(np.float64).ravel()
-    p = p.astype(np.float64).ravel()
-    if y.size < 2 or y.std() < 1e-12 or p.std() < 1e-12:
-        return 0.0
-    return float(np.corrcoef(y, p)[0, 1])
-
-
-def _pearson_across_freq(
-    y: np.ndarray,
-    p: np.ndarray,
-    *,
-    n_rec: int,
-    n_freq: int,
-) -> float:
-    y = y.astype(np.float64).ravel()
-    p = p.astype(np.float64).ravel()
-    q = n_rec * n_freq
-    if y.size % q != 0:
-        return _pearson(y, p)
-    n_s = y.size // q
-    Y = y.reshape(n_s, n_rec, n_freq)
-    P = p.reshape(n_s, n_rec, n_freq)
-    cors: list[float] = []
-    for i in range(n_s):
-        for r in range(n_rec):
-            a, b = Y[i, r], P[i, r]
-            if a.std() < 1e-12 or b.std() < 1e-12:
-                continue
-            cors.append(float(np.corrcoef(a, b)[0, 1]))
-    return float(np.mean(cors)) if cors else 0.0
 
 
 def _aggregate(rows: list[dict[str, float]], prefix: str) -> dict[str, float]:

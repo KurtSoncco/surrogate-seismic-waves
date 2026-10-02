@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Wave 1 instruments. Pack DCT runs without a ckpt; collapse/orbits/probes need fields.
 
-    uv run python experiments/DeepONet-Residual/response_variability/analyze_gino_inductive.py
+    uv run python experiments/DeepONet-Residual/response_variability/diagnostics/analyze_gino_inductive.py
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from typing import Any
 
 import numpy as np
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
@@ -28,7 +28,7 @@ from response_variability.gino_inductive import (  # noqa: E402
     prior_collapse_curve,
     represent_vs_use,
 )
-from response_variability.plot_presentation import load_pack, pack_path  # noqa: E402
+from response_variability.plots.plot_presentation import load_pack, pack_path  # noqa: E402
 
 PACK_DIR = config.RESULTS_DIR / "presentation"
 OUT_DIR = config.RESULTS_DIR / "response_variability" / "gino_bias"

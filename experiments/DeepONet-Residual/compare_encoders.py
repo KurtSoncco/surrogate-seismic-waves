@@ -21,14 +21,11 @@ from torch.utils.data import DataLoader
 import config
 from data import ResidualDeepONetDataset, make_splits, stoch_dim, trunk_feature_names
 from model import FieldEncoderKind, build_model
+from unified_metrics import flat_pearson, flat_r2, flat_rel_l2, pearson_across_freq
 from train import (
     _build_signed_cache,
     _device,
     _forward,
-    _pearson,
-    _pearson_across_freq,
-    _r2,
-    _rel_l2,
     fit_and_apply_norms,
     train_one,
 )
@@ -112,14 +109,14 @@ def per_sample_metrics(pack: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     for i in range(n_s):
         y = pack["R_true"][i].ravel()
         p = pack["R_pred"][i].ravel()
-        r2_R.append(_r2(y, p))
-        pearson_R_f.append(_pearson_across_freq(y, p, n_rec=n_rec, n_freq=n_freq))
+        r2_R.append(flat_r2(y, p))
+        pearson_R_f.append(pearson_across_freq(y, p, n_rec=n_rec, n_freq=n_freq))
         tf2d = pack["TF2D"][i].ravel()
         tf1d = pack["TF1D"][i].ravel()
         tfhat = pack["TF_hat"][i].ravel()
-        delta_tf.append(_r2(tf2d, tfhat) - _r2(tf2d, tf1d))
+        delta_tf.append(flat_r2(tf2d, tfhat) - flat_r2(tf2d, tf1d))
         pearson_tf_f.append(
-            _pearson_across_freq(tf2d, tfhat, n_rec=n_rec, n_freq=n_freq)
+            pearson_across_freq(tf2d, tfhat, n_rec=n_rec, n_freq=n_freq)
         )
     return {
         "r2_R": np.asarray(r2_R),
@@ -128,7 +125,7 @@ def per_sample_metrics(pack: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         "pearson_TF_freq": np.asarray(pearson_tf_f),
         "rel_l2_R": np.asarray(
             [
-                _rel_l2(pack["R_true"][i].ravel(), pack["R_pred"][i].ravel())
+                flat_rel_l2(pack["R_true"][i].ravel(), pack["R_pred"][i].ravel())
                 for i in range(n_s)
             ]
         ),
@@ -144,14 +141,14 @@ def aggregate(pack: Dict[str, np.ndarray]) -> Dict[str, float]:
     tf1d = pack["TF1D"].ravel()
     tfhat = pack["TF_hat"].ravel()
     return {
-        "r2_R": _r2(y, p),
-        "pearson_R": _pearson(y, p),
-        "pearson_R_freq": _pearson_across_freq(y, p, n_rec=n_rec, n_freq=n_freq),
-        "rel_l2_R": _rel_l2(y, p),
-        "r2_TF": _r2(tf2d, tfhat),
-        "r2_TF_1d_only": _r2(tf2d, tf1d),
-        "delta_r2_TF": _r2(tf2d, tfhat) - _r2(tf2d, tf1d),
-        "pearson_TF_freq": _pearson_across_freq(
+        "r2_R": flat_r2(y, p),
+        "pearson_R": flat_pearson(y, p),
+        "pearson_R_freq": pearson_across_freq(y, p, n_rec=n_rec, n_freq=n_freq),
+        "rel_l2_R": flat_rel_l2(y, p),
+        "r2_TF": flat_r2(tf2d, tfhat),
+        "r2_TF_1d_only": flat_r2(tf2d, tf1d),
+        "delta_r2_TF": flat_r2(tf2d, tfhat) - flat_r2(tf2d, tf1d),
+        "pearson_TF_freq": pearson_across_freq(
             tf2d, tfhat, n_rec=n_rec, n_freq=n_freq
         ),
     }

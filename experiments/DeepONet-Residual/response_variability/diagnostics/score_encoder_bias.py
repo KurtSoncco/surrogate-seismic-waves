@@ -4,7 +4,7 @@
 Does not overwrite ship packs in results/presentation/{iid,dipping,three_layer}_pack.npz.
 Writes results/presentation/<run>/ and results/response_variability/gino_bias/<run>/.
 
-    uv run python experiments/DeepONet-Residual/response_variability/score_encoder_bias.py
+    uv run python experiments/DeepONet-Residual/response_variability/diagnostics/score_encoder_bias.py
 """
 
 from __future__ import annotations
@@ -17,12 +17,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
 import config  # noqa: E402
-from response_variability.plot_presentation import (  # noqa: E402
+from response_variability.plots.plot_presentation import (  # noqa: E402
     DOMAIN_SPECS,
     build_domain_pack,
     pack_path,

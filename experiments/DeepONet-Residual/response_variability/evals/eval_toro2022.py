@@ -16,19 +16,19 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
 import config  # noqa: E402
 
-from response_variability.eval_iid import (  # noqa: E402
+from response_variability.evals.eval_iid import (  # noqa: E402
     _as_central,
     aggregate_json,
     band_misfit_table,
     summarize_methods,
 )
-from response_variability.metrics import spatial_sigma_ln  # noqa: E402
+from response_variability.metrics import fmt_iqr, median_iqr, spatial_sigma_ln  # noqa: E402
 from response_variability.names import (  # noqa: E402
     HASKELL_NOMINAL,
     METHOD_COLORS,
@@ -36,7 +36,7 @@ from response_variability.names import (  # noqa: E402
     OPENSEES,
     TORO,
 )
-from response_variability.plot_presentation import (  # noqa: E402
+from response_variability.plots.plot_presentation import (  # noqa: E402
     DOMAIN_SPECS,
     load_pack,
     make_synthetic_pack,
@@ -127,18 +127,6 @@ def slim_score_pack(pack: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
     return out
 
 
-def _median_iqr(x: np.ndarray) -> dict[str, float]:
-    v = np.asarray(x, dtype=np.float64)
-    v = v[np.isfinite(v)]
-    if v.size == 0:
-        return {"median": float("nan"), "q25": float("nan"), "q75": float("nan")}
-    return {
-        "median": float(np.median(v)),
-        "q25": float(np.percentile(v, 25)),
-        "q75": float(np.percentile(v, 75)),
-    }
-
-
 def _opensees_spatial_sigma_ln(pack: dict[str, np.ndarray]) -> np.ndarray:
     """Mean-over-frequency spatial σ_ln for each case (OpenSees recorder axis)."""
     tf_ops = np.asarray(pack["tf_opensees"], dtype=np.float64)
@@ -152,22 +140,22 @@ def _opensees_spatial_sigma_ln(pack: dict[str, np.ndarray]) -> np.ndarray:
 
 def domain_summary(summary: pd.DataFrame, misfit: pd.DataFrame, pack: dict) -> dict[str, Any]:
     rec: dict[str, Any] = {"n": int(summary["sample"].nunique())}
-    rec["opensees_spatial_sigma_ln"] = _median_iqr(_opensees_spatial_sigma_ln(pack))
+    rec["opensees_spatial_sigma_ln"] = median_iqr(_opensees_spatial_sigma_ln(pack))
     if "sigma_ln_toro" in pack:
-        rec["toro_ensemble_sigma_ln"] = _median_iqr(
+        rec["toro_ensemble_sigma_ln"] = median_iqr(
             np.mean(np.asarray(pack["sigma_ln_toro"], dtype=np.float64), axis=1)
         )
     for method in SCORE_METHODS:
         sub = summary[summary["method"] == method]
         mis = misfit[misfit["method"] == method]
         rec[method] = {
-            "pearson": _median_iqr(sub["pearson"].to_numpy()),
-            "anderson": _median_iqr(sub["gof_af"].to_numpy()),
-            "delta_ln_A_peak": _median_iqr(sub["delta_ln_A_peak"].to_numpy()),
-            "delta_f_peak": _median_iqr(sub["delta_f_peak"].to_numpy()),
-            "gof_low": _median_iqr(mis["gof_low"].to_numpy()) if "gof_low" in mis else {},
-            "gof_mid": _median_iqr(mis["gof_mid"].to_numpy()) if "gof_mid" in mis else {},
-            "gof_high": _median_iqr(mis["gof_high"].to_numpy()) if "gof_high" in mis else {},
+            "pearson": median_iqr(sub["pearson"].to_numpy()),
+            "anderson": median_iqr(sub["gof_af"].to_numpy()),
+            "delta_ln_A_peak": median_iqr(sub["delta_ln_A_peak"].to_numpy()),
+            "delta_f_peak": median_iqr(sub["delta_f_peak"].to_numpy()),
+            "gof_low": median_iqr(mis["gof_low"].to_numpy()) if "gof_low" in mis else {},
+            "gof_mid": median_iqr(mis["gof_mid"].to_numpy()) if "gof_mid" in mis else {},
+            "gof_high": median_iqr(mis["gof_high"].to_numpy()) if "gof_high" in mis else {},
         }
     return rec
 
@@ -227,12 +215,6 @@ def plot_overlays(pack: dict[str, np.ndarray], dest: Path, *, n_panel: int = 4) 
     plt.close(fig)
 
 
-def _fmt_iqr(d: dict[str, float]) -> str:
-    if not d or not np.isfinite(d.get("median", float("nan"))):
-        return "—"
-    return f"{d['median']:.3f} [{d['q25']:.3f}, {d['q75']:.3f}]"
-
-
 def write_markdown(agg: dict[str, Any], dest: Path, *, synthetic: bool) -> None:
     lines = [
         "# Toro 2022 vs OpenSees 2-D",
@@ -259,9 +241,9 @@ def write_markdown(agg: dict[str, Any], dest: Path, *, synthetic: bool) -> None:
         for method in SCORE_METHODS:
             m = rec[method]
             lines.append(
-                f"| {domain} | {method} | {_fmt_iqr(m['pearson'])} | "
-                f"{_fmt_iqr(m['anderson'])} | {_fmt_iqr(m['delta_ln_A_peak'])} | "
-                f"{_fmt_iqr(m['delta_f_peak'])} |"
+                f"| {domain} | {method} | {fmt_iqr(m['pearson'])} | "
+                f"{fmt_iqr(m['anderson'])} | {fmt_iqr(m['delta_ln_A_peak'])} | "
+                f"{fmt_iqr(m['delta_f_peak'])} |"
             )
     lines += [
         "",
@@ -279,8 +261,8 @@ def write_markdown(agg: dict[str, Any], dest: Path, *, synthetic: bool) -> None:
             continue
         lines.append(
             f"- **{domain}** (n={rec['n']}): OpenSees spatial "
-            f"$\\sigma_{{\\ln}}$ {_fmt_iqr(rec.get('opensees_spatial_sigma_ln', {}))}; "
-            f"Toro ensemble {_fmt_iqr(rec.get('toro_ensemble_sigma_ln', {}))}."
+            f"$\\sigma_{{\\ln}}$ {fmt_iqr(rec.get('opensees_spatial_sigma_ln', {}))}; "
+            f"Toro ensemble {fmt_iqr(rec.get('toro_ensemble_sigma_ln', {}))}."
         )
     lines += ["", "## Findings", ""]
     for domain, rec in agg.items():
@@ -306,8 +288,8 @@ def write_markdown(agg: dict[str, Any], dest: Path, *, synthetic: bool) -> None:
         lines.append(
             f"- **{domain}:** {peak_note}; Pearson "
             f"{d_r:+.3f}, Anderson {d_g:+.3f} vs 1-D nom. Toro {disp_note} "
-            f"(ensemble {_fmt_iqr(rec.get('toro_ensemble_sigma_ln', {}))} vs "
-            f"OpenSees {_fmt_iqr(rec.get('opensees_spatial_sigma_ln', {}))})."
+            f"(ensemble {fmt_iqr(rec.get('toro_ensemble_sigma_ln', {}))} vs "
+            f"OpenSees {fmt_iqr(rec.get('opensees_spatial_sigma_ln', {}))})."
         )
     dest.write_text("\n".join(lines) + "\n")
 

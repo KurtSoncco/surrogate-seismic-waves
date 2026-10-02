@@ -27,7 +27,14 @@ from torch import nn
 from torch.utils.data import DataLoader, Subset, WeightedRandomSampler
 from tqdm import tqdm, trange
 from wandb_util import finish_wandb, init_wandb, log_wandb, summary_wandb
-from unified_metrics import score_leftover_batch, tf_from_residual
+from unified_metrics import (
+    flat_pearson,
+    flat_r2,
+    flat_rel_l2,
+    pearson_across_freq,
+    score_leftover_batch,
+    tf_from_residual,
+)
 from spectral_aux import (
     DCT_CUTOFF,
     band_normalized_loss,
@@ -453,17 +460,17 @@ def evaluate(
 
     # Lazy baselines: predict R̂=0 (TF̂ = TF_1D only)
     zero = np.zeros_like(y)
-    r2_tf_1d_only = _r2(tf2d, tf1d)
-    r2_tf = _r2(tf2d, tf_hat)
+    r2_tf_1d_only = flat_r2(tf2d, tf1d)
+    r2_tf = flat_r2(tf2d, tf_hat)
 
     mets = {
         # --- primary: residual learning ---
         "smooth_l1": loss_sum / max(n_batches, 1),
-        "r2_R": _r2(y, p),
-        "rel_l2_R": _rel_l2(y, p),
-        "pearson_R": _pearson(y, p),
-        "pearson_R_freq": _pearson_across_freq(y, p, n_rec=n_rec, n_freq=n_freq),
-        "r2_R_zero": _r2(y, zero),  # always ~0 if mean≈0; sanity
+        "r2_R": flat_r2(y, p),
+        "rel_l2_R": flat_rel_l2(y, p),
+        "pearson_R": flat_pearson(y, p),
+        "pearson_R_freq": pearson_across_freq(y, p, n_rec=n_rec, n_freq=n_freq),
+        "r2_R_zero": flat_r2(y, zero),  # always ~0 if mean≈0; sanity
         "smooth_l1_R_raw": float(
             np.mean(np.where(np.abs(y) < 1.0, 0.5 * y**2, np.abs(y) - 0.5))
         ),
@@ -478,16 +485,16 @@ def evaluate(
         ),
         # --- secondary: TF recon (must beat TF_1D-only) ---
         "r2_TF": r2_tf,
-        "rel_l2_TF": _rel_l2(tf2d, tf_hat),
+        "rel_l2_TF": flat_rel_l2(tf2d, tf_hat),
         "rel_l1_TF": leftover.get("rel_l1_tf_hat", _rel_l1(tf2d, tf_hat)),
         "rel_l1_TF_1d_only": leftover.get("rel_l1_tf_1d", _rel_l1(tf2d, tf1d)),
-        "rel_l2_TF_1d_only": _rel_l2(tf2d, tf1d),
+        "rel_l2_TF_1d_only": flat_rel_l2(tf2d, tf1d),
         "r2_TF_1d_only": r2_tf_1d_only,
         "delta_r2_TF": r2_tf - r2_tf_1d_only,
-        "pearson_TF_freq": _pearson_across_freq(
+        "pearson_TF_freq": pearson_across_freq(
             tf2d, tf_hat, n_rec=n_rec, n_freq=n_freq
         ),
-        "pearson_TF_1d_only_freq": _pearson_across_freq(
+        "pearson_TF_1d_only_freq": pearson_across_freq(
             tf2d, tf1d, n_rec=n_rec, n_freq=n_freq
         ),
         "harm_rate": leftover["harm_rate"],
@@ -504,7 +511,7 @@ def evaluate(
     }
     if tf1d_hat_all:
         h = np.concatenate(tf1d_hat_all)
-        mets["pearson_1d_hat"] = _pearson(tf1d, h)
+        mets["pearson_1d_hat"] = flat_pearson(tf1d, h)
         mets["learned_1d_kill"] = float(
             mets["pearson_1d_hat"] < config.LEARNED_1D_PEARSON_KILL
         )
@@ -514,55 +521,10 @@ def evaluate(
     return mets
 
 
-def _r2(y: np.ndarray, p: np.ndarray) -> float:
-    ss_res = float(np.sum((y - p) ** 2))
-    ss_tot = float(np.sum((y - y.mean()) ** 2))
-    return 1.0 - ss_res / max(ss_tot, 1e-12)
-
-
-def _rel_l2(y: np.ndarray, p: np.ndarray) -> float:
-    return float(np.linalg.norm(y - p) / max(np.linalg.norm(y), 1e-12))
-
-
 def _rel_l1(y: np.ndarray, p: np.ndarray) -> float:
     y = np.asarray(y, dtype=np.float64)
     p = np.asarray(p, dtype=np.float64)
     return float(np.sum(np.abs(y - p)) / max(np.sum(np.abs(y)), 1e-12))
-
-
-def _pearson(y: np.ndarray, p: np.ndarray) -> float:
-    y = y.astype(np.float64).ravel()
-    p = p.astype(np.float64).ravel()
-    if y.size < 2 or y.std() < 1e-12 or p.std() < 1e-12:
-        return 0.0
-    return float(np.corrcoef(y, p)[0, 1])
-
-
-def _pearson_across_freq(
-    y: np.ndarray,
-    p: np.ndarray,
-    *,
-    n_rec: int,
-    n_freq: int,
-) -> float:
-    """Mean Pearson correlation of spectra along frequency for each (sample, recorder)."""
-    y = y.astype(np.float64).ravel()
-    p = p.astype(np.float64).ravel()
-    q = n_rec * n_freq
-    if y.size % q != 0:
-        # fallback: global pearson if layout unexpected
-        return _pearson(y, p)
-    n_s = y.size // q
-    Y = y.reshape(n_s, n_rec, n_freq)
-    P = p.reshape(n_s, n_rec, n_freq)
-    cors: list[float] = []
-    for i in range(n_s):
-        for r in range(n_rec):
-            a, b = Y[i, r], P[i, r]
-            if a.std() < 1e-12 or b.std() < 1e-12:
-                continue
-            cors.append(float(np.corrcoef(a, b)[0, 1]))
-    return float(np.mean(cors)) if cors else 0.0
 
 
 def _forward(

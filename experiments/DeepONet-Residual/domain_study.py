@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -20,13 +19,11 @@ from ood_signed_cache import (
     cache_dir_for,
     materialize_n1000_from_n2000,
 )
+from unified_metrics import flat_r2, flat_rel_l2, pearson_across_freq
 from train import (
     apply_norms,
     evaluate,
     train_from_datasets,
-    _r2,
-    _rel_l2,
-    _pearson_across_freq,
 )
 
 RESULTS = config.RESULTS_DIR / "domain_study"
@@ -36,22 +33,14 @@ E2_CKPT = (
 )
 
 
-def _set_local_ood_env() -> None:
-    local = Path(__file__).resolve().parents[2] / "data" / "gifno_screen"
-    if (local / "ood_dipping").is_dir():
-        os.environ.setdefault("GIFNO_OOD_DIPPING", str(local / "ood_dipping"))
-    if (local / "ood_three_layer").is_dir():
-        os.environ.setdefault("GIFNO_OOD_THREE_LAYER", str(local / "ood_three_layer"))
-
-
 def _tf_metrics(tf2d: np.ndarray, pred: np.ndarray) -> dict[str, float]:
     y = np.asarray(tf2d, dtype=np.float64)
     p = np.asarray(pred, dtype=np.float64)
     n_rec, n_freq = y.shape[-2], y.shape[-1]
     return {
-        "r2": _r2(y.ravel(), p.ravel()),
-        "rel_l2": _rel_l2(y.ravel(), p.ravel()),
-        "pearson_freq": _pearson_across_freq(
+        "r2": flat_r2(y.ravel(), p.ravel()),
+        "rel_l2": flat_rel_l2(y.ravel(), p.ravel()),
+        "pearson_freq": pearson_across_freq(
             y.ravel(), p.ravel(), n_rec=n_rec, n_freq=n_freq
         ),
     }
@@ -406,7 +395,7 @@ def main() -> None:
     p.add_argument("--winner", type=str, default=None)
     p.add_argument("--force-cache", action="store_true")
     args = p.parse_args()
-    _set_local_ood_env()
+    config.set_local_ood_env()
     RESULTS.mkdir(parents=True, exist_ok=True)
     config.CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 

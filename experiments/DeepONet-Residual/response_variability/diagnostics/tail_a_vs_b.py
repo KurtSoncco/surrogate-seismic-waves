@@ -2,7 +2,7 @@
 
 No new OpenSees. Nested packs + signed-cache meta only.
 
-    uv run python experiments/DeepONet-Residual/response_variability/tail_a_vs_b.py
+    uv run python experiments/DeepONet-Residual/response_variability/diagnostics/tail_a_vs_b.py
 """
 
 from __future__ import annotations
@@ -16,14 +16,13 @@ from typing import Any
 
 import numpy as np
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
 import config  # noqa: E402
 
 from response_variability.gino_bias import _as_3d, central_slice  # noqa: E402
-from response_variability.metrics import band_pearson  # noqa: E402
 from response_variability.metrics import band_pearson  # noqa: E402
 
 PACK_6D = ("vs1", "H", "cov", "rH", "aHV", "vs2")
@@ -429,7 +428,7 @@ def load_per_sample_pearson(path: Path, domain: str, n: int) -> np.ndarray | Non
 def plot_sample50(pack: dict[str, np.ndarray], out_path: Path, *, i: int = 50) -> Path:
     import matplotlib.pyplot as plt
 
-    from response_variability.plot_presentation import (
+    from response_variability.plots.plot_presentation import (
         _plot_diff_panel,
         _plot_tf_panel,
         attach_stoch_from_cache,
@@ -495,7 +494,7 @@ def plot_recorder_sensitivity(rows: list[dict[str, Any]], out_path: Path) -> Pat
 
 
 def _attach_pack(domain: str, pack_dir: Path) -> dict[str, np.ndarray]:
-    from response_variability.plot_presentation import (
+    from response_variability.plots.plot_presentation import (
         attach_stoch_from_cache,
         load_pack,
         pack_path,

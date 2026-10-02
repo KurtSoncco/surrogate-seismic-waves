@@ -18,14 +18,14 @@ from response_variability.names import (
     TORO_DIP,
     TORO_FIXED,
 )
-from response_variability.plot_iid import select_f0_quantile_indices
+from response_variability.plots.plot_iid import select_f0_quantile_indices
 from response_variability.sobol_cover import (
     DIPPING_COVER_KEYS,
     IID_COVER_KEYS,
     cover_keys,
     unique_overlap,
 )
-from response_variability.tf_atlas import (
+from response_variability.plots.tf_atlas import (
     ATLAS_METHODS,
     ATLAS_YLIM,
     PAGE_SIZE,

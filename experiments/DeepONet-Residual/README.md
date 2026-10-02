@@ -116,11 +116,20 @@ wandb sync experiments/DeepONet-Residual/wandb/offline-run-*
 | `lambda_train.sh` | Lambda Labs wrapper (wandb online, GINO-wide) |
 | `run_scale.py` | IID `cache_tag × encoder × n_freq × seed` |
 | `eval_ood.py` | Box `ood_*` Haskell nom/col ± R̂ (default: shipped ckpt) |
-| `response_variability/plot_presentation.py` | Nature 2×3 case figures, Pearson hist, Vs mosaic |
-| `response_variability/eval_sobol_probe.py` | Sobol covering, RV 64 overlay, frequency train vs held-out bins |
+| `response_variability/plots/plot_presentation.py` | Nature 2×3 case figures, Pearson hist, Vs mosaic |
+| `response_variability/evals/eval_sobol_probe.py` | Sobol covering, RV 64 overlay, frequency train vs held-out bins |
 | `probe_ood.py` | Inventory OOD tree / attrs |
 | `stage_screen_pack.sh` | Copy TF + stratified H5 + OOD |
 | `run_ablation.py` | Branch / trunk / target sweep |
+
+`response_variability/` layout:
+
+| Folder | Contents |
+|--------|----------|
+| (top level) | Shared library: `metrics.py`, `names.py`, `style.py`, `covariates.py`, `gino_bias.py`, `gino_inductive.py`, `seiskit_arms.py`, Sobol / corner design, dip helpers |
+| `evals/` | `eval_*.py` CLIs that score GINO and the classical arms against OpenSees |
+| `plots/` | `plot_*.py` figure builders and `tf_atlas.py` |
+| `diagnostics/` | `analyze_*.py`, `score_*.py`, `tail_a_vs_b.py` |
 
 Results: [`results/README.md`](results/README.md). Checkpoints: `checkpoints/`.
 
@@ -154,10 +163,10 @@ Central-recorder 2×3 pages (1D nominal \(V_s\) used for \(\mathrm{TF}_{1D}\), \
 GIFNO_DATA_ROOT=data/gifno_screen \
 GIFNO_OOD_DIPPING=data/gifno_screen/ood_dipping \
 GIFNO_OOD_THREE_LAYER=data/gifno_screen/ood_three_layer \
-uv run python experiments/DeepONet-Residual/response_variability/plot_presentation.py
+uv run python experiments/DeepONet-Residual/response_variability/plots/plot_presentation.py
 
 # rerender from cached packs (no GPU)
-uv run python experiments/DeepONet-Residual/response_variability/plot_presentation.py --skip-predict
+uv run python experiments/DeepONet-Residual/response_variability/plots/plot_presentation.py --skip-predict
 ```
 
 ## Sobol covering and frequency probes
@@ -165,7 +174,7 @@ uv run python experiments/DeepONet-Residual/response_variability/plot_presentati
 Same arm comparison as seiskit [Response_Variability](https://github.com/KurtSoncco/seiskit/tree/main/comparison/Response_Variability) on the nested IID OpenSees test (`results/response_variability/seiskit/`). The 64-case RV campaign is a **different 4D Sobol** with **fixed** \(r_H=10\) m, \(a_{HV}=50\) (6D cube corner). OpenSees H5s for those 64×40 RF seeds are not in this repo; the probe maps that design onto the GIFNO train hull and uses nearest nested-IID tests as a 4D proxy.
 
 ```bash
-uv run python experiments/DeepONet-Residual/response_variability/eval_sobol_probe.py
+uv run python experiments/DeepONet-Residual/response_variability/evals/eval_sobol_probe.py
 ```
 
 Writes `results/response_variability/sobol_probe/` (JSON, CSV, Nature figures). Pearson twins of the seiskit suite live in `results/response_variability/seiskit/` (`tf_pearson.png`, `tf_band_pearson.png`, `tf_pearson_vs_params.png`).

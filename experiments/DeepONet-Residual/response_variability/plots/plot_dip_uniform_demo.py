@@ -5,7 +5,7 @@ One steep val case. Each curve is one soil randomization at one depth from the
 uniform dip grid. Vs2 is the case value at every depth. Passeri adds the
 travel-time profile, which is the quantity it actually draws.
 
-    uv run python experiments/DeepONet-Residual/response_variability/plot_dip_uniform_demo.py
+    uv run python experiments/DeepONet-Residual/response_variability/plots/plot_dip_uniform_demo.py
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
@@ -28,23 +28,17 @@ from response_variability.dip_depth import (  # noqa: E402
     sigma_y,
     uniform_dip_depths,
 )
+from response_variability.metrics import central_recorder  # noqa: E402
 from response_variability.names import HASKELL_NOMINAL, METHOD_COLORS, PASSERI, TORO  # noqa: E402
 from response_variability.seiskit_arms import ensure_seiskit, hallal_config  # noqa: E402
 from response_variability.style import apply_nature_style, figsize, panel_letter, savefig  # noqa: E402
-from response_variability.tf_atlas import OUT_DIR, atlas_panel_title  # noqa: E402
+from response_variability.plots.tf_atlas import OUT_DIR, atlas_panel_title  # noqa: E402
 
 PACK = OUT_DIR / "dipping_uniform_pack.npz"
 FIG_DIR = OUT_DIR / "dipping"
 DZ = 0.5
 N_SHOW = 24
 BEDROCK_VIEW_M = 8.0
-
-
-def _center(tf: np.ndarray) -> np.ndarray:
-    a = np.asarray(tf, dtype=np.float64)
-    if a.ndim == 1:
-        return a
-    return a[a.shape[0] // 2]
 
 
 def pick_steep_val(pack: dict[str, np.ndarray]) -> int:
@@ -151,7 +145,7 @@ def _plot_tf(ax, freq, tf_rows, pack, i, *, color: str, geomean_key: str, label:
     for row in tf_rows:
         ax.loglog(freq, np.maximum(row, 1e-6), color=color, alpha=0.22, lw=0.55, zorder=2)
     geo = np.maximum(np.asarray(pack[geomean_key][i], dtype=np.float64), 1e-6)
-    nom = np.maximum(_center(pack["tf_haskell_nominal"][i]), 1e-6)
+    nom = np.maximum(central_recorder(pack["tf_haskell_nominal"][i]), 1e-6)
     ax.loglog(freq, geo, color=color, lw=1.6, zorder=4, label=label)
     ax.loglog(
         freq,

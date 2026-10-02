@@ -16,7 +16,7 @@ Thomson-Haskell 1-D solver, and makes two figures:
       marginal at the surface sample vs its clipped-normal target, and a table
       of every ``ProfileRandomizationConfig`` field the draw touches.
 
-Usage: python -m response_variability.plot_toro_demo [--case-index N] [--n-seeds N]
+Usage: python -m response_variability.plots.plot_toro_demo [--case-index N] [--n-seeds N]
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from pathlib import Path
 
 import numpy as np
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
@@ -37,7 +37,7 @@ import config  # noqa: E402
 from haskell_baseline import haskell_af_within  # noqa: E402
 from response_variability.metrics import spatial_sigma_ln  # noqa: E402
 from response_variability.names import HASKELL_NOMINAL, METHOD_COLORS, TORO  # noqa: E402
-from response_variability.plot_presentation import load_pack, pack_path  # noqa: E402
+from response_variability.plots.plot_presentation import load_pack, pack_path  # noqa: E402
 from response_variability.seiskit_arms import ensure_seiskit, hallal_config  # noqa: E402
 from response_variability.style import (  # noqa: E402
     apply_nature_style,

@@ -27,7 +27,7 @@ except ImportError:
     pass
 import h5py
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
@@ -37,22 +37,23 @@ if _SEISKIT.is_dir() and str(_SEISKIT) not in sys.path:
 
 import config  # noqa: E402
 
-from response_variability.eval_haskell_xi import (  # noqa: E402
+from response_variability.evals.eval_haskell_xi import (  # noqa: E402
     read_soil_xi,
     resolve_h5,
 )
-from response_variability.eval_iid import _as_central  # noqa: E402
-from response_variability.eval_spatial_leftover import (  # noqa: E402
+from response_variability.evals.eval_iid import _as_central  # noqa: E402
+from response_variability.evals.eval_spatial_leftover import (  # noqa: E402
     _jsonable,
-    _median_iqr,
 )
 from response_variability.metrics import (  # noqa: E402
+    fmt_iqr,
+    median_iqr,
     method_vs_reference,
     odd_quarter_wave_peaks,
     pearson,
     theoretical_f0,
 )
-from response_variability.plot_presentation import (  # noqa: E402
+from response_variability.plots.plot_presentation import (  # noqa: E402
     DOMAIN_SPECS,
     load_pack,
     pack_path,
@@ -553,15 +554,15 @@ def score_domain(
     for method in SCORE_ARMS:
         sub = df[df["method"] == method] if not df.empty else df
         block: dict[str, Any] = {
-            "pearson": _median_iqr(sub["pearson"].to_numpy()) if not sub.empty else _median_iqr(np.array([])),
-            "anderson": _median_iqr(sub["gof_af"].to_numpy()) if not sub.empty else _median_iqr(np.array([])),
-            "delta_ln_A_peak": _median_iqr(sub["delta_ln_A_peak"].to_numpy()) if not sub.empty else _median_iqr(np.array([])),
+            "pearson": median_iqr(sub["pearson"].to_numpy()) if not sub.empty else median_iqr(np.array([])),
+            "anderson": median_iqr(sub["gof_af"].to_numpy()) if not sub.empty else median_iqr(np.array([])),
+            "delta_ln_A_peak": median_iqr(sub["delta_ln_A_peak"].to_numpy()) if not sub.empty else median_iqr(np.array([])),
         }
         for k in range(1, N_MODES + 1):
             col = f"delta_ln_A_mode{k}"
             pcol = f"pearson_mode{k}"
-            block[col] = _median_iqr(sub[col].to_numpy()) if not sub.empty and col in sub else _median_iqr(np.array([]))
-            block[pcol] = _median_iqr(sub[pcol].to_numpy()) if not sub.empty and pcol in sub else _median_iqr(np.array([]))
+            block[col] = median_iqr(sub[col].to_numpy()) if not sub.empty and col in sub else median_iqr(np.array([]))
+            block[pcol] = median_iqr(sub[pcol].to_numpy()) if not sub.empty and pcol in sub else median_iqr(np.array([]))
         rec["methods"][method] = block
     arrays = {
         "freq": freq,
@@ -576,12 +577,6 @@ def score_domain(
         "xi_soil": np.asarray([s["xi_soil"] for s in specs], dtype=float),
     }
     return df, rec, arrays
-
-
-def _fmt(d: dict[str, float] | None) -> str:
-    if not d or not np.isfinite(d.get("median", float("nan"))):
-        return "—"
-    return f"{d['median']:.3f} [{d['q25']:.3f}, {d['q75']:.3f}]"
 
 
 def write_markdown(agg: dict[str, Any], dest: Path) -> None:
@@ -618,9 +613,9 @@ def write_markdown(agg: dict[str, Any], dest: Path) -> None:
             m = rec["methods"][method]
             lines.append(
                 f"| {domain} | {rec['n_scored']} | {method} | "
-                f"{_fmt(m['pearson'])} | {_fmt(m['anderson'])} | "
-                f"{_fmt(m['delta_ln_A_mode1'])} | {_fmt(m['delta_ln_A_mode2'])} | "
-                f"{_fmt(m['delta_ln_A_mode3'])} |"
+                f"{fmt_iqr(m['pearson'])} | {fmt_iqr(m['anderson'])} | "
+                f"{fmt_iqr(m['delta_ln_A_mode1'])} | {fmt_iqr(m['delta_ln_A_mode2'])} | "
+                f"{fmt_iqr(m['delta_ln_A_mode3'])} |"
             )
     lines += [
         "",
@@ -657,12 +652,12 @@ def write_markdown(agg: dict[str, Any], dest: Path) -> None:
         h2d = rec["methods"][ARM_HASKELL_VS_2D]
         lines.append(
             f"- **{domain}:** Haskell vs 1-D OpenSees Pearson (within) "
-            f"{_fmt(shape['pearson'])}, mode-1 $\\Delta\\ln A$ "
-            f"{_fmt(shape['delta_ln_A_mode1'])} "
-            f"(outcrop Pearson {_fmt(outc['pearson'])}, "
-            f"$\\Delta\\ln A_1$ {_fmt(outc['delta_ln_A_mode1'])}). "
-            f"OpenSees 1-D vs 2-D Pearson {_fmt(vs2d['pearson'])} "
-            f"vs Haskell vs 2-D {_fmt(h2d['pearson'])}."
+            f"{fmt_iqr(shape['pearson'])}, mode-1 $\\Delta\\ln A$ "
+            f"{fmt_iqr(shape['delta_ln_A_mode1'])} "
+            f"(outcrop Pearson {fmt_iqr(outc['pearson'])}, "
+            f"$\\Delta\\ln A_1$ {fmt_iqr(outc['delta_ln_A_mode1'])}). "
+            f"OpenSees 1-D vs 2-D Pearson {fmt_iqr(vs2d['pearson'])} "
+            f"vs Haskell vs 2-D {fmt_iqr(h2d['pearson'])}."
             + (
                 " Dipping 2-D high-$f$ rise is shared with OpenSees 1-D and "
                 "absent from Haskell — that is most of the 0.67→0.84 Pearson lift."

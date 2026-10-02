@@ -5,7 +5,7 @@ Scores GINO, 1-D Haskell nom, Pretell, Toro, and Passeri on nested IID
 and dipping val, concatenates with the frozen test packs, and writes
 log–log overlays. Dmult is not an atlas arm.
 
-    uv run python experiments/DeepONet-Residual/response_variability/tf_atlas.py
+    uv run python experiments/DeepONet-Residual/response_variability/plots/tf_atlas.py
     uv run python .../tf_atlas.py --skip-predict
     uv run python .../tf_atlas.py --ood-dipping-box
 """
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
@@ -44,11 +44,11 @@ from response_variability.names import (  # noqa: E402
     TORO_FIXED,
 )
 from response_variability.metrics import band_pearson  # noqa: E402
-from response_variability.plot_iid import (  # noqa: E402
+from response_variability.plots.plot_iid import (  # noqa: E402
     _curve_at_sample,
     select_f0_quantile_indices,
 )
-from response_variability.plot_presentation import (  # noqa: E402
+from response_variability.plots.plot_presentation import (  # noqa: E402
     DOMAIN_SPECS,
     N_PRETELL_DEFAULT,
     attach_vs_and_pretell,
@@ -315,7 +315,7 @@ def attach_dipping_manifest(pack: dict[str, np.ndarray]) -> dict[str, np.ndarray
 
 
 def _merge_classical(pack: dict[str, np.ndarray], domain: str) -> dict[str, np.ndarray]:
-    from response_variability.eval_classical import merge_classical_into_pack
+    from response_variability.evals.eval_classical import merge_classical_into_pack
 
     return merge_classical_into_pack(pack, domain)
 
@@ -362,7 +362,7 @@ def build_val_pack(
     pack["split"] = np.full(len(idx), "val")
     pack["tf_gino"] = score_gino(cache_dir, idx, ckpt_path, batch_size)
     pack = attach_vs_and_pretell(pack, domain=domain, n_pretell=n_pretell)
-    from response_variability.eval_classical import add_classical_1d_arms
+    from response_variability.evals.eval_classical import add_classical_1d_arms
 
     pack = add_classical_1d_arms(pack, n_hallal_seeds=n_hallal_seeds, skip_if_present=False)
     if domain == "dipping":
@@ -407,7 +407,7 @@ def without_dmult(pack: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
 
 
 def score_heldout_csv(pack: dict[str, np.ndarray], path: Path) -> Path:
-    from response_variability.eval_iid import summarize_methods
+    from response_variability.evals.eval_iid import summarize_methods
 
     summary, peaks = summarize_methods(without_dmult(pack))
     path = Path(path)
@@ -636,7 +636,7 @@ def run(
     iid_csv = out_dir / "iid_heldout_summary.csv"
     dip_csv = out_dir / "dipping_heldout_summary.csv"
     if iid_csv.is_file() and dip_csv.is_file():
-        from response_variability.plot_eval_bias import plot_pearson_boxes_from_atlas
+        from response_variability.plots.plot_eval_bias import plot_pearson_boxes_from_atlas
 
         boxes = plot_pearson_boxes_from_atlas(
             config.RESULTS_DIR / "response_variability" / "eval_bias" / "method_ranking_pearson_heldout.png",
@@ -650,7 +650,7 @@ def plot_ood_dipping_pearson(out_dir: Path) -> Path:
     """IID val+test beside the Box dipping val+test, with Dmult removed."""
     import pandas as pd
 
-    from response_variability.plot_eval_bias import plot_pearson_boxes_heldout
+    from response_variability.plots.plot_eval_bias import plot_pearson_boxes_heldout
 
     iid = pd.read_csv(out_dir / "iid_heldout_summary.csv")
     dip = pd.read_csv(out_dir / "ood_dipping_heldout_summary.csv")

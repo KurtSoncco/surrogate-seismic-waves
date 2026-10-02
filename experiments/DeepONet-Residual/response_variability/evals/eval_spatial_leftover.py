@@ -16,24 +16,23 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
 import config  # noqa: E402
 
-from response_variability.eval_toro2022 import toro2022_path  # noqa: E402
+from response_variability.evals.eval_toro2022 import toro2022_path  # noqa: E402
 from response_variability.gino_bias import leftover, ols_ab  # noqa: E402
-from response_variability.metrics import pearson  # noqa: E402
+from response_variability.metrics import fmt_iqr, median_iqr  # noqa: E402
 from response_variability.names import (  # noqa: E402
     GINO,
     HASKELL_NOMINAL,
     METHOD_COLORS,
-    OPENSEES,
     PRETELL,
     TORO,
 )
-from response_variability.plot_presentation import (  # noqa: E402
+from response_variability.plots.plot_presentation import (  # noqa: E402
     DOMAIN_SPECS,
     load_pack,
     make_synthetic_pack,
@@ -58,18 +57,6 @@ def _as_3d(tf: np.ndarray, n_rec: int) -> np.ndarray:
     if x.shape[1] == 1 and n_rec > 1:
         return np.broadcast_to(x, (x.shape[0], n_rec, x.shape[2])).copy()
     return x
-
-
-def _median_iqr(x: np.ndarray) -> dict[str, float]:
-    v = np.asarray(x, dtype=np.float64).ravel()
-    v = v[np.isfinite(v)]
-    if v.size == 0:
-        return {"median": float("nan"), "q25": float("nan"), "q75": float("nan")}
-    return {
-        "median": float(np.median(v)),
-        "q25": float(np.percentile(v, 25)),
-        "q75": float(np.percentile(v, 75)),
-    }
 
 
 def _jsonable(obj: Any) -> Any:
@@ -212,7 +199,7 @@ def _quartile_table(cov: np.ndarray, values: np.ndarray) -> dict[str, Any]:
         mask = np.asarray(labels) == q
         if not np.any(mask):
             continue
-        rec = _median_iqr(sub_v[mask])
+        rec = median_iqr(sub_v[mask])
         rec["n"] = int(mask.sum())
         out[q] = rec
     return out
@@ -258,10 +245,10 @@ def score_domain(domain: str, pack: dict[str, np.ndarray]) -> tuple[pd.DataFrame
     for method, tf in present.items():
         scored = score_arm(tf, ops)
         method_rec[method] = {
-            "central_pearson": _median_iqr(scored["central_pearson"]),
-            "array_pearson": _median_iqr(scored["array_pearson"]),
-            "spatial_sigma_ln": _median_iqr(scored["spatial_sigma_ln"]),
-            "spatial_pattern_pearson": _median_iqr(scored["spatial_pattern_pearson"]),
+            "central_pearson": median_iqr(scored["central_pearson"]),
+            "array_pearson": median_iqr(scored["array_pearson"]),
+            "spatial_sigma_ln": median_iqr(scored["spatial_sigma_ln"]),
+            "spatial_pattern_pearson": median_iqr(scored["spatial_pattern_pearson"]),
         }
         for i in range(n):
             rows.append(
@@ -288,14 +275,14 @@ def score_domain(domain: str, pack: dict[str, np.ndarray]) -> tuple[pd.DataFrame
         "n": n,
         "n_rec": n_rec,
         "opensees": {
-            "spatial_sigma_ln": _median_iqr(ops_sig),
-            "edge_center_pearson": _median_iqr(ops_edge),
-            "adjacent_pearson": _median_iqr(ops_adj),
+            "spatial_sigma_ln": median_iqr(ops_sig),
+            "edge_center_pearson": median_iqr(ops_edge),
+            "adjacent_pearson": median_iqr(ops_adj),
         },
         "leftover": {
-            "rel_l2": _median_iqr(left["leftover_rel_l2"]),
-            "pearson_R": _median_iqr(left["leftover_pearson"]),
-            "r2_per_sample": _median_iqr(left["leftover_r2"]),
+            "rel_l2": median_iqr(left["leftover_rel_l2"]),
+            "pearson_R": median_iqr(left["leftover_pearson"]),
+            "r2_per_sample": median_iqr(left["leftover_r2"]),
             "r2_pooled": pooled_r2,
             "b_pooled": pooled_b,
         },
@@ -320,12 +307,6 @@ def score_domain(domain: str, pack: dict[str, np.ndarray]) -> tuple[pd.DataFrame
             ),
         }
     return pd.DataFrame(rows), rec
-
-
-def _fmt_iqr(d: dict[str, float] | None) -> str:
-    if not d or not np.isfinite(d.get("median", float("nan"))):
-        return "—"
-    return f"{d['median']:.3f} [{d['q25']:.3f}, {d['q75']:.3f}]"
 
 
 def plot_cov(
@@ -432,9 +413,9 @@ def write_markdown(agg: dict[str, Any], dest: Path) -> None:
             continue
         ops = rec["opensees"]
         lines.append(
-            f"| {domain} | {_fmt_iqr(ops['spatial_sigma_ln'])} | "
-            f"{_fmt_iqr(ops['edge_center_pearson'])} | "
-            f"{_fmt_iqr(ops['adjacent_pearson'])} |"
+            f"| {domain} | {fmt_iqr(ops['spatial_sigma_ln'])} | "
+            f"{fmt_iqr(ops['edge_center_pearson'])} | "
+            f"{fmt_iqr(ops['adjacent_pearson'])} |"
         )
     lines += [
         "",
@@ -457,8 +438,8 @@ def write_markdown(agg: dict[str, Any], dest: Path) -> None:
             if q not in qsig:
                 continue
             bits.append(
-                f"{q}: $\\sigma_{{\\ln}}$ {_fmt_iqr(qsig[q])}, "
-                f"1-D Pearson {_fmt_iqr(q1d.get(q, {}))}"
+                f"{q}: $\\sigma_{{\\ln}}$ {fmt_iqr(qsig[q])}, "
+                f"1-D Pearson {fmt_iqr(q1d.get(q, {}))}"
             )
         if bits:
             lines.append(f"- **{domain}:** " + "; ".join(bits) + ".")
@@ -478,9 +459,9 @@ def write_markdown(agg: dict[str, Any], dest: Path) -> None:
             if not m:
                 continue
             lines.append(
-                f"| {domain} | {method} | {_fmt_iqr(m['central_pearson'])} | "
-                f"{_fmt_iqr(m['array_pearson'])} | {_fmt_iqr(m['spatial_sigma_ln'])} | "
-                f"{_fmt_iqr(m['spatial_pattern_pearson'])} |"
+                f"| {domain} | {method} | {fmt_iqr(m['central_pearson'])} | "
+                f"{fmt_iqr(m['array_pearson'])} | {fmt_iqr(m['spatial_sigma_ln'])} | "
+                f"{fmt_iqr(m['spatial_pattern_pearson'])} |"
             )
     lines += [
         "",
@@ -508,11 +489,11 @@ def write_markdown(agg: dict[str, Any], dest: Path) -> None:
         g = rec.get("methods", {}).get(GINO, {})
         left = rec.get("leftover", {})
         lines.append(
-            f"| {domain} | {_fmt_iqr(g.get('central_pearson', {}))} | "
-            f"{_fmt_iqr(left.get('pearson_R', {}))} | "
+            f"| {domain} | {fmt_iqr(g.get('central_pearson', {}))} | "
+            f"{fmt_iqr(left.get('pearson_R', {}))} | "
             f"{left.get('r2_pooled', float('nan')):.3f} | "
-            f"{_fmt_iqr(left.get('rel_l2', {}))} | "
-            f"{_fmt_iqr(g.get('spatial_pattern_pearson', {}))} |"
+            f"{fmt_iqr(left.get('rel_l2', {}))} | "
+            f"{fmt_iqr(g.get('spatial_pattern_pearson', {}))} |"
         )
     lines += [
         "",

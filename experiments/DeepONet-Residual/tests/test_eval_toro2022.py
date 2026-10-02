@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from response_variability.names import HASKELL_NOMINAL, TORO
-from response_variability.plot_presentation import make_synthetic_pack
+from response_variability.plots.plot_presentation import make_synthetic_pack
 from response_variability.seiskit_arms import ensure_seiskit, hallal_config
 
 
@@ -15,7 +15,7 @@ def test_eval_toro2022_synthetic_scores(tmp_path):
         ensure_seiskit()
     except ImportError:
         pytest.skip("seiskit not installed")
-    from response_variability.eval_toro2022 import add_toro_arm, run_domain, slim_score_pack
+    from response_variability.evals.eval_toro2022 import add_toro_arm, run_domain, slim_score_pack
 
     pack = make_synthetic_pack(domain="iid", n=3, n_freq=24, n_rec=7)
     pack = add_toro_arm(pack, n_hallal_seeds=2)

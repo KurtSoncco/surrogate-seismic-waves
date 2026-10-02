@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from response_variability.eval_opensees1d import (
+from response_variability.evals.eval_opensees1d import (
     ARM_HASKELL_VS_2D,
     ARM_OS1D_VS_2D,
     ARM_SHAPE_OUTCROP,

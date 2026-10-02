@@ -13,7 +13,7 @@ import pandas as pd
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
@@ -617,7 +617,7 @@ def _refresh_method_labels(df: pd.DataFrame) -> pd.DataFrame:
 def plot_all(out_dir: Path | None = None) -> list[Path]:
     out_dir = Path(out_dir or OUT_DIR)
     pack = attach_geometry_from_cache(_load_pack(out_dir))
-    from response_variability.eval_iid import (
+    from response_variability.evals.eval_iid import (
         aggregate_json,
         band_misfit_table,
         summarize_methods,

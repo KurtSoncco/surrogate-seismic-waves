@@ -27,7 +27,7 @@ if str(_EXP) not in sys.path:
 import config  # noqa: E402
 from mix_ladder import mix_test_parts  # noqa: E402
 from score_mscale_distributions import (  # noqa: E402
-    DEFAULT_ARMS,
+    default_ckpt_map,
     gof_af_per_sample,
     load_domain_arrays,
     pearson_freq_per_sample,
@@ -315,10 +315,6 @@ def score_ckpt_domain(
             flush=True,
         )
     return ops_out
-
-
-def default_ckpt_map() -> dict[str, Path]:
-    return {name: config.CHECKPOINT_DIR / fname for name, fname in DEFAULT_ARMS}
 
 
 def run(*, ckpts: dict[str, Path], batch_size: int) -> dict[str, Any]:

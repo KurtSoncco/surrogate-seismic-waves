@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Wave 0 GINO inductive-bias audit on nested presentation packs.
 
-    uv run python experiments/DeepONet-Residual/response_variability/analyze_gino_bias.py
+    uv run python experiments/DeepONet-Residual/response_variability/diagnostics/analyze_gino_bias.py
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import Any
 
 import numpy as np
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
@@ -29,7 +29,7 @@ from response_variability.gino_bias import (  # noqa: E402
     to_jsonable,
 )
 from response_variability.metrics import FREQ_BANDS  # noqa: E402
-from response_variability.plot_presentation import (  # noqa: E402
+from response_variability.plots.plot_presentation import (  # noqa: E402
     DOMAIN_SPECS,
     load_pack,
     pack_path,

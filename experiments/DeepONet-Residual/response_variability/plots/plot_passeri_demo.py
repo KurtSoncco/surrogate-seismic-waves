@@ -27,7 +27,7 @@ finds exactly one soil layer -- so the randomization below is a single travel-ti
 draw for the whole column, not a depth-resolved field like Toro's per-dz AR(1). The
 Vs(z) panel is a set of flat steps for that reason, not a plotting bug.
 
-Usage: python -m response_variability.plot_passeri_demo [--case-index N] [--n-seeds N]
+Usage: python -m response_variability.plots.plot_passeri_demo [--case-index N] [--n-seeds N]
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ from pathlib import Path
 
 import numpy as np
 
-_EXP = Path(__file__).resolve().parents[1]
+_EXP = Path(__file__).resolve().parents[2]
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 
@@ -48,8 +48,8 @@ import config  # noqa: E402
 from haskell_baseline import haskell_af_within  # noqa: E402
 from response_variability.metrics import spatial_sigma_ln  # noqa: E402
 from response_variability.names import HASKELL_NOMINAL, METHOD_COLORS, PASSERI, TORO  # noqa: E402
-from response_variability.plot_presentation import load_pack, pack_path  # noqa: E402
-from response_variability.plot_toro_demo import BEDROCK_VIEW_M, DZ, LN_STD_Z, OUT_DIR, pick_case  # noqa: E402
+from response_variability.plots.plot_presentation import load_pack, pack_path  # noqa: E402
+from response_variability.plots.plot_toro_demo import BEDROCK_VIEW_M, DZ, LN_STD_Z, OUT_DIR, pick_case  # noqa: E402
 from response_variability.seiskit_arms import ensure_seiskit, hallal_config  # noqa: E402
 from response_variability.style import (  # noqa: E402
     apply_nature_style,
