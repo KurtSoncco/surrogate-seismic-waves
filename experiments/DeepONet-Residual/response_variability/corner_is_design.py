@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,11 @@ import numpy as np
 
 _EXP = Path(__file__).resolve().parents[1]
 _REPO = _EXP.parent.parent
-_SEISKIT_SOBOL = Path("/home/kurt-/seiskit/neural-operator/data")
+_SEISKIT_SOBOL = Path(
+    os.environ.get(
+        "SEISKIT_SOBOL_DIR", Path.home() / "seiskit" / "neural-operator" / "data"
+    )
+)
 if str(_EXP) not in sys.path:
     sys.path.insert(0, str(_EXP))
 if str(_SEISKIT_SOBOL) not in sys.path:

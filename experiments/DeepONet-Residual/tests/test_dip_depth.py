@@ -18,6 +18,13 @@ from response_variability.dip_depth import (
 from response_variability.seiskit_arms import ensure_seiskit, hallal_config
 
 
+def _require_seiskit() -> None:
+    try:
+        ensure_seiskit()
+    except ImportError:
+        pytest.skip("seiskit not installed")
+
+
 def test_sigma_L_continuous_and_discrete_match_uniform_samples():
     L = 500.0
     assert sigma_L(L) == pytest.approx(L / np.sqrt(12.0))
@@ -73,9 +80,9 @@ def test_uniform_depths_are_centered_equal_weight_nodes():
 
 def test_dipping_toro_calls_seiskit_frozen_h():
     """NHPP thicknesses stay off. Vs comes from seiskit's frozen-H generator."""
+    _require_seiskit()
     from seiskit.profile_randomization import generate_vs_randomized_profile
 
-    ensure_seiskit()
     cfg = hallal_config(vs1=195.0, H=53.0, cov=0.16, vs2=1081.0, dz=0.5)
     assert cfg.use_full_model is False
     assert cfg.randomize_layer_thickness is False
@@ -87,7 +94,7 @@ def test_dipping_toro_calls_seiskit_frozen_h():
 
 
 def test_depth_draw_does_not_change_vs2_for_toro_or_passeri():
-    ensure_seiskit()
+    _require_seiskit()
     from seiskit.profile_randomization.passeri import _passeri_joint_bedrock_draw
 
     vs2 = 1234.5

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
-from response_variability.corner_is_design import (
-    FORBIDDEN_RF_SEEDS,
-    extra_rf_seeds,
-    kernel_anderson,
-    maximin_holdout,
+# corner_is_design imports seiskit's sobol.py (~/seiskit or $SEISKIT_SOBOL_DIR); CI has no seiskit.
+corner = pytest.importorskip(
+    "response_variability.corner_is_design", reason="seiskit sobol.py not available"
 )
+FORBIDDEN_RF_SEEDS = corner.FORBIDDEN_RF_SEEDS
+extra_rf_seeds = corner.extra_rf_seeds
+kernel_anderson = corner.kernel_anderson
+maximin_holdout = corner.maximin_holdout
 
 
 def test_kernel_anderson_peaks_at_data():
