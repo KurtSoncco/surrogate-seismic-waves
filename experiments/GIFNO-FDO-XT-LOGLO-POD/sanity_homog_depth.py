@@ -40,7 +40,9 @@ import config
 
 config.setup_import_paths()
 
-_hs_path = Path(__file__).resolve().parents[1] / "DeepONet-Residual" / "haskell_baseline.py"
+_hs_path = (
+    Path(__file__).resolve().parents[1] / "DeepONet-Residual" / "haskell_baseline.py"
+)
 _hs_spec = importlib.util.spec_from_file_location("haskell_baseline", _hs_path)
 if _hs_spec is None or _hs_spec.loader is None:
     raise ImportError(f"Cannot load haskell_baseline from {_hs_path}")
@@ -49,31 +51,18 @@ _hs_spec.loader.exec_module(_hs_mod)
 haskell_af_within = _hs_mod.haskell_af_within
 
 from capability_check import (  # noqa: E402
+    _rel_l2,
     build_input_from_h5,
     load_model,
     predict_tf,
 )
 from data_loader import _resolve_h5_path, load_manifest  # noqa: E402
+from score_ood_campaign import _pearson  # noqa: E402
 
 _EPS = 1e-12
 DEFAULT_OUT = (
-    Path.home()
-    / "surrogate-seismic-waves"
-    / "checkpoints"
-    / "sanity_homog_depth"
+    Path.home() / "surrogate-seismic-waves" / "checkpoints" / "sanity_homog_depth"
 )
-
-
-def _rel_l2(a: np.ndarray, b: np.ndarray) -> float:
-    return float(np.linalg.norm(a - b) / (np.linalg.norm(b) + _EPS))
-
-
-def _pearson(a: np.ndarray, b: np.ndarray) -> float:
-    a = np.asarray(a, dtype=np.float64).ravel()
-    b = np.asarray(b, dtype=np.float64).ravel()
-    if a.std() < 1e-12 or b.std() < 1e-12:
-        return float("nan")
-    return float(np.corrcoef(a, b)[0, 1])
 
 
 def _cov_from_row(row: dict) -> float | None:
@@ -114,8 +103,10 @@ def low_cov_haskell_sanity(
     if cov_max is not None:
         scored = [t for t in scored if t[0] <= cov_max]
     selected = scored[:n_cases]
-    print(f"[homog] selected {len(selected)} lowest-CoV cases "
-          f"(range {selected[0][0]:.3f}–{selected[-1][0]:.3f})")
+    print(
+        f"[homog] selected {len(selected)} lowest-CoV cases "
+        f"(range {selected[0][0]:.3f}–{selected[-1][0]:.3f})"
+    )
 
     rows_out = []
     for cov, idx, row in selected:
@@ -196,12 +187,24 @@ def low_cov_haskell_sanity(
 
     fig, ax = plt.subplots(figsize=(6.5, 4))
     covs = [r["CoV"] for r in rows_out]
-    ax.plot(covs, [r["rel_l2_opensees_vs_haskell"] for r in rows_out], "o-",
-            label="OpenSees vs Haskell")
-    ax.plot(covs, [r["rel_l2_surr_vs_haskell"] for r in rows_out], "s--",
-            label="Surrogate vs Haskell")
-    ax.plot(covs, [r["rel_l2_surr_vs_opensees"] for r in rows_out], "^:",
-            label="Surrogate vs OpenSees")
+    ax.plot(
+        covs,
+        [r["rel_l2_opensees_vs_haskell"] for r in rows_out],
+        "o-",
+        label="OpenSees vs Haskell",
+    )
+    ax.plot(
+        covs,
+        [r["rel_l2_surr_vs_haskell"] for r in rows_out],
+        "s--",
+        label="Surrogate vs Haskell",
+    )
+    ax.plot(
+        covs,
+        [r["rel_l2_surr_vs_opensees"] for r in rows_out],
+        "^:",
+        label="Surrogate vs OpenSees",
+    )
     ax.set_xlabel("CoV")
     ax.set_ylabel("Central-recorder rel L2")
     ax.set_title("Low-CoV homogeneous sanity")
@@ -225,11 +228,13 @@ def ood_depth_compare(
     out_dir: Path,
 ) -> dict[str, Any]:
     """Re-score a subset of OOD cases with baseline and optional depth ckpt."""
-    from score_ood_campaign import metrics_from_tfs  # noqa: WPS433
+    from score_ood_campaign import metrics_from_tfs  # noqa: PLC0415
 
     results: dict[str, Any] = {"baseline": str(baseline_ckpt), "depth": None}
     model_base = load_model(baseline_ckpt, device)
-    model_depth = load_model(depth_ckpt, device) if depth_ckpt and depth_ckpt.is_file() else None
+    model_depth = (
+        load_model(depth_ckpt, device) if depth_ckpt and depth_ckpt.is_file() else None
+    )
     if model_depth is None:
         print(
             "[depth] No full-depth checkpoint found — writing baseline-only "
@@ -256,7 +261,9 @@ def ood_depth_compare(
             step = max(1, len(rows_sorted) // limit)
             picked = rows_sorted[::step][:limit]
             indices = [int(r["index"]) for r in picked]
-            baseline_from_csv = {int(r["index"]): float(r["rel_l2_mean"]) for r in picked}
+            baseline_from_csv = {
+                int(r["index"]): float(r["rel_l2_mean"]) for r in picked
+            }
 
         rows_out = []
         for idx in indices:
@@ -279,8 +286,11 @@ def ood_depth_compare(
             x = build_input_from_h5(h5_path)
             pred_b = predict_tf(model_base, x, device)
             mb = metrics_from_tfs(pred_b, tf_true, freq)
-            row = {"index": idx, "baseline_rel_l2": mb["rel_l2_mean"],
-                   "baseline_pearson": mb["pearson_mean"]}
+            row = {
+                "index": idx,
+                "baseline_rel_l2": mb["rel_l2_mean"],
+                "baseline_pearson": mb["pearson_mean"],
+            }
             if idx in baseline_from_csv:
                 row["csv_rel_l2"] = baseline_from_csv[idx]
             if model_depth is not None:
@@ -300,9 +310,7 @@ def ood_depth_compare(
             )
             if rows_out
             else None,
-            "depth_rel_l2_mean": float(
-                np.mean([r["depth_rel_l2"] for r in rows_out])
-            )
+            "depth_rel_l2_mean": float(np.mean([r["depth_rel_l2"] for r in rows_out]))
             if rows_out and model_depth is not None
             else None,
             "cases": rows_out,

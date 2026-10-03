@@ -50,10 +50,9 @@ def test_leftover_peak_dlnA_uses_f0_window_not_global_argmax():
     n_rec, n_f = 3, freq.size
     f0_true = f0_calc * 1.10
     f_harm = 3.0 * f0_calc
-    af_2d = (
-        1.8 * np.exp(-0.5 * ((np.log(freq) - np.log(f0_true)) / 0.02) ** 2)
-        + 5.0 * np.exp(-0.5 * ((np.log(freq) - np.log(f_harm)) / 0.02) ** 2)
-    )
+    af_2d = 1.8 * np.exp(
+        -0.5 * ((np.log(freq) - np.log(f0_true)) / 0.02) ** 2
+    ) + 5.0 * np.exp(-0.5 * ((np.log(freq) - np.log(f_harm)) / 0.02) ** 2)
     af_hat = 1.8 * np.exp(-0.5 * ((np.log(freq) - np.log(f0_true)) / 0.02) ** 2)
     tf2d = np.broadcast_to(af_2d[None, None, :], (1, n_rec, n_f)).copy()
     tf_hat = np.broadcast_to(af_hat[None, None, :], tf2d.shape).copy()
@@ -161,7 +160,7 @@ def test_cov_only_dim_and_vector():
 
 
 def test_default_score_domains_omit_three_layer():
-    from score_mscale_distributions import DEFAULT_SCORE_DOMAINS, DOMAINS
+    from scoring.score_mscale_distributions import DEFAULT_SCORE_DOMAINS, DOMAINS
 
     assert DEFAULT_SCORE_DOMAINS == ("iid", "ood_dipping")
     assert "ood_three_layer" in DOMAINS

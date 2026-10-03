@@ -11,7 +11,9 @@ TROUGH_FRAC = 0.05
 DCT_CUTOFF = 16
 
 
-def trough_keep_mask(tf: torch.Tensor, *, floor_frac: float = TROUGH_FRAC) -> torch.Tensor:
+def trough_keep_mask(
+    tf: torch.Tensor, *, floor_frac: float = TROUGH_FRAC
+) -> torch.Tensor:
     """Keep bins whose |TF| is at least ``floor_frac`` of the per-row peak."""
     amp = tf.abs()
     peak = amp.amax(dim=-1, keepdim=True).clamp_min(_EPS)
@@ -86,7 +88,9 @@ def band_normalized_loss(
     return torch.stack(per_band).mean()
 
 
-def _dct2_ortho_matrix(n: int, *, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+def _dct2_ortho_matrix(
+    n: int, *, device: torch.device, dtype: torch.dtype
+) -> torch.Tensor:
     k = torch.arange(n, device=device, dtype=dtype)
     i = torch.arange(n, device=device, dtype=dtype)
     mat = torch.cos(math.pi / n * (i + 0.5).unsqueeze(0) * k.unsqueeze(1))

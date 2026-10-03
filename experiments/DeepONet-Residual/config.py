@@ -38,11 +38,18 @@ def ood_three_layer_root() -> Path:
     return data_root() / "ood_three_layer"
 
 
+def corner_is_root() -> Path:
+    if env := os.environ.get("GIFNO_CORNER_IS"):
+        return Path(env)
+    return data_root() / "corner_is"
+
+
 DATA_ROOT = _resolve_data_root()
 H5_DIR = Path(os.environ.get("GIFNO_H5_DIR", DATA_ROOT / "h5"))
 TF_RESULTS_DIR = Path(os.environ.get("GIFNO_TF_DIR", DATA_ROOT / "transfer_function"))
 OOD_DIPPING = ood_dipping_root()
 OOD_THREE_LAYER = ood_three_layer_root()
+CORNER_IS = corner_is_root()
 
 TF_PER_SAMPLE_PATH = TF_RESULTS_DIR / "tf_per_sample.npy"
 TF_FREQ_PATH = TF_RESULTS_DIR / "freq.npy"
@@ -66,6 +73,8 @@ DZ: float = 1.0
 RHO: float = 2000.0
 
 N_LATERAL: int = 21
+LATERAL_SPACING_M: float = 15.0  # recorder array on the cropped strip
+SUPPORT_STRIDE: int = 5  # kernel-GNO material columns (1 m grid → 100 support)
 N_FREQ: int = 1000
 FREQ_START_HZ: float = 0.1
 FREQ_END_HZ: float = 10.0
@@ -138,3 +147,12 @@ FREQ_BAND_HIGH: tuple[float, float] = (2.0, 10.0)
 
 for d in (CACHE_DIR, RESULTS_DIR, CHECKPOINT_DIR):
     d.mkdir(parents=True, exist_ok=True)
+
+
+def set_local_ood_env() -> None:
+    """Point the OOD env vars at ``data/gifno_screen`` when that local pack exists."""
+    local = EXPERIMENT_DIR.parents[1] / "data" / "gifno_screen"
+    if (local / "ood_dipping").is_dir():
+        os.environ.setdefault("GIFNO_OOD_DIPPING", str(local / "ood_dipping"))
+    if (local / "ood_three_layer").is_dir():
+        os.environ.setdefault("GIFNO_OOD_THREE_LAYER", str(local / "ood_three_layer"))

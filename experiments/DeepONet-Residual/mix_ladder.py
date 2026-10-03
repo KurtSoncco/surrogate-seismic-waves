@@ -115,7 +115,11 @@ def mix_train_parts(
             ("ood_dipping", cache_dir_for("ood_dipping"), np.asarray(dip["train"]))
         )
         parts.append(
-            ("ood_three_layer", cache_dir_for("ood_three_layer"), np.asarray(tl["train"]))
+            (
+                "ood_three_layer",
+                cache_dir_for("ood_three_layer"),
+                np.asarray(tl["train"]),
+            )
         )
     return parts
 
@@ -135,6 +139,16 @@ def mix_val_parts(
         ("ood_dipping", cache_dir_for("ood_dipping"), np.asarray(dip["val"])),
         ("ood_three_layer", cache_dir_for("ood_three_layer"), np.asarray(tl["val"])),
     ]
+
+
+def mix_val_lookup(
+    *, seed: int = config.SEED, iid_only: bool = False
+) -> dict[str, tuple[Path, np.ndarray]]:
+    """Val slices keyed like ``mix_test_parts`` (iid / ood_dipping / ood_three_layer)."""
+    return {
+        name: (cache, idx)
+        for name, cache, idx in mix_val_parts(seed=seed, iid_only=iid_only)
+    }
 
 
 def mix_test_parts(*, seed: int = config.SEED) -> dict[str, tuple[Path, np.ndarray]]:

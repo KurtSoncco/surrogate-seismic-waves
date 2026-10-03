@@ -3,6 +3,15 @@
 **Current figures and shipped metrics:** [`results/README.md`](results/README.md)  
 **Nested LOGLO vs GINO:** [`results/compare_gino_loglo/`](results/compare_gino_loglo/)
 
+**Naming:** the shipped leftover called “GNO” / “GINO” is a **pinned 21-node
+chain GNN** (index kNN=2 on the recorder line) plus FNO-on-\(R\) on a fixed
+\((21,n_f)\) lattice. Mesh-agnostic queries are in **frequency**, not space.
+Kernel-integral query \(p(x_q)\) is `--encoder kernel` (Savio
+`hpc/savio_spatial_query.sh`). Those arms failed nested three-layer
+(`results/SPATIAL_QUERY.md`). Recorder spacing is **15 m**
+(`LATERAL_SPACING_M`); the 25 m figure is only the legacy \(r_H\)-dilation hop
+used by Part 0b, not the array.
+
 This file is the chronological bake-off log (ResUNet → GINO → rebal FT). Numbers below that pre-date `M7680_gino_rebal_ft` are not the shipped leftover.
 
 **Experiment:** [`experiments/DeepONet-Residual/`](.)  
@@ -43,7 +52,7 @@ Training: **SmoothL1 only**, **AdamW** `betas=(0.9, 0.999)`, `lr=1e-3`, patience
 Reproduce encoder compare:
 
 ```bash
-uv run python experiments/DeepONet-Residual/compare_encoders.py \
+uv run python experiments/DeepONet-Residual/scoring/compare_encoders.py \
   --cache-tag n1000_seed42 --epochs 300 --patience 60
 ```
 
@@ -144,7 +153,7 @@ uv run python experiments/DeepONet-Residual/train.py \
   --cache-tag n1000_seed42 --target R_nom --field-encoder resunet \
   --epochs 300 --patience 60
 
-uv run python experiments/DeepONet-Residual/compare_encoders.py \
+uv run python experiments/DeepONet-Residual/scoring/compare_encoders.py \
   --cache-tag n1000_seed42 --skip-train   # plots/metrics only
 ```
 
@@ -184,8 +193,8 @@ LOGLO-POD leftovers to beat on OOD (not the 16–26 IID figure): dipping rel L2 
 
 - Stratified CoV×H indices **without** Residual RF screen: `n1000 ⊂ n2000 ⊂ n3000` (seed 42) written under `cache/n*_seed42/sample_indices.npy`.
 - `--n-freq-train` (default 50); reported test metrics always use **1000** frequency bins.
-- `eval_ood.py` walks Box `ood_*` (defaults `$GIFNO_DATA_ROOT/ood_dipping` and `ood_three_layer`). `run_scale.py`: `cache_tag × encoder × n_freq × seed`.
-- `stage_screen_pack.sh` copies TF cache + stratified H5 + OOD (do not commit H5).
+- `scoring/eval_ood.py` walks Box `ood_*` (defaults `$GIFNO_DATA_ROOT/ood_dipping` and `ood_three_layer`). `sweeps/run_scale.py`: `cache_tag × encoder × n_freq × seed`.
+- `hpc/stage_screen_pack.sh` copies TF cache + stratified H5 + OOD (do not commit H5).
 
 ### 8.3 E0 — OOD Haskell floor (no NN)
 
@@ -212,7 +221,7 @@ All **960 + 960** Box H5 files. Metrics vs OpenSees |TF|. LOGLO-POD leftovers: d
 JSON: `results/ood_e0_haskell.json` (gitignored). Reproduce:
 
 ```bash
-uv run python experiments/DeepONet-Residual/eval_ood.py \
+uv run python experiments/DeepONet-Residual/scoring/eval_ood.py \
   --out experiments/DeepONet-Residual/results/ood_e0_haskell.json
 ```
 
@@ -234,10 +243,10 @@ E4 checkpoint: `checkpoints/single_resunet_full_R_nom_n2000_seed42_nf200_seed42.
 
 ```bash
 uv run python experiments/DeepONet-Residual/residual_signed.py --cache-tag n2000_seed42
-uv run python experiments/DeepONet-Residual/run_scale.py \
+uv run python experiments/DeepONet-Residual/sweeps/run_scale.py \
   --cache-tag n2000_seed42 --encoder resunet --n-freq-train 50 --patience 60
 # E2 (after E1 flat):
-uv run python experiments/DeepONet-Residual/run_scale.py \
+uv run python experiments/DeepONet-Residual/sweeps/run_scale.py \
   --cache-tag n2000_seed42 --encoder resunet --n-freq-train 200 --patience 60
 ```
 
@@ -270,7 +279,7 @@ Unclamped and tanh are tied on dipping rel L2 (0.538); tanh wins TF R² (0.357 v
 JSON: `results/ood_e4.json`, `ood_e4_clamp_tanh.json`, `ood_e4_clamp_zero.json` (gitignored).
 
 ```bash
-uv run python experiments/DeepONet-Residual/eval_ood.py \
+uv run python experiments/DeepONet-Residual/scoring/eval_ood.py \
   --checkpoint experiments/DeepONet-Residual/checkpoints/single_resunet_full_R_nom_n2000_seed42_nf200_seed42.pt \
   --out experiments/DeepONet-Residual/results/ood_e4.json
 ```
@@ -304,7 +313,7 @@ Cheap check: score `ood_three_layer` with Thomson–Haskell on attrs \((V_{s1}, 
 Generalization recipe: **call the right 1D stack at test time** (1-layer nom on dipping / IID, 3-layer nom here). Train a new \(R\) against nom3 only if you need to close that last ~0.09 rel L2, and then mix 3-layer geometry into training. Do not scale n or change the encoder for this gap.
 
 ```bash
-uv run python experiments/DeepONet-Residual/eval_ood.py \
+uv run python experiments/DeepONet-Residual/scoring/eval_ood.py \
   --corpus ood_three_layer \
   --checkpoint experiments/DeepONet-Residual/checkpoints/single_resunet_full_R_nom_n2000_seed42_nf200_seed42.pt \
   --out experiments/DeepONet-Residual/results/ood_e4_nom3.json
@@ -324,7 +333,7 @@ Reproduce (caches already on disk):
 GIFNO_DATA_ROOT=data/gifno_screen \
 GIFNO_OOD_DIPPING=data/gifno_screen/ood_dipping \
 GIFNO_OOD_THREE_LAYER=data/gifno_screen/ood_three_layer \
-uv run python experiments/DeepONet-Residual/domain_study.py --skip-cache
+uv run python experiments/DeepONet-Residual/sweeps/domain_study.py --skip-cache
 ```
 
 JSON: `results/domain_study/{operator_bakeoff,protocols,architectures,summary}.json`.
@@ -419,7 +428,7 @@ GIFNO_OOD_DIPPING=data/gifno_screen/ood_dipping \
 GIFNO_OOD_THREE_LAYER=data/gifno_screen/ood_three_layer \
 uv run python experiments/DeepONet-Residual/arch_train.py --mix M1400 --run-name M1400_serial
 uv run python experiments/DeepONet-Residual/arch_train.py --mix M700 --encoder gno --fno --run-name M700_gino
-uv run python experiments/DeepONet-Residual/eval_ood.py --checkpoint experiments/DeepONet-Residual/checkpoints/M700_gino.pt --split test
+uv run python experiments/DeepONet-Residual/scoring/eval_ood.py --checkpoint experiments/DeepONet-Residual/checkpoints/M700_gino.pt --split test
 ```
 
 **Gates:** IID rel L2 toward GIFNO-XT **0.30** without collapsing OOD (dipping ≲ 0.37 / Pearson ≲ 0.88); three-layer **beat column Haskell** (per-file mean col **0.597**, pooled col **0.635**).
@@ -496,7 +505,7 @@ Laptop §10 GINO is the control: width 32, modes \(8\times16\), `batch_size=8`, 
 **Host:** Lambda Labs `gpu_1x_a10` (`ubuntu@163.192.40.133`, NVIDIA A10 23 GB). Same files via rsync (`data/gifno_screen` + signed caches). Wandb project [`deeponet-residual`](https://wandb.ai/kurtwal98-university-of-california-berkeley/deeponet-residual) is **online** (`WANDB_MODE=online`, `host=lambda`). Laptop §10 + rehearsal runs were `wandb sync`'d from `experiments/DeepONet-Residual/wandb/offline-run-*`. VRAM of the wide recipe: **2.46 GB peak** on the 5080 (2.84M params).
 
 ```bash
-bash experiments/DeepONet-Residual/lambda_train.sh \
+bash experiments/DeepONet-Residual/hpc/lambda_train.sh \
   --mix M700 --encoder gno --fno --batch-size 32 \
   --fno-width 64 --fno-modes 8,32 --fno-layers 4 \
   --run-name M700_gino_wide_lambda

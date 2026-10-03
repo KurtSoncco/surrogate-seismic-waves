@@ -54,6 +54,11 @@ def test_layered_nom_respects_per_layer_xi():
         freq, H=[10.0, 12.0], Vs=[180.0, 420.0], vs_rock=900.0, xi=0.05, rho=2000.0
     )
     varied = haskell_nominal_layered_af_within(
-        freq, H=[10.0, 12.0], Vs=[180.0, 420.0], vs_rock=900.0, xi=[0.02, 0.08], rho=2000.0
+        freq,
+        H=[10.0, 12.0],
+        Vs=[180.0, 420.0],
+        vs_rock=900.0,
+        xi=[0.02, 0.08],
+        rho=2000.0,
     )
     assert float(np.linalg.norm(uniform - varied)) > 0.01

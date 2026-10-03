@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import csv
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, Sequence, Tuple
 
 import numpy as np
 
@@ -13,21 +12,10 @@ try:
 except ImportError:
     pass
 
-import h5py
 
 import config
 from haskell_baseline import haskell_at_columns, haskell_nominal_af_within
-
-
-def resolve_h5_path(stored_path: str) -> Path:
-    """Map manifest H5 paths to local H5_DIR by basename."""
-    return config.H5_DIR / Path(stored_path).name
-
-
-def load_manifest(path: Path | None = None) -> List[Dict[str, str]]:
-    path = path or config.MANIFEST_PATH
-    with open(path, newline="") as f:
-        return list(csv.DictReader(f))
+from residual_signed import _read_sample, load_manifest, resolve_h5_path  # noqa: F401
 
 
 def stratified_sample_indices(
@@ -91,14 +79,6 @@ def stratified_sample_indices(
         extra = rng.choice(leftover, size=n - len(chosen), replace=False)
         chosen.extend(int(i) for i in extra)
     return np.array(sorted(chosen), dtype=int)
-
-
-def _read_sample(h5_path: Path) -> Tuple[np.ndarray, np.ndarray, Dict]:
-    with h5py.File(h5_path, "r") as f:
-        vs = np.asarray(f["Vs_realization_2D"][:], dtype=np.float64)
-        zeta = np.asarray(f["Damping_zeta"][:], dtype=np.float64)
-        params = {k: f["params"].attrs[k] for k in f["params"].attrs}
-    return vs, zeta, params
 
 
 def compute_residuals_for_index(

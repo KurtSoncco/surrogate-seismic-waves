@@ -7,9 +7,11 @@ import pytest
 
 from response_variability.metrics import (
     anderson_frequency_domain,
+    band_anderson,
     band_pearson,
     band_rel_l2,
     log_residual_bias,
+    odd_quarter_wave_peaks,
     peak_af,
     rel_l2,
     sigma_ln,
@@ -18,6 +20,7 @@ from response_variability.metrics import (
 )
 from response_variability.names import (
     COMPARE_METHODS,
+    DMULT,
     GINO,
     HASKELL_COLUMN,
     HASKELL_NOMINAL,
@@ -27,14 +30,18 @@ from response_variability.names import (
     PRETELL_P84,
     TORO,
 )
-from response_variability.plot_iid import (
+from response_variability.plots.plot_iid import (
     _panel_title,
     compare_methods_in,
     select_diverse_indices,
     select_f0_quantile_indices,
     select_impedance_indices,
 )
-from response_variability.seiskit_arms import hallal_config, lognormal_upper, pretell_strip_columns
+from response_variability.seiskit_arms import (
+    hallal_config,
+    lognormal_upper,
+    pretell_strip_columns,
+)
 
 
 def test_peak_af_finds_resonance():
@@ -44,6 +51,23 @@ def test_peak_af_finds_resonance():
     f_hat, a_hat = peak_af(freq, af)
     assert abs(f_hat - f_true) < 0.05
     assert a_hat == pytest.approx(af.max(), rel=1e-6)
+
+
+def test_odd_quarter_wave_peaks_use_trough_windows():
+    freq = np.logspace(-1, 1, 800)
+    f0 = 1.0
+    af = np.ones_like(freq)
+    for k, amp in enumerate((10.0, 6.0, 3.0), start=1):
+        fc = (2 * k - 1) * f0
+        af = af + amp * np.exp(-((np.log(freq) - np.log(fc)) ** 2) / 0.015)
+    peaks = odd_quarter_wave_peaks(freq, af, f0=f0, n_modes=3)
+    for k, (f_hat, a_hat) in enumerate(peaks, start=1):
+        assert abs(f_hat - (2 * k - 1) * f0) < 0.08
+        assert a_hat > 1.5
+    # Pooled argmax would take mode 1; mode windows must still return mode 3.
+    f_all, _ = peak_af(freq, af)
+    assert abs(f_all - f0) < 0.08
+    assert abs(peaks[2][0] - 5.0) < 0.15
 
 
 def test_gof_zero_on_identical_curves():
@@ -93,6 +117,68 @@ def test_band_pearson_masks_frequency():
     high = band_pearson(pred, true, freq, lo=2.0, hi=10.0)
     assert high == pytest.approx(1.0)
     assert low < 0.5
+
+
+def test_band_anderson_masks_frequency():
+    freq = np.array([0.2, 0.3, 1.0, 5.0, 8.0])
+    true = np.ones(5)
+    pred = np.array([np.e, np.e, 1.0, 1.0, 1.0])
+    low = band_anderson(pred, true, freq, lo=0.1, hi=0.5)
+    high = band_anderson(pred, true, freq, lo=2.0, hi=10.0)
+    assert low == pytest.approx(1.0)
+    assert high == pytest.approx(0.0)
+
+
+def test_dmult_multipliers_match_seiskit():
+    from response_variability.seiskit_arms import DMULT_MULTIPLIERS
+
+    np.testing.assert_allclose(DMULT_MULTIPLIERS, np.linspace(3.0, 6.0, 10))
+    assert len(DMULT_MULTIPLIERS) == 10
+
+
+def test_leftover_panel_is_r_not_prediction_error():
+    from response_variability.plots.plot_presentation import (
+        leftover_central,
+        make_synthetic_pack,
+    )
+
+    pack = make_synthetic_pack(n=4, seed=1)
+    i = 0
+    rec = pack["tf_opensees"].shape[1] // 2
+    r_true, r_hat = leftover_central(pack, i)
+    np.testing.assert_allclose(
+        r_true, pack["tf_opensees"][i, rec] - pack["tf_haskell_nominal"][i, rec]
+    )
+    np.testing.assert_allclose(
+        r_hat, pack["tf_gino"][i, rec] - pack["tf_haskell_nominal"][i, rec]
+    )
+    assert not np.allclose(r_hat, pack["tf_gino"][i, rec] - pack["tf_opensees"][i, rec])
+
+
+def test_extracted_f0_is_not_quarter_wave():
+    from response_variability.covariates import attach_extracted_f0, f0_window_center
+    from unified_metrics import max_peak_near_f0_calc
+
+    freq = np.logspace(-1, 1, 400)
+    f0_calc = 1.0
+    f_true = 1.12
+    f_harm = 3.0
+    af = 2.0 * np.exp(-0.5 * ((np.log(freq) - np.log(f_true)) / 0.03) ** 2)
+    af += 6.0 * np.exp(-0.5 * ((np.log(freq) - np.log(f_harm)) / 0.03) ** 2)
+    f_pk, _ = max_peak_near_f0_calc(freq, af, f0_calc)
+    assert abs(f_pk - f_true) < 0.08
+    assert abs(f_pk - f_harm) > 1.0
+    pack = {
+        "freq": freq,
+        "tf_opensees": np.broadcast_to(af, (8, 3, freq.size)).copy(),
+        "vs1": np.full(8, 200.0),
+        "H": np.full(8, 50.0),
+        "vs2": np.full(8, 900.0),
+    }
+    out = attach_extracted_f0(pack)
+    assert np.allclose(out["f0_calc"], 1.0)
+    assert abs(float(np.nanmean(out["f0"])) - f_true) < 0.08
+    assert f0_window_center(pack, 0) == pytest.approx(1.0)
 
 
 def test_rel_l2_identical_is_zero():
@@ -173,15 +259,30 @@ def test_readable_method_names():
     assert GINO == "GINO"
     assert TORO == "Toro Vs"
     assert PASSERI == "Passeri tts"
-    assert PRETELL == "Pretell"
-    assert PRETELL_P84 == "Pretell p84"
+    assert PRETELL == "Pretell median"
+    assert PRETELL_P84 == "Pretell percentile"
+    assert DMULT == "Dmult"
     assert HASKELL_NOMINAL == "1D Base Case"
-    assert HASKELL_COLUMN == "Pretell's approach"
+    assert HASKELL_COLUMN == "1D column"
     assert HASKELL_NOMINAL in COMPARE_METHODS
-    assert HASKELL_COLUMN in COMPARE_METHODS
+    assert HASKELL_COLUMN not in COMPARE_METHODS
     from response_variability.names import SEISKIT_METHODS
 
+    assert PRETELL in SEISKIT_METHODS
     assert PRETELL_P84 in SEISKIT_METHODS
+    assert DMULT in SEISKIT_METHODS
+
+
+def test_only_two_pretell_methods_when_geomean_present():
+    pack = {
+        "tf_gino": 1,
+        "tf_haskell_column": 1,
+        "tf_pretell": 1,
+        "tf_pretell_p84": 1,
+        "tf_opensees": 1,
+    }
+    pretell = [m for m in compare_methods_in(pack) if "Pretell" in m]
+    assert pretell == [PRETELL, PRETELL_P84]
 
 
 def test_lognormal_upper_is_geomean_times_exp_sigma():
@@ -260,6 +361,21 @@ def test_hallal_config_matches_rv_simplified_flags():
     assert cfg.dz == pytest.approx(0.5)
 
 
+def test_dmult_zeta_uses_seiskit_elemental_varying():
+    from response_variability.seiskit_arms import dmult_zeta, ensure_seiskit
+
+    try:
+        ensure_seiskit()
+    except ImportError:
+        pytest.skip("seiskit not installed")
+    vs = np.full(8, 200.0)
+    z3 = dmult_zeta(vs, 3.0)
+    z6 = dmult_zeta(vs, 6.0)
+    assert z3.shape == vs.shape
+    assert np.all(z3 > 0)
+    np.testing.assert_allclose(z6, 2.0 * z3)
+
+
 def test_compare_methods_in_follows_pack_keys():
     pack = {"tf_gino": 1, "tf_toro": 1, "tf_opensees": 1}
     assert compare_methods_in(pack) == [GINO, TORO]
@@ -272,7 +388,7 @@ def test_default_checkpoint_is_rebal_ft():
 
 
 def test_pearson_tf_freq_perfect_is_one():
-    from response_variability.plot_presentation import pearson_tf_freq_per_sample
+    from response_variability.plots.plot_presentation import pearson_tf_freq_per_sample
 
     tf = np.linspace(1.0, 3.0, 40).reshape(1, 1, 40)
     tf = np.broadcast_to(tf, (4, 21, 40)).copy()
@@ -282,7 +398,7 @@ def test_pearson_tf_freq_perfect_is_one():
 
 
 def test_pick_pearson_quantile_indices_unique_and_spread():
-    from response_variability.plot_presentation import (
+    from response_variability.plots.plot_presentation import (
         PEARSON_QUANTILES,
         pick_pearson_quantile_indices,
     )
@@ -295,7 +411,7 @@ def test_pick_pearson_quantile_indices_unique_and_spread():
 
 
 def test_nominal_vs_profile_two_and_three_layer():
-    from response_variability.plot_presentation import nominal_vs_profile
+    from response_variability.plots.plot_presentation import nominal_vs_profile
 
     z, vs = nominal_vs_profile(vs1=200.0, H=30.0, vs2=800.0, nz=60, dz=1.0)
     assert z[0] < z[-1]
@@ -315,7 +431,7 @@ def test_nominal_vs_profile_two_and_three_layer():
     assert vs3[25] == pytest.approx(350.0)
     assert vs3[70] == pytest.approx(900.0)
     assert z3.shape == vs3.shape
-    from response_variability.plot_presentation import nominal_vs_stairs
+    from response_variability.plots.plot_presentation import nominal_vs_stairs
 
     vs_s, z_s = nominal_vs_stairs(vs1=200.0, H=30.0, vs2=800.0, z_max=50.0)
     assert set(np.unique(vs_s).tolist()) == {200.0, 800.0}
@@ -329,7 +445,10 @@ def test_nominal_vs_profile_two_and_three_layer():
 
 
 def test_case_title_includes_rh_ahv_cov():
-    from response_variability.plot_presentation import _case_title, make_synthetic_pack
+    from response_variability.plots.plot_presentation import (
+        _case_title,
+        make_synthetic_pack,
+    )
 
     pack = make_synthetic_pack(n=4, seed=0)
     title = _case_title(pack, 0, 0.10, "iid")
@@ -340,7 +459,10 @@ def test_case_title_includes_rh_ahv_cov():
 
 
 def test_stored_nz_includes_bedrock_below_soil():
-    from response_variability.plot_presentation import _stored_nz, make_synthetic_pack
+    from response_variability.plots.plot_presentation import (
+        _stored_nz,
+        make_synthetic_pack,
+    )
 
     pack = make_synthetic_pack(n=4, nz=40)
     i = 0
@@ -355,7 +477,7 @@ def test_presentation_plots_write_eleven_files(tmp_path):
     import matplotlib
 
     matplotlib.use("Agg")
-    from response_variability.plot_presentation import (
+    from response_variability.plots.plot_presentation import (
         DOMAIN_SPECS,
         make_synthetic_pack,
         plot_all_from_packs,
@@ -379,7 +501,7 @@ def test_presentation_plots_write_eleven_files(tmp_path):
 
 
 def test_presentation_live_skipped_without_caches():
-    from response_variability.plot_presentation import caches_ready
+    from response_variability.plots.plot_presentation import caches_ready
 
     if caches_ready():
         pytest.skip("mix caches present; live GINO/Pretell scoring is not a unit test")

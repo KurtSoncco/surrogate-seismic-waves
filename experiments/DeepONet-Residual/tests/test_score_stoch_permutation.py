@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from score_stoch_permutation import (
+from scoring.score_stoch_permutation import (
     apply_channel_op,
     delta_pack,
     permutation_ops,

@@ -1,0 +1,9 @@
+{
+  "iid_n_tail": 30,
+  "dip_n_tail": 48,
+  "iid_n_unique_tail": 26,
+  "sample50_n_in_cell": 2,
+  "n7680_meta": false,
+  "iid_n_replicated_cells": 28,
+  "dip_n_replicated_cells": 30
+}

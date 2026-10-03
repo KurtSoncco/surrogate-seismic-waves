@@ -58,17 +58,29 @@ def materialize_signed_from_parent(child_tag: str, parent_tag: str) -> Path:
         "r_nom_xi_signed.npy",
         "fields.npy",
         "vs_col.npy",
+        "fields_support.npy",
+        "support_x.npy",
+        "support_cols.npy",
         "sample_indices.npy",
     ):
         sp = src / name
+        if not sp.is_file() and name != "sample_indices.npy":
+            continue
         if name == "sample_indices.npy":
             np.save(dst / name, np.asarray(child_idx, dtype=int))
             continue
-        if sp.is_file():
-            np.save(dst / name, np.load(sp, mmap_mode="r")[rows])
+        if name in ("support_x.npy", "support_cols.npy"):
+            np.save(dst / name, np.load(sp))
+            continue
+        np.save(dst / name, np.load(sp, mmap_mode="r")[rows])
     meta = dict(np.load(src / "meta.npz", allow_pickle=True))
     packed = {k: np.asarray(v)[rows] for k, v in meta.items()}
     np.savez(dst / "meta.npz", **packed)
+    src_smeta = src / "support_meta.npz"
+    if src_smeta.is_file():
+        import shutil
+
+        shutil.copy2(src_smeta, dst / "support_meta.npz")
     print(
         f"[cache] materialized {child_tag} from {parent_tag} rows={len(rows)}",
         flush=True,
@@ -352,7 +364,21 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--corpus", action="append", default=None)
     p.add_argument("--force", action="store_true")
+    p.add_argument(
+        "--support-fields",
+        action="store_true",
+        help="Write stride-s kernel support fields onto an existing OOD signed cache.",
+    )
+    p.add_argument("--support-stride", type=int, default=config.SUPPORT_STRIDE)
     args = p.parse_args()
-    names = args.corpus or list(default_ood_roots())
-    for name in names:
-        build_ood_signed_cache(name, force=args.force)
+    names = args.corpus or ["ood_dipping", "ood_three_layer"]
+    if args.support_fields:
+        from residual_signed import build_support_fields_cache
+
+        for name in names:
+            build_support_fields_cache(
+                cache_dir_for(name), stride=args.support_stride, force=args.force
+            )
+    else:
+        for name in names:
+            build_ood_signed_cache(name, force=args.force)

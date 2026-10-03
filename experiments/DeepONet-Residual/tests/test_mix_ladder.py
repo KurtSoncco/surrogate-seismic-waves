@@ -79,7 +79,7 @@ def test_iid2000_train_no_ood_no_test_leak(tmp_path, monkeypatch):
 
 def test_iid7680_train_no_ood(tmp_path, monkeypatch):
     import config
-    from mix_ladder import mix_train_parts, mix_val_parts
+    from mix_ladder import mix_train_parts, mix_val_lookup, mix_val_parts
 
     n1000 = tmp_path / "n1000_seed42"
     n7680 = tmp_path / "n7680_seed42"
@@ -107,6 +107,9 @@ def test_iid7680_train_no_ood(tmp_path, monkeypatch):
     assert extra_global.isdisjoint(set(int(x) for x in parent))
     val = mix_val_parts(iid_only=True)
     assert [n for n, _, _ in val] == ["iid"]
+    lookup = mix_val_lookup(iid_only=True)
+    assert set(lookup) == {"iid"}
+    np.testing.assert_array_equal(lookup["iid"][1], np.array([7, 8]))
 
 
 def test_materialize_signed_from_parent(tmp_path, monkeypatch):

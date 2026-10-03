@@ -5,7 +5,12 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from unified_metrics import leftover_rel_l2, harm_mask, score_leftover_batch, tf_from_residual
+from unified_metrics import (
+    leftover_rel_l2,
+    harm_mask,
+    score_leftover_batch,
+    tf_from_residual,
+)
 from data import geom_flags_from_name
 from model import build_model, gno_core
 
@@ -115,20 +120,15 @@ def test_learned_1d_head_matches_query_grid():
 
 
 def test_eval_harm_rate_synthetic():
-    import eval_harm_rate as ehr
+    import scoring.eval_harm_rate as ehr
 
     rep = ehr.synthetic_report()
-    assert (
-        rep["good_residual"]["harm_rate"] < rep["harmful_residual"]["harm_rate"]
-    )
+    assert rep["good_residual"]["harm_rate"] < rep["harmful_residual"]["harm_rate"]
     assert leftover_rel_l2(np.ones((2, 4)), np.ones((2, 4))).shape == (2,)
     assert "logspec_rel_l2_tf_hat" in rep["good_residual"]
     assert "harm_rate_small_leftover" in rep["good_residual"]
     assert "rel_l2_band_mid_hat" in rep["good_residual"]
-    assert (
-        rep["good_log_residual"]["harm_rate"]
-        <= rep["harmful_residual"]["harm_rate"]
-    )
+    assert rep["good_log_residual"]["harm_rate"] <= rep["harmful_residual"]["harm_rate"]
 
 
 def test_log_multiplicative_reconstruct():
@@ -217,8 +217,18 @@ def test_boost_checkpoint_roundtrip():
         "boost": True,
         "log_residual": True,
         "boost_shrink": 0.25,
-        "frozen_arch": {**arch, "fno_kind": "vanilla", "gated": False, "pod_readout": False},
-        "booster_arch": {**arch, "fno_kind": "loglo", "gated": True, "pod_readout": False},
+        "frozen_arch": {
+            **arch,
+            "fno_kind": "vanilla",
+            "gated": False,
+            "pod_readout": False,
+        },
+        "booster_arch": {
+            **arch,
+            "fno_kind": "loglo",
+            "gated": True,
+            "pod_readout": False,
+        },
         "model": wrap.state_dict(),
     }
     loaded = build_from_checkpoint_blob(

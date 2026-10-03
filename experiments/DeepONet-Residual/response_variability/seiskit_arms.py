@@ -1,7 +1,10 @@
 """Seiskit Response_Variability arms on GIFNO/seiskit IID H5s.
 
 Hallal Toro / Passeri use seiskit's simplified 1-D randomization (same flags as
-comparison/Response_Variability). Pretell is the geometric mean of Thomson–Haskell
+comparison/Response_Variability). Toro is Toro 2022 Sec. 4 frozen-H: AR(1) on
+the ``dz`` grid, SPID σ_ln(z), |Z|≤2 with 1.16 inflation. Dmult is Hallal
+Approach 5 (``hallal_dmin``): base-case Vs with elemental Q–Vs damping scaled
+by 10 multipliers linspace 3–6. Pretell is the geometric mean of Thomson–Haskell
 |TF| on 200 columns across the 500 m variability strip (OpenSees 1-D Pretell is
 not rerun).
 """
@@ -43,6 +46,7 @@ def pretell_strip_columns(n_samples: int = 200, n_strip: int = 500) -> np.ndarra
 
 
 def hallal_config(*, vs1: float, H: float, cov: float, vs2: float, dz: float = 0.5):
+    """Hallal flags: frozen H, Toro 2022 AR(1) on ``dz``, SPID σ_ln(z) defaults."""
     from seiskit.profile_randomization import ProfileRandomizationConfig
 
     return ProfileRandomizationConfig(
@@ -65,6 +69,10 @@ def _geomean(stack: np.ndarray) -> np.ndarray:
 
 
 LN_P84_Z = 1.0  # Φ(1) ≈ 0.8413; GMPE / site-response "84th percentile"
+# seiskit comparison/Response_Variability/manifest.py DMIN_MULTIPLIERS
+DMULT_MULTIPLIERS: tuple[float, ...] = tuple(
+    float(x) for x in np.linspace(3.0, 6.0, 10)
+)
 
 
 def lognormal_upper(
@@ -141,6 +149,42 @@ def attach_pretell_p84(pack: dict) -> dict:
     return out
 
 
+def attach_dmult_p84(pack: dict) -> dict:
+    """Add ``tf_dmult_p84`` from stored Dmult geomean and σ_ln."""
+    if "tf_dmult" not in pack or "sigma_ln_dmult" not in pack:
+        return pack
+    out = dict(pack)
+    out["tf_dmult_p84"] = lognormal_upper(pack["tf_dmult"], pack["sigma_ln_dmult"])
+    return out
+
+
+def dmult_zeta(vs: np.ndarray, multiplier: float, *, dz: float = 0.5) -> np.ndarray:
+    """Elemental Q–Vs damping × Dmult (seiskit ``elemental_varying``)."""
+    ensure_seiskit()
+    vs = np.asarray(vs, dtype=float).ravel()
+    from types import SimpleNamespace
+
+    from seiskit.plot_results import get_damping_zeta_grid
+
+    vs2d = vs.reshape(-1, 1)
+    cfg = SimpleNamespace(
+        dmin_multiplier=float(multiplier),
+        damping_zeta=0.02,
+        damping_freqs=None,
+        damping_f_target=0.75,
+    )
+    zeta = get_damping_zeta_grid(
+        vs2d,
+        "elemental_varying",
+        Lx=float(dz),
+        Lz=float(vs.size * dz),
+        dx=float(dz),
+        dz=float(dz),
+        config=cfg,
+    )
+    return np.asarray(zeta, dtype=float).ravel()
+
+
 def hallal_geomean_tf(
     *,
     freq: np.ndarray,
@@ -183,6 +227,40 @@ def hallal_geomean_tf(
     stack = np.vstack(rows)
     from response_variability.metrics import spatial_sigma_ln
 
+    return _geomean(stack), spatial_sigma_ln(stack)
+
+
+def hallal_dmin_geomean_tf(
+    *,
+    freq: np.ndarray,
+    vs1: float,
+    H: float,
+    cov: float,
+    vs2: float,
+    dz: float = 0.5,
+    multipliers: tuple[float, ...] | list[float] | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Dmult geomean |TF| over Hallal Approach 5 multipliers. Returns (geomean, σ_ln)."""
+    ensure_seiskit()
+    from seiskit.profile_randomization import build_base_case_profile
+
+    from haskell_baseline import haskell_af_within
+    from response_variability.metrics import spatial_sigma_ln
+
+    mults = tuple(DMULT_MULTIPLIERS if multipliers is None else multipliers)
+    cfg = hallal_config(vs1=vs1, H=H, cov=cov, vs2=vs2, dz=dz)
+    vs = np.asarray(build_base_case_profile(cfg), dtype=float).ravel()
+    soil_nz = int(round(float(H) / dz))
+    soil_nz = max(1, min(soil_nz, len(vs)))
+    rows = []
+    for m in mults:
+        zeta = dmult_zeta(vs, m, dz=dz)
+        rows.append(
+            haskell_af_within(
+                freq, vs, zeta, dz=dz, vs_rock=float(vs2), soil_nz=soil_nz
+            )
+        )
+    stack = np.vstack(rows)
     return _geomean(stack), spatial_sigma_ln(stack)
 
 

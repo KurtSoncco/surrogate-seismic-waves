@@ -40,6 +40,36 @@ def peak_af(
     return float(freq[mask][i]), float(af[mask][i])
 
 
+def odd_quarter_wave_peaks(
+    freq: np.ndarray,
+    af: np.ndarray,
+    *,
+    f0: float,
+    n_modes: int = 3,
+    fmin: float = 0.1,
+    fmax: float = 10.0,
+) -> list[tuple[float, float]]:
+    """Local |TF| max in trough-to-trough windows around (2k−1) f0.
+
+    Windows are ``[2(k−1) f0, 2k f0]`` clipped to ``[fmin, fmax]`` — the
+    even-harmonic troughs of a 1-D column — so mode 3 is not stolen by a
+    taller mode-2 lobe (or a 0.1–10 Hz pooled argmax).
+    """
+    freq = np.asarray(freq, dtype=float).ravel()
+    af = np.asarray(af, dtype=float).ravel()
+    out: list[tuple[float, float]] = []
+    if not np.isfinite(f0) or f0 <= 0:
+        return [(float("nan"), float("nan"))] * n_modes
+    for k in range(1, n_modes + 1):
+        lo = max(fmin, (2 * (k - 1)) * f0)
+        hi = min(fmax, (2 * k) * f0)
+        if hi <= lo:
+            out.append((float("nan"), float("nan")))
+            continue
+        out.append(peak_af(freq, af, fmin=lo, fmax=hi))
+    return out
+
+
 def anderson_frequency_domain(
     freq: np.ndarray,
     ref_af: np.ndarray,
@@ -102,7 +132,9 @@ def spatial_percentiles(
     )
 
 
-def rel_l2(pred: np.ndarray, true: np.ndarray, *, mask: np.ndarray | None = None) -> float:
+def rel_l2(
+    pred: np.ndarray, true: np.ndarray, *, mask: np.ndarray | None = None
+) -> float:
     p = np.asarray(pred, dtype=float).ravel()
     t = np.asarray(true, dtype=float).ravel()
     if mask is not None:
@@ -131,7 +163,7 @@ def pearson(a: np.ndarray, b: np.ndarray, *, mask: np.ndarray | None = None) -> 
     return float(np.corrcoef(a, b)[0, 1])
 
 
-def band_mask(freq: np.ndarray, lo: float, hi: float) -> np.ndarray:
+def band_mask(freq: np.ndarray, lo: float = 0.1, hi: float = 10.0) -> np.ndarray:
     f = np.asarray(freq, dtype=float).ravel()
     return (f >= lo) & (f <= hi)
 
@@ -176,6 +208,34 @@ def band_pearson(
     return float(np.mean(np.asarray(cors)[finite]))
 
 
+def band_anderson(
+    pred: np.ndarray,
+    true: np.ndarray,
+    freq: np.ndarray,
+    *,
+    lo: float,
+    hi: float,
+) -> float:
+    """Anderson ln|TF| L1 on a frequency band (uniform weights; mean over recorders if 2-D)."""
+    f = np.asarray(freq, dtype=float).ravel()
+    m = band_mask(f, lo, hi)
+    p = np.asarray(pred, dtype=float)
+    t = np.asarray(true, dtype=float)
+    if p.ndim == 1:
+        if not np.any(m):
+            return float("nan")
+        return anderson_frequency_domain(f[m], t[m], p[m])
+    vals = []
+    for r in range(p.shape[0]):
+        if not np.any(m):
+            continue
+        vals.append(anderson_frequency_domain(f[m], t[r, m], p[r, m]))
+    finite = np.isfinite(vals)
+    if not np.any(finite):
+        return float("nan")
+    return float(np.mean(np.asarray(vals)[finite]))
+
+
 def method_vs_reference(
     *,
     freq: np.ndarray,
@@ -208,3 +268,30 @@ def method_vs_reference(
         out["delta_sigma_ln_spatial_mean"] = float(np.mean(sig_c - sig_r))
         out["rel_l2_spatial"] = rel_l2(af_cand_spatial, af_ref_spatial)
     return out
+
+
+def central_recorder(tf_i: np.ndarray) -> np.ndarray:
+    """Central-recorder curve of one sample: (n_freq,) passes through, (n_rec, n_freq) picks mid."""
+    a = np.asarray(tf_i, dtype=np.float64)
+    if a.ndim == 1:
+        return a
+    return a[a.shape[0] // 2]
+
+
+def median_iqr(x: np.ndarray) -> dict[str, float]:
+    v = np.asarray(x, dtype=np.float64).ravel()
+    v = v[np.isfinite(v)]
+    if v.size == 0:
+        return {"median": float("nan"), "q25": float("nan"), "q75": float("nan")}
+    return {
+        "median": float(np.median(v)),
+        "q25": float(np.percentile(v, 25)),
+        "q75": float(np.percentile(v, 75)),
+    }
+
+
+def fmt_iqr(d: dict[str, float] | None) -> str:
+    """``median [q25, q75]`` cell for the markdown tables."""
+    if not d or not np.isfinite(d.get("median", float("nan"))):
+        return "—"
+    return f"{d['median']:.3f} [{d['q25']:.3f}, {d['q75']:.3f}]"

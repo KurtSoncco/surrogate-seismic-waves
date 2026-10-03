@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -22,14 +21,6 @@ from train import train_from_datasets
 ARCH_DIR = config.RESULTS_DIR / "arch_train"
 
 
-def _set_local_ood_env() -> None:
-    local = Path(__file__).resolve().parents[2] / "data" / "gifno_screen"
-    if (local / "ood_dipping").is_dir():
-        os.environ.setdefault("GIFNO_OOD_DIPPING", str(local / "ood_dipping"))
-    if (local / "ood_three_layer").is_dir():
-        os.environ.setdefault("GIFNO_OOD_THREE_LAYER", str(local / "ood_three_layer"))
-
-
 def _ds(
     cache: Path,
     idx: np.ndarray,
@@ -42,6 +33,8 @@ def _ds(
     fstar_kind: str = "legacy",
     x_coord: str = "x_over_lambda",
     nom_variant: str = "default",
+    query_split: str = "all",
+    support_stride: int = 0,
 ) -> ResidualDeepONetDataset:
     return ResidualDeepONetDataset(
         cache,
@@ -56,6 +49,8 @@ def _ds(
         fstar_kind=fstar_kind,
         x_coord=x_coord,
         nom_variant=nom_variant,
+        query_split=query_split,
+        support_stride=support_stride,
     )
 
 
@@ -70,6 +65,8 @@ def _combined(
     fstar_kind: str = "legacy",
     x_coord: str = "x_over_lambda",
     nom_variant: str = "default",
+    query_split: str = "all",
+    support_stride: int = 0,
 ) -> CombinedResidualDataset:
     return CombinedResidualDataset(
         [
@@ -84,6 +81,8 @@ def _combined(
                 fstar_kind=fstar_kind,
                 x_coord=x_coord,
                 nom_variant=nom_variant,
+                query_split=query_split,
+                support_stride=support_stride,
             )
             for _, c, i in parts
         ],
@@ -156,6 +155,13 @@ def run_mix(
     fstar_kind: str = "legacy",
     x_coord: str = "x_over_lambda",
     nom_variant: str = "default",
+    gno_rh_dilate: bool = False,
+    encoder_lr: float | None = None,
+    query_split: str = "all",
+    support_stride: int = 0,
+    kernel_k: int = 2,
+    latent_fno: bool = False,
+    n_latent: int = 32,
 ) -> dict[str, Any]:
     from residual_signed import build_signed_cache
 
@@ -201,6 +207,8 @@ def run_mix(
         fstar_kind=fstar_kind,
         x_coord=x_coord,
         nom_variant=nom_variant,
+        query_split=query_split,
+        support_stride=support_stride,
     )
     val_ds = _combined(
         val_parts,
@@ -212,6 +220,8 @@ def run_mix(
         fstar_kind=fstar_kind,
         x_coord=x_coord,
         nom_variant=nom_variant,
+        query_split=query_split,
+        support_stride=support_stride,
     )
     extra = {
         dname: _ds(
@@ -225,6 +235,8 @@ def run_mix(
             fstar_kind=fstar_kind,
             x_coord=x_coord,
             nom_variant=nom_variant,
+            query_split="all",
+            support_stride=support_stride,
         )
         for dname, (c, i) in tests.items()
     }
@@ -290,6 +302,11 @@ def run_mix(
         col_enc=col_enc,
         stoch_inject=stoch_inject,
         fuse_kind=fuse_kind,
+        gno_rh_dilate=gno_rh_dilate,
+        encoder_lr=encoder_lr,
+        kernel_k=kernel_k,
+        latent_fno=latent_fno,
+        n_latent=n_latent,
     )
 
 
@@ -396,7 +413,7 @@ def main() -> None:
     p.add_argument("--run-name", type=str, default=None)
     p.add_argument(
         "--encoder",
-        choices=["conv", "resunet", "gno", "attn", "gat", "identity"],
+        choices=["conv", "resunet", "gno", "attn", "gat", "identity", "kernel"],
         default="resunet",
     )
     p.add_argument("--serial", action=argparse.BooleanOptionalAction, default=True)
@@ -408,7 +425,17 @@ def main() -> None:
     p.add_argument("--fno-layers", type=int, default=config.FNO_N_LAYERS)
     p.add_argument(
         "--fno-kind",
-        choices=["vanilla", "ufno", "ffno", "afno", "wno", "fno1d", "loglo", "tf", "band2"],
+        choices=[
+            "vanilla",
+            "ufno",
+            "ffno",
+            "afno",
+            "wno",
+            "fno1d",
+            "loglo",
+            "tf",
+            "band2",
+        ],
         default="vanilla",
         help="vanilla FNO, U-FNO, F-FNO, leftover DualPathLOGLO, axial leftover TF, or band2 Hz split.",
     )
@@ -430,6 +457,17 @@ def main() -> None:
         "--freeze-fno",
         action="store_true",
         help="Freeze leftover FNO head; train col_enc/GNO/fuse/trunk.",
+    )
+    p.add_argument(
+        "--gno-rh-dilate",
+        action="store_true",
+        help="Add rH-scaled dilation skip on the recorder GNO (unfreeze GNO; lower encoder LR).",
+    )
+    p.add_argument(
+        "--encoder-lr",
+        type=float,
+        default=None,
+        help="AdamW LR for col_enc/gno when unfrozen. Default 0.1×--lr if --gno-rh-dilate.",
     )
     p.add_argument(
         "--col-enc-depth-tokens",
@@ -478,9 +516,9 @@ def main() -> None:
     )
     p.add_argument(
         "--stoch-layout",
-        choices=["xi_cov", "cov_only", "legacy20"],
+        choices=["xi_cov", "cov_only", "legacy20", "xi_field_acf"],
         default="xi_cov",
-        help="Stochastic branch: ξ+CoV (shipped), CoV only, or legacy 20-d.",
+        help="Stochastic branch: ξ+CoV (shipped), CoV only, legacy 20-d, or field-FFT ξ+CoV+ACF.",
     )
     p.add_argument(
         "--fstar",
@@ -500,6 +538,35 @@ def main() -> None:
         choices=["default", "sample_xi"],
         default="default",
         help="default = cached TF_1D_nom (ξ=0.05); sample_xi = tf1d_nom_xi extras.",
+    )
+    p.add_argument(
+        "--query-split",
+        choices=["all", "even", "interior"],
+        default="all",
+        help="Train/val labeled stations. even = hold out odds; interior drops r0/r20.",
+    )
+    p.add_argument(
+        "--support-stride",
+        type=int,
+        default=None,
+        help="Kernel support column stride on the 500 m strip (default 5 if --encoder kernel).",
+    )
+    p.add_argument(
+        "--kernel-k",
+        type=int,
+        default=2,
+        help="Nearest support columns for kernel GNO (physical |Δx|).",
+    )
+    p.add_argument(
+        "--latent-fno",
+        action="store_true",
+        help="Phase 1b: FNO on a fixed latent x-grid, then decode to query x.",
+    )
+    p.add_argument(
+        "--n-latent",
+        type=int,
+        default=32,
+        help="Latent x-grid size for --latent-fno.",
     )
     p.add_argument(
         "--col-enc",
@@ -644,7 +711,7 @@ def main() -> None:
         raise SystemExit(
             "IID* mixes have no three-layer val slice; use --val-monitor smooth_l1"
         )
-    _set_local_ood_env()
+    config.set_local_ood_env()
     ARCH_DIR.mkdir(parents=True, exist_ok=True)
     fno_modes = _parse_modes(args.fno_modes)
     if args.dump_m700:
@@ -674,10 +741,14 @@ def main() -> None:
                 run_name = f"{args.mix}_attn"
             elif args.encoder == "gat":
                 run_name = f"{args.mix}_gat"
+            elif args.encoder == "kernel":
+                run_name = f"{args.mix}_kernel"
             if args.fno:
                 run_name = f"{run_name}_fno"
                 if args.fno_kind != "vanilla":
                     run_name = f"{run_name}_{args.fno_kind}"
+            if args.latent_fno:
+                run_name = f"{run_name}_latfno"
         if args.iid_frac is not None:
             run_name = f"{run_name}_iid{int(100 * args.iid_frac)}"
         if args.freeze_gno:
@@ -726,12 +797,18 @@ def main() -> None:
             run_name = f"{run_name}_ff{int(args.trunk_scales)}"
         if args.stoch_layout != "xi_cov":
             run_name = f"{run_name}_{args.stoch_layout}"
+        if args.gno_rh_dilate:
+            run_name = f"{run_name}_rhdilate"
         if args.fstar_kind != "legacy":
             run_name = f"{run_name}_f0{args.fstar_kind}"
         if args.x_coord != "x_over_lambda":
             run_name = f"{run_name}_{args.x_coord}"
         if args.nom_variant != "default":
             run_name = f"{run_name}_{args.nom_variant}"
+        if args.query_split != "all":
+            run_name = f"{run_name}_q{args.query_split}"
+        if args.latent_fno and args.run_name is None and "_latfno" not in run_name:
+            run_name = f"{run_name}_latfno"
     radial_w = args.radial_loss
     if radial_w is None:
         radial_w = config.RADIAL_LOSS_WEIGHT if args.log_residual else 0.0
@@ -739,12 +816,23 @@ def main() -> None:
     train_kind = args.fno_kind
     if args.boost_ckpt is not None:
         train_kind = booster_kind
+    residual_fno = bool(args.fno)
+    if args.encoder == "kernel" and residual_fno and not args.latent_fno:
+        print(
+            "[arch] FNO-on-R is off for kernel GNO (variable queries). "
+            "Use --latent-fno for Phase 1b.",
+            flush=True,
+        )
+        residual_fno = False
+    support_stride = args.support_stride
+    if support_stride is None:
+        support_stride = config.SUPPORT_STRIDE if args.encoder == "kernel" else 0
     run_mix(
         mix_tag=args.mix,
         run_name=run_name,
         encoder=args.encoder,
         serial=args.serial,
-        residual_fno=args.fno,
+        residual_fno=residual_fno,
         iid_frac=args.iid_frac,
         aux_tf_rel_l2=args.aux_tf_rel_l2,
         aux_peak_band=args.aux_peak_band,
@@ -796,6 +884,13 @@ def main() -> None:
         fstar_kind=args.fstar_kind,
         x_coord=args.x_coord,
         nom_variant=args.nom_variant,
+        gno_rh_dilate=args.gno_rh_dilate,
+        encoder_lr=args.encoder_lr,
+        query_split=args.query_split,
+        support_stride=int(support_stride),
+        kernel_k=args.kernel_k,
+        latent_fno=args.latent_fno,
+        n_latent=args.n_latent,
     )
 
 

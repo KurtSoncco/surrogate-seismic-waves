@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import importlib.util
 import json
 import sys
 from dataclasses import dataclass
@@ -54,6 +53,11 @@ from capability_check import (  # noqa: E402
     compute_ground_truth_tf,
     load_model,
 )
+from seed_robustness.seed_robustness_check import (  # noqa: E402
+    _load_sobol_module,
+    central_recorder_index,
+    write_csv,
+)
 
 DEFAULT_SEISKIT_DATA = Path.home() / "seiskit" / "neural-operator" / "data"
 DEFAULT_OUT_ROOT = (
@@ -75,17 +79,6 @@ class RunRecord:
     h_discretized: float
     cov: float
     manifest_sample_idx: int
-
-
-def _load_sobol_module(seiskit_data_dir: Path):
-    sobol_path = seiskit_data_dir / "sobol.py"
-    spec = importlib.util.spec_from_file_location("sobol", sobol_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load {sobol_path}")
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["sobol"] = mod
-    spec.loader.exec_module(mod)
-    return mod
 
 
 def sobol_physics_by_run_index(
@@ -197,23 +190,8 @@ def find_peak_frequency(
     return float(f_win[best_local]), float(y_win[best_local])
 
 
-def central_recorder_index() -> int:
-    rec = config.recorder_x_indices()
-    return int(np.argmin(np.abs(rec - config.NX // 2)))
-
-
 def h5_path(h5_dir: Path, run_index: int) -> Path:
     return h5_dir / f"run_{run_index}.h5"
-
-
-def write_csv(path: Path, rows: list[dict]) -> None:
-    if not rows:
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        w.writeheader()
-        w.writerows(rows)
 
 
 def _dist_summary(x: np.ndarray) -> dict[str, float]:

@@ -37,6 +37,8 @@ def corpus_root(name: str) -> Path:
         return config.ood_dipping_root()
     if key in ("three_layer", "ood_three_layer", "threelayer"):
         return config.ood_three_layer_root()
+    if key in ("corner_is", "corner"):
+        return config.corner_is_root()
     raise ValueError(f"Unknown OOD corpus {name!r}")
 
 
@@ -44,6 +46,7 @@ def default_ood_roots() -> dict[str, Path]:
     return {
         "ood_dipping": config.ood_dipping_root(),
         "ood_three_layer": config.ood_three_layer_root(),
+        "corner_is": config.corner_is_root(),
     }
 
 
@@ -302,7 +305,7 @@ def _ttf_batch_seiskit(
     *,
     dt: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    from seiskit.ttf.TTF import TTF_batch_fast  # noqa: WPS433
+    from seiskit.ttf.TTF import TTF_batch_fast  # noqa: PLC0415
 
     freq, mags = TTF_batch_fast(
         base_2d,
@@ -503,10 +506,11 @@ def probe_corpus(root: Path) -> dict[str, Any]:
             "path": str(h5s[0]),
             "Vs_realization_2D": extra["vs_shape"],
             "Damping_zeta": tuple(int(x) for x in zeta.shape),
-            "params": {k: _jsonable(v) for k, v in params.items()},
+            "params": {k: jsonable(v, nan_to_none=False) for k, v in params.items()},
             "param_keys": extra["param_keys"],
             "grid_attrs": {
-                k: _jsonable(v) for k, v in extra.get("grid_attrs", {}).items()
+                k: jsonable(v, nan_to_none=False)
+                for k, v in extra.get("grid_attrs", {}).items()
             },
             "accel_n_channels": extra.get("accel_n_channels"),
             "accel_shape": extra.get("accel_shape"),
@@ -525,16 +529,26 @@ def probe_corpus(root: Path) -> dict[str, Any]:
     }
 
 
-def _jsonable(v: Any) -> Any:
-    if isinstance(v, (bytes, bytearray)):
-        return v.decode("utf-8", errors="replace")
-    if isinstance(v, (np.floating, np.integer)):
-        return v.item()
-    if isinstance(v, np.ndarray):
-        return v.tolist()
-    if isinstance(v, (str, int, float, bool)) or v is None:
-        return v
-    return str(v)
+def jsonable(obj: Any, *, nan_to_none: bool = True) -> Any:
+    """Recursively convert numpy / bytes / containers into JSON-serialisable values."""
+    if isinstance(obj, dict):
+        return {str(k): jsonable(v, nan_to_none=nan_to_none) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [jsonable(v, nan_to_none=nan_to_none) for v in obj]
+    if isinstance(obj, np.ndarray):
+        return jsonable(obj.tolist(), nan_to_none=nan_to_none)
+    if isinstance(obj, (bytes, bytearray)):
+        return obj.decode("utf-8", errors="replace")
+    if isinstance(obj, (np.bool_, bool)):
+        return bool(obj)
+    if isinstance(obj, (np.floating, float)):
+        x = float(obj)
+        return None if nan_to_none and not np.isfinite(x) else x
+    if isinstance(obj, (np.integer, int)):
+        return int(obj)
+    if isinstance(obj, str) or obj is None:
+        return obj
+    return str(obj)
 
 
 def parse_cache_tag(cache_tag: str) -> tuple[int, int]:

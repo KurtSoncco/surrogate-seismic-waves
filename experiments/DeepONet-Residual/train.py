@@ -27,7 +27,14 @@ from torch import nn
 from torch.utils.data import DataLoader, Subset, WeightedRandomSampler
 from tqdm import tqdm, trange
 from wandb_util import finish_wandb, init_wandb, log_wandb, summary_wandb
-from unified_metrics import score_leftover_batch, tf_from_residual
+from unified_metrics import (
+    flat_pearson,
+    flat_r2,
+    flat_rel_l2,
+    pearson_across_freq,
+    score_leftover_batch,
+    tf_from_residual,
+)
 from spectral_aux import (
     DCT_CUTOFF,
     band_normalized_loss,
@@ -42,7 +49,9 @@ from data import (
     TrunkSet,
     iid_resample_sampler,
     make_splits,
+    remap_stoch_last_dim,
     stoch_dim_from_dataset,
+    stoch_layout_from_dim,
 )
 
 
@@ -140,15 +149,47 @@ def _pad_trunk_stats_to(stats: dict[str, torch.Tensor], trunk_dim: int) -> None:
     )
 
 
+def _pad_stoch_stats_to(stats: dict[str, torch.Tensor], stoch_dim: int) -> None:
+    """Match ship stoch_mean/std when the branch layout changes.
+
+    Growing (ξ+CoV → +ACF) pads new channels with mean 0 / std 1. Shrinking
+    (legacy20 → xi_cov / xi_field_acf) keeps ξ and CoV and drops rH / aHV /
+    ξ_damp. Unmappable widths still raise.
+    """
+    mean = stats["stoch_mean"]
+    std = stats["stoch_std"]
+    d = int(mean.shape[-1])
+    if d == stoch_dim:
+        return
+    try:
+        src_layout = stoch_layout_from_dim(d)
+        dst_layout = stoch_layout_from_dim(stoch_dim)
+        stats["stoch_mean"] = remap_stoch_last_dim(mean, stoch_dim, new_fill=0.0)
+        stats["stoch_std"] = remap_stoch_last_dim(std, stoch_dim, new_fill=1.0)
+    except ValueError as exc:
+        raise ValueError(
+            f"checkpoint stoch stats dim {d} exceeds branch dim {stoch_dim}"
+        ) from exc
+    print(
+        f"[train] remapped stoch stats {d} → {stoch_dim} "
+        f"({src_layout} → {dst_layout}; new channels mean=0 std=1)",
+        flush=True,
+    )
+
+
 def apply_checkpoint_stats(stats: dict[str, torch.Tensor], *datasets) -> None:
     trunk_dim = None
+    stoch_dim = None
     for ds in datasets:
         cache = getattr(ds, "_cache", None)
         if cache:
             trunk_dim = int(cache[0]["trunk_y"].shape[-1])
+            stoch_dim = int(cache[0]["stoch"].shape[-1])
             break
     if trunk_dim is not None:
         _pad_trunk_stats_to(stats, trunk_dim)
+    if stoch_dim is not None:
+        _pad_stoch_stats_to(stats, stoch_dim)
     for ds in datasets:
         apply_norms(ds, stats)
 
@@ -209,25 +250,41 @@ def _mirror_vanilla_fno_into_band2(state: dict[str, Any]) -> dict[str, Any]:
 def _compatible_state(
     model: nn.Module, state: dict[str, Any]
 ) -> tuple[dict[str, Any], list[str]]:
-    """Drop keys whose shapes do not match (modes-up / leftover-head swaps)."""
+    """Drop keys whose shapes do not match (modes-up / leftover-head swaps).
+
+    Also maps DeepONetFNO ``base.*`` keys onto an unwrapped kernel GNO so ship
+    ``col_enc`` / fuse / trunk can warm-start when FNO-on-R is off.
+    """
     current = model.state_dict()
     out: dict[str, Any] = {}
     skipped: list[str] = []
+
+    def _candidates(key: str) -> list[str]:
+        names = [key]
+        if key.startswith("base."):
+            names.append(key[5:])
+        else:
+            names.append("base." + key)
+        return names
+
     for key, val in state.items():
-        if key not in current:
-            continue
-        if tuple(current[key].shape) != tuple(val.shape):
-            widened = (
-                _zero_pad_input_dim(current[key], val)
-                if "trunk" in str(key).lower()
-                else None
-            )
-            if widened is None:
-                skipped.append(str(key))
+        for ck in _candidates(str(key)):
+            if ck not in current:
                 continue
-            out[key] = widened
-            continue
-        out[key] = val
+            if tuple(current[ck].shape) == tuple(val.shape):
+                out.setdefault(ck, val)
+                break
+            adapted = None
+            key_l = str(ck).lower()
+            if "stoch_mlp" in key_l:
+                adapted = _adapt_stoch_input_dim(current[ck], val)
+            elif "trunk" in key_l:
+                adapted = _zero_pad_input_dim(current[ck], val)
+            if adapted is not None:
+                out.setdefault(ck, adapted)
+                break
+            skipped.append(str(key))
+            break
     return out, skipped
 
 
@@ -244,6 +301,24 @@ def _zero_pad_input_dim(target: Any, val: Any) -> Any | None:
     out = torch.zeros_like(target)
     out[:, : val.shape[1]] = val
     return out
+
+
+def _adapt_stoch_input_dim(target: Any, val: Any) -> Any | None:
+    """Warm-start ``stoch_mlp`` when the branch layout is not a prefix pad.
+
+    Prefix copy of a 20-d legacy weight onto 17/18-d would treat rH/aHV as
+    CoV/ACF. Named remap keeps ξ + CoV and zero-fills channels the dest adds.
+    """
+    if val.ndim != 2 or target.ndim != 2:
+        return None
+    if target.shape[0] != val.shape[0]:
+        return None
+    if target.shape[1] == val.shape[1]:
+        return val
+    try:
+        return remap_stoch_last_dim(val, int(target.shape[1]), new_fill=0.0)
+    except ValueError:
+        return _zero_pad_input_dim(target, val)
 
 
 def _load_init_weights(
@@ -329,7 +404,15 @@ def evaluate(
         tf1d = batch["tf1d"].to(device)
         tf2d = batch["tf2d"].to(device)
         pred_n = _forward(
-            model, fields, stoch, trunk_y, mode, geom_flags=batch.get("geom_flags")
+            model,
+            fields,
+            stoch,
+            trunk_y,
+            mode,
+            geom_flags=batch.get("geom_flags"),
+            rH=batch.get("rH"),
+            query_x=batch.get("query_x"),
+            support_x=batch.get("support_x"),
         )
         loss_sum += float(crit(pred_n, target_n).item())
         n_batches += 1
@@ -348,14 +431,18 @@ def evaluate(
         tf2d_all.append(tf2d.cpu().numpy().ravel())
         tf_hat_all.append(tf_hat.numpy().ravel())
         if "f0_tts" in batch:
-            f0_all.append(np.asarray(batch["f0_tts"].cpu().numpy(), dtype=np.float64).ravel())
+            f0_all.append(
+                np.asarray(batch["f0_tts"].cpu().numpy(), dtype=np.float64).ravel()
+            )
         core = gno_core(model)
         hat = getattr(core, "last_tf1d_hat", None)
         if hat is not None:
             tf1d_hat_all.append(hat.detach().cpu().numpy().ravel())
         gate = getattr(model, "last_gate", None)
         if gate is not None:
-            gate_all.append(gate.detach().cpu().numpy().reshape(gate.shape[0], -1).mean(-1))
+            gate_all.append(
+                gate.detach().cpu().numpy().reshape(gate.shape[0], -1).mean(-1)
+            )
     y = np.concatenate(y_all)
     p = np.concatenate(pred_all)
     tf1d = np.concatenate(tf1d_all)
@@ -377,17 +464,17 @@ def evaluate(
 
     # Lazy baselines: predict R̂=0 (TF̂ = TF_1D only)
     zero = np.zeros_like(y)
-    r2_tf_1d_only = _r2(tf2d, tf1d)
-    r2_tf = _r2(tf2d, tf_hat)
+    r2_tf_1d_only = flat_r2(tf2d, tf1d)
+    r2_tf = flat_r2(tf2d, tf_hat)
 
     mets = {
         # --- primary: residual learning ---
         "smooth_l1": loss_sum / max(n_batches, 1),
-        "r2_R": _r2(y, p),
-        "rel_l2_R": _rel_l2(y, p),
-        "pearson_R": _pearson(y, p),
-        "pearson_R_freq": _pearson_across_freq(y, p, n_rec=n_rec, n_freq=n_freq),
-        "r2_R_zero": _r2(y, zero),  # always ~0 if mean≈0; sanity
+        "r2_R": flat_r2(y, p),
+        "rel_l2_R": flat_rel_l2(y, p),
+        "pearson_R": flat_pearson(y, p),
+        "pearson_R_freq": pearson_across_freq(y, p, n_rec=n_rec, n_freq=n_freq),
+        "r2_R_zero": flat_r2(y, zero),  # always ~0 if mean≈0; sanity
         "smooth_l1_R_raw": float(
             np.mean(np.where(np.abs(y) < 1.0, 0.5 * y**2, np.abs(y) - 0.5))
         ),
@@ -402,16 +489,16 @@ def evaluate(
         ),
         # --- secondary: TF recon (must beat TF_1D-only) ---
         "r2_TF": r2_tf,
-        "rel_l2_TF": _rel_l2(tf2d, tf_hat),
+        "rel_l2_TF": flat_rel_l2(tf2d, tf_hat),
         "rel_l1_TF": leftover.get("rel_l1_tf_hat", _rel_l1(tf2d, tf_hat)),
         "rel_l1_TF_1d_only": leftover.get("rel_l1_tf_1d", _rel_l1(tf2d, tf1d)),
-        "rel_l2_TF_1d_only": _rel_l2(tf2d, tf1d),
+        "rel_l2_TF_1d_only": flat_rel_l2(tf2d, tf1d),
         "r2_TF_1d_only": r2_tf_1d_only,
         "delta_r2_TF": r2_tf - r2_tf_1d_only,
-        "pearson_TF_freq": _pearson_across_freq(
+        "pearson_TF_freq": pearson_across_freq(
             tf2d, tf_hat, n_rec=n_rec, n_freq=n_freq
         ),
-        "pearson_TF_1d_only_freq": _pearson_across_freq(
+        "pearson_TF_1d_only_freq": pearson_across_freq(
             tf2d, tf1d, n_rec=n_rec, n_freq=n_freq
         ),
         "harm_rate": leftover["harm_rate"],
@@ -428,7 +515,7 @@ def evaluate(
     }
     if tf1d_hat_all:
         h = np.concatenate(tf1d_hat_all)
-        mets["pearson_1d_hat"] = _pearson(tf1d, h)
+        mets["pearson_1d_hat"] = flat_pearson(tf1d, h)
         mets["learned_1d_kill"] = float(
             mets["pearson_1d_hat"] < config.LEARNED_1D_PEARSON_KILL
         )
@@ -438,55 +525,10 @@ def evaluate(
     return mets
 
 
-def _r2(y: np.ndarray, p: np.ndarray) -> float:
-    ss_res = float(np.sum((y - p) ** 2))
-    ss_tot = float(np.sum((y - y.mean()) ** 2))
-    return 1.0 - ss_res / max(ss_tot, 1e-12)
-
-
-def _rel_l2(y: np.ndarray, p: np.ndarray) -> float:
-    return float(np.linalg.norm(y - p) / max(np.linalg.norm(y), 1e-12))
-
-
 def _rel_l1(y: np.ndarray, p: np.ndarray) -> float:
     y = np.asarray(y, dtype=np.float64)
     p = np.asarray(p, dtype=np.float64)
     return float(np.sum(np.abs(y - p)) / max(np.sum(np.abs(y)), 1e-12))
-
-
-def _pearson(y: np.ndarray, p: np.ndarray) -> float:
-    y = y.astype(np.float64).ravel()
-    p = p.astype(np.float64).ravel()
-    if y.size < 2 or y.std() < 1e-12 or p.std() < 1e-12:
-        return 0.0
-    return float(np.corrcoef(y, p)[0, 1])
-
-
-def _pearson_across_freq(
-    y: np.ndarray,
-    p: np.ndarray,
-    *,
-    n_rec: int,
-    n_freq: int,
-) -> float:
-    """Mean Pearson correlation of spectra along frequency for each (sample, recorder)."""
-    y = y.astype(np.float64).ravel()
-    p = p.astype(np.float64).ravel()
-    q = n_rec * n_freq
-    if y.size % q != 0:
-        # fallback: global pearson if layout unexpected
-        return _pearson(y, p)
-    n_s = y.size // q
-    Y = y.reshape(n_s, n_rec, n_freq)
-    P = p.reshape(n_s, n_rec, n_freq)
-    cors: list[float] = []
-    for i in range(n_s):
-        for r in range(n_rec):
-            a, b = Y[i, r], P[i, r]
-            if a.std() < 1e-12 or b.std() < 1e-12:
-                continue
-            cors.append(float(np.corrcoef(a, b)[0, 1]))
-    return float(np.mean(cors)) if cors else 0.0
 
 
 def _forward(
@@ -496,10 +538,23 @@ def _forward(
     trunk_y: torch.Tensor,
     mode: BranchMode,
     geom_flags: torch.Tensor | None = None,
+    rH: torch.Tensor | None = None,
+    query_x: torch.Tensor | None = None,
+    support_x: torch.Tensor | None = None,
 ) -> torch.Tensor:
     kwargs: dict[str, torch.Tensor] = {}
     if geom_flags is not None and getattr(model, "accepts_geom_flags", False):
         kwargs["geom_flags"] = geom_flags.to(fields.device)
+    if getattr(model, "accepts_query_x", False):
+        if query_x is not None:
+            kwargs["query_x"] = query_x.to(fields.device)
+        if support_x is not None:
+            kwargs["support_x"] = support_x.to(fields.device)
+    if rH is not None:
+        rH = rH.to(fields.device)
+    from model import apply_gno_dilation
+
+    apply_gno_dilation(model, rH)
     if mode == "stoch_only":
         return model(None, stoch, trunk_y, **kwargs)
     if mode == "fields_only":
@@ -532,6 +587,10 @@ def _arch_kwargs(
     col_enc: str = "conv",
     stoch_inject: str = "mlp",
     fuse_kind: str = "mlp",
+    gno_rh_dilate: bool = False,
+    kernel_k: int = 2,
+    latent_fno: bool = False,
+    n_latent: int = 32,
 ) -> dict[str, Any]:
     return {
         "residual_fno": bool(residual_fno),
@@ -550,7 +609,9 @@ def _arch_kwargs(
         "col_enc_depth_tokens": int(col_enc_depth_tokens),
         "boost": bool(boost),
         "boost_fno_kind": str(boost_fno_kind),
-        "boost_width": int(boost_width) if boost_width is not None else max(8, int(fno_width) // 2),
+        "boost_width": int(boost_width)
+        if boost_width is not None
+        else max(8, int(fno_width) // 2),
         "boost_shrink": float(config.BOOST_SHRINK),
         "n_mscale_trunk": int(n_mscale_trunk),
         "n_mscale_branch": int(n_mscale_branch),
@@ -558,6 +619,10 @@ def _arch_kwargs(
         "col_enc": str(col_enc),
         "stoch_inject": str(stoch_inject),
         "fuse_kind": str(fuse_kind),
+        "gno_rh_dilate": bool(gno_rh_dilate),
+        "kernel_k": int(kernel_k),
+        "latent_fno": bool(latent_fno),
+        "n_latent": int(n_latent),
     }
 
 
@@ -664,6 +729,11 @@ def train_from_datasets(
     col_enc: str = "conv",
     stoch_inject: str = "mlp",
     fuse_kind: str = "mlp",
+    gno_rh_dilate: bool = False,
+    encoder_lr: float | None = None,
+    kernel_k: int = 2,
+    latent_fno: bool = False,
+    n_latent: int = 32,
 ) -> dict[str, Any]:
     """Train on already-built datasets; evaluate extra_tests with train-split norms."""
     from torch.utils.data import DataLoader as _DL
@@ -713,7 +783,9 @@ def train_from_datasets(
             )
     monitor = str(val_monitor or "smooth_l1")
     if monitor not in ("smooth_l1", "three_layer"):
-        raise ValueError(f"val_monitor must be smooth_l1 or three_layer, got {monitor!r}")
+        raise ValueError(
+            f"val_monitor must be smooth_l1 or three_layer, got {monitor!r}"
+        )
     if monitor == "three_layer" and "ood_three_layer" not in val_domain_loaders:
         raise ValueError(
             "val_monitor=three_layer needs a three-layer val slice on val_ds"
@@ -764,6 +836,10 @@ def train_from_datasets(
         col_enc=col_enc,
         stoch_inject=stoch_inject,
         fuse_kind=fuse_kind,
+        gno_rh_dilate=gno_rh_dilate,
+        kernel_k=kernel_k,
+        latent_fno=latent_fno,
+        n_latent=n_latent,
     )
     arch_kw["boost_shrink"] = float(boost_shrink)
     build_kw = dict(arch_kw)
@@ -850,25 +926,70 @@ def train_from_datasets(
         arch_kw["boost_width"] = int(booster_width)
         print(f"[train] frozen leftover from {boost_ckpt}", flush=True)
     if init_ckpt is not None and not boosting:
-        blob = init_blob or torch.load(init_ckpt, map_location="cpu", weights_only=False)
+        blob = init_blob or torch.load(
+            init_ckpt, map_location="cpu", weights_only=False
+        )
         _load_init_weights(model, blob, fno_kind=str(fno_kind), init_ckpt=init_ckpt)
     if freeze_gno:
         n_frozen = freeze_gno_encoder(model)
         print(f"[train] froze GNO encoder params n={n_frozen}", flush=True)
         if n_frozen == 0:
-            print("[train] WARNING: --freeze-gno found no col_enc/gno params", flush=True)
+            print(
+                "[train] WARNING: --freeze-gno found no col_enc/gno params", flush=True
+            )
+        if str(field_encoder) == "kernel":
+            print(
+                "[train] kernel mixer stays trainable (--freeze-gno only froze col_enc)",
+                flush=True,
+            )
     if freeze_fno:
         n_fno = freeze_fno_head(model)
         print(f"[train] froze FNO leftover head params n={n_fno}", flush=True)
         if n_fno == 0:
-            print("[train] WARNING: --freeze-fno found no DeepONetFNO params", flush=True)
+            print(
+                "[train] WARNING: --freeze-fno found no DeepONetFNO params", flush=True
+            )
 
-    opt = torch.optim.AdamW(
-        filter(lambda p: p.requires_grad, model.parameters()),
-        lr=lr,
-        betas=config.ADAMW_BETAS,
-        weight_decay=config.WEIGHT_DECAY,
-    )
+    enc_lr = encoder_lr
+    if enc_lr is None and gno_rh_dilate and not freeze_gno:
+        enc_lr = float(lr) * 0.1
+    trainable = [p for p in model.parameters() if p.requires_grad]
+    if enc_lr is not None and enc_lr > 0 and not freeze_gno:
+        core = gno_core(model)
+        enc_params: list[nn.Parameter] = []
+        enc_ids: set[int] = set()
+        for name in ("col_enc", "gno"):
+            sub = getattr(core, name, None)
+            if sub is None:
+                continue
+            for p in sub.parameters():
+                if p.requires_grad:
+                    enc_params.append(p)
+                    enc_ids.add(id(p))
+        other = [p for p in trainable if id(p) not in enc_ids]
+        groups = []
+        if other:
+            groups.append({"params": other, "lr": lr})
+        if enc_params:
+            groups.append({"params": enc_params, "lr": float(enc_lr)})
+            print(
+                f"[train] encoder lr={float(enc_lr):.1e} "
+                f"(col_enc/gno n={sum(p.numel() for p in enc_params)})",
+                flush=True,
+            )
+        opt = torch.optim.AdamW(
+            groups or trainable,
+            lr=lr,
+            betas=config.ADAMW_BETAS,
+            weight_decay=config.WEIGHT_DECAY,
+        )
+    else:
+        opt = torch.optim.AdamW(
+            trainable,
+            lr=lr,
+            betas=config.ADAMW_BETAS,
+            weight_decay=config.WEIGHT_DECAY,
+        )
     sched: torch.optim.lr_scheduler.ReduceLROnPlateau | None = None
     if use_lr_sched:
         sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -879,7 +1000,9 @@ def train_from_datasets(
             min_lr=float(lr_sched_min),
             threshold=1e-8,
         )
-    beta = float(smooth_l1_beta if smooth_l1_beta is not None else config.SMOOTH_L1_BETA)
+    beta = float(
+        smooth_l1_beta if smooth_l1_beta is not None else config.SMOOTH_L1_BETA
+    )
     crit = nn.SmoothL1Loss(beta=beta)
     radial_crit = _radial_loss_mod()() if radial_loss_weight > 0 else None
     t_mean = stats["target_mean"].to(device)
@@ -919,6 +1042,11 @@ def train_from_datasets(
             "col_enc": str(col_enc),
             "stoch_inject": str(stoch_inject),
             "fuse_kind": str(fuse_kind),
+            "gno_rh_dilate": bool(gno_rh_dilate),
+            "kernel_k": int(kernel_k),
+            "latent_fno": bool(latent_fno),
+            "n_latent": int(n_latent),
+            "encoder_lr": None if encoder_lr is None else float(encoder_lr),
             "seed": seed,
             "iid_frac": iid_frac,
             "aux_tf_rel_l2": aux_tf_rel_l2,
@@ -966,6 +1094,9 @@ def train_from_datasets(
                 trunk_y,
                 branch_mode,
                 geom_flags=batch.get("geom_flags"),
+                rH=batch.get("rH"),
+                query_x=batch.get("query_x"),
+                support_x=batch.get("support_x"),
             )
             loss = crit(pred, target_t)
             if radial_crit is not None:
@@ -1014,7 +1145,12 @@ def train_from_datasets(
                 loss = loss + float(band_weight) * band_normalized_loss(
                     pr, rt, band_masks, band_scales
                 )
-            if aux_tf_rel_l2 > 0 or aux_peak_band > 0 or aux_logspec > 0 or aux_logspec_full > 0:
+            if (
+                aux_tf_rel_l2 > 0
+                or aux_peak_band > 0
+                or aux_logspec > 0
+                or aux_logspec_full > 0
+            ):
                 pred_raw = pred * t_std + t_mean
                 tf1d = batch["tf1d"].to(device)
                 tf2d = batch["tf2d"].to(device)
@@ -1256,6 +1392,8 @@ def train_from_datasets(
             "fstar_kind": str(getattr(train_ds, "fstar_kind", "legacy")),
             "x_coord": str(getattr(train_ds, "x_coord", "x_over_lambda")),
             "nom_variant": str(getattr(train_ds, "nom_variant", "default")),
+            "query_split": str(getattr(train_ds, "query_split", "all")),
+            "support_stride": int(getattr(train_ds, "support_stride", 0) or 0),
             "pod_modes": None if pod_modes is None else np.asarray(pod_modes),
             "pod_mean": None if pod_mean is None else np.asarray(pod_mean),
             "boost_ckpt": str(boost_ckpt) if boost_ckpt else None,
@@ -1287,6 +1425,11 @@ def train_from_datasets(
         "col_enc": str(col_enc),
         "stoch_inject": str(stoch_inject),
         "fuse_kind": str(fuse_kind),
+        "gno_rh_dilate": bool(gno_rh_dilate),
+        "kernel_k": int(kernel_k),
+        "latent_fno": bool(latent_fno),
+        "n_latent": int(n_latent),
+        "encoder_lr": None if encoder_lr is None else float(encoder_lr),
         "best_epoch": int(best_epoch),
         "seed": seed,
         "iid_frac": iid_frac,
@@ -1305,6 +1448,8 @@ def train_from_datasets(
         "fstar_kind": str(getattr(train_ds, "fstar_kind", "legacy")),
         "x_coord": str(getattr(train_ds, "x_coord", "x_over_lambda")),
         "nom_variant": str(getattr(train_ds, "nom_variant", "default")),
+        "query_split": str(getattr(train_ds, "query_split", "all")),
+        "support_stride": int(getattr(train_ds, "support_stride", 0) or 0),
         "three_layer_kill": bool(
             (per_domain.get("ood_three_layer") or {}).get("rel_l2_TF", 0)
             > config.THREE_LAYER_KILL_REL_L2
@@ -1453,7 +1598,7 @@ def main() -> None:
     p.add_argument("--no-early-stop", action="store_true")
     p.add_argument(
         "--field-encoder",
-        choices=["conv", "resunet", "gno", "attn", "gat"],
+        choices=["conv", "resunet", "gno", "attn", "gat", "kernel"],
         default=config.DEFAULT_FIELD_ENCODER,
     )
     p.add_argument(

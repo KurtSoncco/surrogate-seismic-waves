@@ -80,7 +80,9 @@ def collect_campaign(
                 "run_index": idx,
                 "h5_path": str(h5_path.resolve()),
                 "rf_seed": row.get("rf_seed", row.get("seed1", "")),
-                "H_discretized": row.get("H_discretized", row.get("H1_discretized", "")),
+                "H_discretized": row.get(
+                    "H_discretized", row.get("H1_discretized", "")
+                ),
                 "CoV": row.get("CoV", row.get("CoV1", "")),
                 "f0_effective": row.get("f0_effective", ""),
                 "nz_actual": "",
@@ -141,7 +143,9 @@ def main() -> int:
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     np.save(args.out_dir / "ood_tf_per_sample.npy", ood_tf)
-    with (args.out_dir / "ood_manifest.csv").open("w", newline="", encoding="utf-8") as f:
+    with (args.out_dir / "ood_manifest.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as f:
         w = csv.DictWriter(f, fieldnames=list(ood_rows[0].keys()))
         w.writeheader()
         w.writerows(ood_rows)
@@ -192,9 +196,7 @@ def main() -> int:
     ood_train_rows = [ood_rows[i] for i in train_idx]
     # Align columns
     all_keys = list(
-        dict.fromkeys(
-            list(fixed_id[0].keys()) + list(ood_train_rows[0].keys())
-        )
+        dict.fromkeys(list(fixed_id[0].keys()) + list(ood_train_rows[0].keys()))
     )
     mix_rows = []
     for r in fixed_id + ood_train_rows:
@@ -206,7 +208,9 @@ def main() -> int:
     assert mix_tf.shape[0] == len(mix_rows)
 
     np.save(args.out_dir / "mix_tf_per_sample.npy", mix_tf)
-    with (args.out_dir / "mix_manifest.csv").open("w", newline="", encoding="utf-8") as f:
+    with (args.out_dir / "mix_manifest.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as f:
         w = csv.DictWriter(f, fieldnames=all_keys)
         w.writeheader()
         w.writerows(mix_rows)
@@ -225,7 +229,9 @@ def main() -> int:
         "mix_n": int(mix_tf.shape[0]),
         "mix_tf_shape": list(mix_tf.shape),
     }
-    (args.out_dir / "prep_meta.json").write_text(json.dumps({**split, **meta}, indent=2))
+    (args.out_dir / "prep_meta.json").write_text(
+        json.dumps({**split, **meta}, indent=2)
+    )
     print(json.dumps(meta, indent=2))
     print(f"[prep] Wrote mix data to {args.out_dir}")
     return 0

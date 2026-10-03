@@ -54,7 +54,9 @@ def apply_nature_style() -> None:
     )
 
 
-def figsize(width: str = "double", *, height_mm: float | None = None) -> tuple[float, float]:
+def figsize(
+    width: str = "double", *, height_mm: float | None = None
+) -> tuple[float, float]:
     w = DOUBLE_COL_IN if width == "double" else SINGLE_COL_IN
     if height_mm is None:
         h = w * (0.72 if width == "double" else 1.05)

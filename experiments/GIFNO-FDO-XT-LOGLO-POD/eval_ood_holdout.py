@@ -103,16 +103,14 @@ def main() -> int:
             "rel_l2_mean": float(np.mean([g["rel_l2_mean"] for g in group])),
             "pearson_mean": float(np.mean([g["pearson_mean"] for g in group])),
         }
-        zs_vals = [g["zero_shot_rel_l2"] for g in group if g["zero_shot_rel_l2"] is not None]
+        zs_vals = [
+            g["zero_shot_rel_l2"] for g in group if g["zero_shot_rel_l2"] is not None
+        ]
         if zs_vals:
             entry["zero_shot_rel_l2_mean"] = float(np.mean(zs_vals))
             entry["delta_rel_l2_mean"] = float(
                 np.mean(
-                    [
-                        g["delta_rel_l2"]
-                        for g in group
-                        if g["delta_rel_l2"] is not None
-                    ]
+                    [g["delta_rel_l2"] for g in group if g["delta_rel_l2"] is not None]
                 )
             )
         summary["campaigns"][camp] = entry

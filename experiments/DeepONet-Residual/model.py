@@ -142,12 +142,16 @@ class ResUNetFieldEncoder(nn.Module):
         return self.head(d0)
 
 
-FieldEncoderKind = Literal["conv", "resunet", "gno", "attn", "gat", "identity"]
+FieldEncoderKind = Literal[
+    "conv", "resunet", "gno", "attn", "gat", "identity", "kernel"
+]
 ColEncKind = Literal["conv", "mlp", "attn"]
 StochInjectKind = Literal["mlp", "concat"]
 FuseKind = Literal["mlp", "add"]
 COL_ENC_POOL_BINS = 16
-FNOKind = Literal["vanilla", "ufno", "ffno", "afno", "wno", "fno1d", "loglo", "tf", "band2"]
+FNOKind = Literal[
+    "vanilla", "ufno", "ffno", "afno", "wno", "fno1d", "loglo", "tf", "band2"
+]
 
 
 def build_field_encoder(
@@ -558,25 +562,26 @@ def _build_column_encoder(
         return _ColumnMLPEncoder(in_channels, out_dim)
     if kind == "attn":
         return _ColumnAttnEncoder(in_channels, out_dim)
-    return _ColumnEncoder(
-        in_channels, hidden, out_dim, depth_tokens=depth_tokens
-    )
+    return _ColumnEncoder(in_channels, hidden, out_dim, depth_tokens=depth_tokens)
 
 
 class _ChainGNO(nn.Module):
-    """kNN=2 message passing along the recorder line (no periodic wrap)."""
+    """kNN=2 message passing along the recorder line (no periodic wrap).
 
-    def __init__(self, dim: int, n_layers: int = 3):
+    Optional ``rh_dilate`` adds a second skip to recorders ±d, with
+    d = clip(round(r_H / 25 m), 1, 8). Local hops stay kNN=2 so 3-layer
+    M7680 weights load; dilated MLPs are randomly initialized.
+    """
+
+    def __init__(self, dim: int, n_layers: int = 3, rh_dilate: bool = False):
         super().__init__()
-        self.layers = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.Linear(2 * dim, dim),
-                    nn.GELU(),
-                    nn.Linear(dim, dim),
-                )
-                for _ in range(n_layers)
-            ]
+        self.rh_dilate = bool(rh_dilate)
+        self._dilation: torch.Tensor | None = None
+        self.layers = nn.ModuleList([_gno_update_mlp(dim) for _ in range(n_layers)])
+        self.dilate_layers = (
+            nn.ModuleList([_gno_update_mlp(dim) for _ in range(n_layers)])
+            if self.rh_dilate
+            else None
         )
 
     @staticmethod
@@ -585,11 +590,157 @@ class _ChainGNO(nn.Module):
         right = torch.cat([x[:, 1:], x[:, -1:]], dim=1)
         return 0.5 * (left + right)
 
+    @staticmethod
+    def _gather_shift(x: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+        b, n, c = x.shape
+        steps = (
+            d.reshape(-1).to(device=x.device, dtype=torch.long).clamp(1, max(n - 1, 1))
+        )
+        if steps.numel() == 1 and b > 1:
+            steps = steps.expand(b)
+        idx = torch.arange(n, device=x.device).unsqueeze(0).expand(b, n)
+        left_i = (idx - steps.unsqueeze(1)).clamp(0, n - 1)
+        right_i = (idx + steps.unsqueeze(1)).clamp(0, n - 1)
+        left = torch.gather(x, 1, left_i.unsqueeze(-1).expand(b, n, c))
+        right = torch.gather(x, 1, right_i.unsqueeze(-1).expand(b, n, c))
+        return 0.5 * (left + right)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        for layer in self.layers:
+        for i, layer in enumerate(self.layers):
             msg = self._neighbors(x)
             x = x + layer(torch.cat([x, msg], dim=-1))
+            if self.rh_dilate and self.dilate_layers is not None:
+                d = self._dilation
+                if d is None:
+                    d = torch.ones(x.shape[0], dtype=torch.long, device=x.device)
+                dmsg = self._gather_shift(x, d)
+                x = x + self.dilate_layers[i](torch.cat([x, dmsg], dim=-1))
         return x
+
+
+LATERAL_SPACING_M = float(config.LATERAL_SPACING_M)  # 15 m array
+# r_H-dilated chain GNO was trained with 25 m hops ("21 stations / 500 m").
+# That is not the recorder spacing. Kernel GNO uses physical x (m) instead.
+GNO_DILATION_SPACING_M = 25.0
+RECORDER_SPACING_M = GNO_DILATION_SPACING_M
+GNO_DILATION_LO = 1
+GNO_DILATION_HI = 8
+KERNEL_K = 2
+KERNEL_TAU_M = LATERAL_SPACING_M
+N_LATENT_X = 32
+
+
+def gno_dilation_steps(
+    rH: float,
+    *,
+    spacing: float = RECORDER_SPACING_M,
+    lo: int = GNO_DILATION_LO,
+    hi: int = GNO_DILATION_HI,
+) -> int:
+    """Recorder hops for an r_H-scaled dilation skip."""
+    rh = float(rH)
+    if not np.isfinite(rh) or rh <= 0:
+        return int(lo)
+    return int(np.clip(np.round(rh / float(spacing)), lo, hi))
+
+
+def apply_gno_dilation(module: nn.Module, rH: torch.Tensor | None) -> None:
+    """Push per-sample r_H dilation onto every dilated ``_ChainGNO``."""
+    d: torch.Tensor | None = None
+    if rH is not None:
+        if not torch.is_tensor(rH):
+            rH = torch.as_tensor(rH, dtype=torch.float32)
+        finite = torch.nan_to_num(rH.reshape(-1).to(dtype=torch.float32), nan=0.0)
+        d = (
+            torch.round(finite / GNO_DILATION_SPACING_M)
+            .clamp(GNO_DILATION_LO, GNO_DILATION_HI)
+            .long()
+        )
+    for m in module.modules():
+        if isinstance(m, _ChainGNO):
+            if d is None or not m.rh_dilate:
+                m._dilation = None
+                continue
+            param = next(m.parameters(), None)
+            device = param.device if param is not None else d.device
+            m._dilation = d.to(device=device, dtype=torch.long)
+
+
+def _gno_update_mlp(dim: int) -> nn.Sequential:
+    return nn.Sequential(
+        nn.Linear(2 * dim, dim),
+        nn.GELU(),
+        nn.Linear(dim, dim),
+    )
+
+
+def _as_batch_x(x: torch.Tensor, batch: int) -> torch.Tensor:
+    if x.ndim == 1:
+        return x.unsqueeze(0).expand(batch, -1).contiguous()
+    return x
+
+
+class KernelGNO(nn.Module):
+    """Distance-kNN kernel integral: p(x_q) from support nodes, not fixed adjacency.
+
+    Neighbors are the k nearest support columns in physical metres. Each
+    neighbor is ``MLP([node, Δx, |Δx|])`` then softmax-weighted by ``-|Δx|/τ``.
+    Equal distances break ties by physical x so a permutation of support is a
+    no-op. Residual MLPs after the gather match the chain-GNO layer count.
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        n_layers: int = 3,
+        k: int = KERNEL_K,
+        tau_m: float = KERNEL_TAU_M,
+    ):
+        super().__init__()
+        self.k = max(1, int(k))
+        self.tau_m = float(tau_m) if float(tau_m) > 0 else float(KERNEL_TAU_M)
+        self.mix = nn.Sequential(
+            nn.Linear(dim + 2, dim),
+            nn.GELU(),
+            nn.Linear(dim, dim),
+        )
+        extra = max(int(n_layers) - 1, 0)
+        self.layers = nn.ModuleList(
+            [
+                nn.Sequential(nn.Linear(dim, dim), nn.GELU(), nn.Linear(dim, dim))
+                for _ in range(extra)
+            ]
+        )
+
+    def forward(
+        self,
+        nodes: torch.Tensor,
+        support_x: torch.Tensor,
+        query_x: torch.Tensor,
+    ) -> torch.Tensor:
+        b, n_s, _dim = nodes.shape
+        sx = _as_batch_x(support_x.to(device=nodes.device, dtype=nodes.dtype), b)
+        qx = _as_batch_x(query_x.to(device=nodes.device, dtype=nodes.dtype), b)
+        n_q = int(qx.shape[1])
+        k = min(self.k, n_s)
+        dist = (qx.unsqueeze(-1) - sx.unsqueeze(1)).abs()
+        # Tie-break kNN by physical x so a permutation of support is a no-op.
+        x_ord = sx.argsort(dim=-1).argsort(dim=-1).to(dtype=dist.dtype)
+        _, idx = (dist * float(n_s + 1) + x_ord.unsqueeze(1)).topk(
+            k, dim=-1, largest=False
+        )
+        b_ix = torch.arange(b, device=nodes.device).view(b, 1, 1).expand(b, n_q, k)
+        neigh = nodes[b_ix, idx]
+        sx_k = sx[b_ix, idx]
+        dx = qx.unsqueeze(-1) - sx_k
+        feat = torch.cat([neigh, dx.unsqueeze(-1), dx.abs().unsqueeze(-1)], dim=-1)
+        h = self.mix(feat)
+        d_k = dist.gather(-1, idx)
+        w = torch.softmax(-d_k / self.tau_m, dim=-1)
+        p = (w.unsqueeze(-1) * h).sum(dim=2)
+        for layer in self.layers:
+            p = p + layer(p)
+        return p
 
 
 def _n_heads(dim: int) -> int:
@@ -693,7 +844,7 @@ class RecorderGNODeepONet(nn.Module):
         trunk_hidden: int = 128,
         trunk_layers: int = 4,
         n_gno_layers: int = 3,
-        node_mixer: Literal["gno", "attn", "gat", "identity"] = "gno",
+        node_mixer: Literal["gno", "attn", "gat", "identity", "kernel"] = "gno",
         physics_tokens: bool = False,
         geom_flag_dim: int = 0,
         learned_1d: bool = False,
@@ -704,6 +855,9 @@ class RecorderGNODeepONet(nn.Module):
         col_enc: ColEncKind = "conv",
         stoch_inject: StochInjectKind = "mlp",
         fuse_kind: FuseKind = "mlp",
+        gno_rh_dilate: bool = False,
+        kernel_k: int = KERNEL_K,
+        kernel_tau_m: float = KERNEL_TAU_M,
     ):
         super().__init__()
         self.latent_dim = latent_dim
@@ -717,17 +871,27 @@ class RecorderGNODeepONet(nn.Module):
         self.col_enc_kind = str(col_enc)
         self.stoch_inject = str(stoch_inject)
         self.fuse_kind = str(fuse_kind)
+        self.gno_rh_dilate = bool(gno_rh_dilate)
+        self.kernel_k = max(1, int(kernel_k))
+        self.kernel_tau_m = float(kernel_tau_m)
         if self.fuse_kind == "add" and self.stoch_inject != "mlp":
-            raise ValueError("fuse=add requires stoch-inject=mlp so node and stoch dims match")
+            raise ValueError(
+                "fuse=add requires stoch-inject=mlp so node and stoch dims match"
+            )
         self.field_encoder_kind = (
             "attn"
             if node_mixer == "attn"
             else (
                 "gat"
                 if node_mixer == "gat"
-                else ("identity" if node_mixer == "identity" else "gno")
+                else (
+                    "identity"
+                    if node_mixer == "identity"
+                    else ("kernel" if node_mixer == "kernel" else "gno")
+                )
             )
         )
+        self.accepts_query_x = node_mixer == "kernel"
         self.col_enc = _build_column_encoder(
             col_enc,
             in_channels=field_channels,
@@ -741,8 +905,17 @@ class RecorderGNODeepONet(nn.Module):
             self.gno = _RecorderGAT(latent_dim, n_layers=n_gno_layers)
         elif node_mixer == "identity":
             self.gno = nn.Identity()
+        elif node_mixer == "kernel":
+            self.gno = KernelGNO(
+                latent_dim,
+                n_layers=n_gno_layers,
+                k=self.kernel_k,
+                tau_m=self.kernel_tau_m,
+            )
         else:
-            self.gno = _ChainGNO(latent_dim, n_layers=n_gno_layers)
+            self.gno = _ChainGNO(
+                latent_dim, n_layers=n_gno_layers, rh_dilate=self.gno_rh_dilate
+            )
         if self.stoch_inject == "concat":
             self.stoch_mlp = None
             fuse_in = latent_dim + int(stoch_dim)
@@ -798,14 +971,12 @@ class RecorderGNODeepONet(nn.Module):
         fields: torch.Tensor,
         trunk_y: torch.Tensor,
         geom_flags: torch.Tensor | None,
-        n_rec: int,
+        n_query: int,
         n_freq: int,
+        query_x: torch.Tensor | None = None,
+        support_x: torch.Tensor | None = None,
     ) -> torch.Tensor:
         nodes = self.col_enc(fields)
-        if self.phys_mlp is not None:
-            log_tf = trunk_y[..., -1].reshape(trunk_y.shape[0], n_rec, n_freq)
-            pooled = F.adaptive_avg_pool1d(log_tf, 32)
-            nodes = nodes + self.phys_mlp(pooled)
         if self.geom_mlp is not None:
             flags = geom_flags
             if flags is None:
@@ -816,6 +987,20 @@ class RecorderGNODeepONet(nn.Module):
                     dtype=trunk_y.dtype,
                 )
             nodes = nodes + self.geom_mlp(flags).unsqueeze(1)
+        if isinstance(self.gno, KernelGNO):
+            if query_x is None:
+                query_x = torch.arange(
+                    nodes.shape[1], device=nodes.device, dtype=nodes.dtype
+                )
+            if support_x is None:
+                support_x = torch.arange(
+                    nodes.shape[1], device=nodes.device, dtype=nodes.dtype
+                )
+            return self.gno(nodes, support_x, query_x)
+        if self.phys_mlp is not None and nodes.shape[1] == n_query:
+            log_tf = trunk_y[..., -1].reshape(trunk_y.shape[0], n_query, n_freq)
+            pooled = F.adaptive_avg_pool1d(log_tf, 32)
+            nodes = nodes + self.phys_mlp(pooled)
         return self.gno(nodes)
 
     def forward(
@@ -824,23 +1009,34 @@ class RecorderGNODeepONet(nn.Module):
         stoch: torch.Tensor | None,
         trunk_y: torch.Tensor,
         geom_flags: torch.Tensor | None = None,
+        query_x: torch.Tensor | None = None,
+        support_x: torch.Tensor | None = None,
     ) -> torch.Tensor:
         assert fields is not None and stoch is not None
         n_q = trunk_y.shape[1]
-        n_rec = fields.shape[-1]
-        n_freq = n_q // n_rec
-        if self.stoch_mlp is None:
-            s = stoch.unsqueeze(1).expand(-1, n_rec, -1)
+        if query_x is not None:
+            n_query = int(query_x.shape[-1])
         else:
-            s = self.stoch_mlp(stoch).unsqueeze(1).expand(-1, n_rec, -1)
+            n_query = int(fields.shape[-1])
+        n_freq = n_q // n_query
+        if self.stoch_mlp is None:
+            s = stoch.unsqueeze(1).expand(-1, n_query, -1)
+        else:
+            s = self.stoch_mlp(stoch).unsqueeze(1).expand(-1, n_query, -1)
 
         def _fuse(nodes_i: torch.Tensor, fuse_mod: nn.Module) -> torch.Tensor:
             if self.fuse_kind == "add":
                 return nodes_i + s
             return fuse_mod(torch.cat([nodes_i, s], dim=-1))
 
+        enc_kw = dict(
+            query_x=query_x,
+            support_x=support_x,
+        )
         if self.n_mscale_branch <= 1:
-            nodes = self._encode_nodes(fields, trunk_y, geom_flags, n_rec, n_freq)
+            nodes = self._encode_nodes(
+                fields, trunk_y, geom_flags, n_query, n_freq, **enc_kw
+            )
             p = _fuse(nodes, self.fuse)
         else:
             p = None
@@ -852,7 +1048,9 @@ class RecorderGNODeepONet(nn.Module):
             )
             for fuse, alpha in zip(fuse_mods, self.branch_alphas):
                 scaled = fields if abs(alpha - 1.0) < 1e-12 else fields * alpha
-                nodes_i = self._encode_nodes(scaled, trunk_y, geom_flags, n_rec, n_freq)
+                nodes_i = self._encode_nodes(
+                    scaled, trunk_y, geom_flags, n_query, n_freq, **enc_kw
+                )
                 if abs(alpha - 1.0) < 1e-12:
                     nodes = nodes_i
                 contrib = _fuse(nodes_i, fuse)
@@ -862,7 +1060,7 @@ class RecorderGNODeepONet(nn.Module):
         self.last_nodes = nodes
         p_q = (
             p.unsqueeze(2)
-            .expand(-1, n_rec, n_freq, -1)
+            .expand(-1, n_query, n_freq, -1)
             .reshape(trunk_y.shape[0], n_q, self.latent_dim)
         )
         bq = self.trunk(trunk_y.reshape(-1, trunk_y.shape[-1])).reshape(
@@ -892,11 +1090,37 @@ def gno_core(module: nn.Module) -> nn.Module:
     return inner
 
 
+def _spatial_kwargs(
+    module: nn.Module,
+    *,
+    geom_flags: torch.Tensor | None = None,
+    query_x: torch.Tensor | None = None,
+    support_x: torch.Tensor | None = None,
+) -> dict[str, torch.Tensor]:
+    kwargs: dict[str, torch.Tensor] = {}
+    if geom_flags is not None and getattr(module, "accepts_geom_flags", False):
+        kwargs["geom_flags"] = geom_flags
+    if getattr(module, "accepts_query_x", False):
+        if query_x is not None:
+            kwargs["query_x"] = query_x
+        if support_x is not None:
+            kwargs["support_x"] = support_x
+    return kwargs
+
+
 def freeze_gno_encoder(module: nn.Module) -> int:
-    """Freeze column encoder + chain GNO. Leftover head / fuse / trunk stay trainable."""
+    """Freeze column encoder + chain GNO. Leftover head / fuse / trunk stay trainable.
+
+    Kernel GNO is a new mixer: ``--freeze-gno`` still freezes ``col_enc`` but
+    leaves the distance kernel trainable until it has its own scale run.
+    """
     core = gno_core(module)
     n = 0
-    for name in ("col_enc", "gno"):
+    names = ["col_enc"]
+    gno = getattr(core, "gno", None)
+    if gno is not None and not isinstance(gno, KernelGNO):
+        names.append("gno")
+    for name in names:
         sub = getattr(core, name, None)
         if sub is None:
             continue
@@ -942,6 +1166,7 @@ class GatedResidual(nn.Module):
         self.n_rec = int(n_rec)
         self.gate_head = nn.Linear(int(latent_dim), 1)
         self.accepts_geom_flags = bool(getattr(inner, "accepts_geom_flags", False))
+        self.accepts_query_x = bool(getattr(inner, "accepts_query_x", False))
         self.last_gate: torch.Tensor | None = None
 
     def forward(
@@ -950,10 +1175,16 @@ class GatedResidual(nn.Module):
         stoch: torch.Tensor | None,
         trunk_y: torch.Tensor,
         geom_flags: torch.Tensor | None = None,
+        query_x: torch.Tensor | None = None,
+        support_x: torch.Tensor | None = None,
     ) -> torch.Tensor:
         kwargs: dict[str, torch.Tensor] = {}
         if geom_flags is not None and getattr(self.inner, "accepts_geom_flags", False):
             kwargs["geom_flags"] = geom_flags
+        if query_x is not None and getattr(self.inner, "accepts_query_x", False):
+            kwargs["query_x"] = query_x
+        if support_x is not None and getattr(self.inner, "accepts_query_x", False):
+            kwargs["support_x"] = support_x
         r = self.inner(fields, stoch, trunk_y, **kwargs)
         core = gno_core(self.inner)
         nodes = getattr(core, "last_nodes", None)
@@ -1087,7 +1318,9 @@ def _load_dual_path_loglo():
     return mod.DualPathLOGLOStack
 
 
-def _pad_to_multiple(x: torch.Tensor, ph: int, pw: int) -> tuple[torch.Tensor, int, int]:
+def _pad_to_multiple(
+    x: torch.Tensor, ph: int, pw: int
+) -> tuple[torch.Tensor, int, int]:
     h, w = x.shape[-2], x.shape[-1]
     pad_h = (ph - h % ph) % ph
     pad_w = (pw - w % pw) % pw
@@ -1112,6 +1345,7 @@ class ResidualPODReadout(nn.Module):
         self.inner = inner
         self.n_rec = int(n_rec)
         self.accepts_geom_flags = bool(getattr(inner, "accepts_geom_flags", False))
+        self.accepts_query_x = bool(getattr(inner, "accepts_query_x", False))
         modes = np.asarray(pod_modes, dtype=np.float32)
         mean = np.asarray(pod_mean, dtype=np.float32)
         if modes.ndim != 3:
@@ -1148,11 +1382,20 @@ class ResidualPODReadout(nn.Module):
         stoch: torch.Tensor | None,
         trunk_y: torch.Tensor,
         geom_flags: torch.Tensor | None = None,
+        query_x: torch.Tensor | None = None,
+        support_x: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        kwargs: dict[str, torch.Tensor] = {}
-        if geom_flags is not None and getattr(self.inner, "accepts_geom_flags", False):
-            kwargs["geom_flags"] = geom_flags
-        r_inner = self.inner(fields, stoch, trunk_y, **kwargs)
+        r_inner = self.inner(
+            fields,
+            stoch,
+            trunk_y,
+            **_spatial_kwargs(
+                self.inner,
+                geom_flags=geom_flags,
+                query_x=query_x,
+                support_x=support_x,
+            ),
+        )
         core = gno_core(self.inner)
         nodes = getattr(core, "last_nodes", None)
         b, n_q = r_inner.shape
@@ -1175,8 +1418,11 @@ class FrozenBoost(nn.Module):
         for p in self.frozen.parameters():
             p.requires_grad = False
         self.shrink = nn.Parameter(torch.tensor(float(shrink)))
-        self.accepts_geom_flags = bool(getattr(booster, "accepts_geom_flags", False)) or bool(
-            getattr(frozen, "accepts_geom_flags", False)
+        self.accepts_geom_flags = bool(
+            getattr(booster, "accepts_geom_flags", False)
+        ) or bool(getattr(frozen, "accepts_geom_flags", False))
+        self.accepts_query_x = bool(getattr(booster, "accepts_query_x", False)) or bool(
+            getattr(frozen, "accepts_query_x", False)
         )
         self.last_gate: torch.Tensor | None = None
 
@@ -1186,14 +1432,15 @@ class FrozenBoost(nn.Module):
         stoch: torch.Tensor | None,
         trunk_y: torch.Tensor,
         geom_flags: torch.Tensor | None = None,
+        query_x: torch.Tensor | None = None,
+        support_x: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        kwargs_f: dict[str, torch.Tensor] = {}
-        kwargs_b: dict[str, torch.Tensor] = {}
-        if geom_flags is not None:
-            if getattr(self.frozen, "accepts_geom_flags", False):
-                kwargs_f["geom_flags"] = geom_flags
-            if getattr(self.booster, "accepts_geom_flags", False):
-                kwargs_b["geom_flags"] = geom_flags
+        kwargs_f = _spatial_kwargs(
+            self.frozen, geom_flags=geom_flags, query_x=query_x, support_x=support_x
+        )
+        kwargs_b = _spatial_kwargs(
+            self.booster, geom_flags=geom_flags, query_x=query_x, support_x=support_x
+        )
         with torch.no_grad():
             r0 = self.frozen(fields, stoch, trunk_y, **kwargs_f)
         delta = self.booster(fields, stoch, trunk_y, **kwargs_b)
@@ -1283,6 +1530,7 @@ class DeepONetFNO(nn.Module):
         self.base = base
         self.n_rec = int(n_rec)
         self.accepts_geom_flags = bool(getattr(base, "accepts_geom_flags", False))
+        self.accepts_query_x = bool(getattr(base, "accepts_query_x", False))
         self.kind: FNOKind = kind
         self.loglo_patch = (int(loglo_patch[0]), int(loglo_patch[1]))
         self.lift = nn.Conv2d(1, width, kernel_size=1)
@@ -1361,11 +1609,19 @@ class DeepONetFNO(nn.Module):
         if freq is None:
             self._query_freq = torch.empty(0, device=self._query_freq.device)
             return
-        arr = np.asarray(freq, dtype=np.float32).ravel() if not torch.is_tensor(freq) else freq
-        t = torch.as_tensor(arr, dtype=torch.float32, device=self._query_freq.device).ravel()
+        arr = (
+            np.asarray(freq, dtype=np.float32).ravel()
+            if not torch.is_tensor(freq)
+            else freq
+        )
+        t = torch.as_tensor(
+            arr, dtype=torch.float32, device=self._query_freq.device
+        ).ravel()
         self._query_freq = t
 
-    def _grid_freq_hz(self, n_freq: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    def _grid_freq_hz(
+        self, n_freq: int, device: torch.device, dtype: torch.dtype
+    ) -> torch.Tensor:
         buf = self._query_freq
         if buf.numel() == n_freq:
             return buf.to(device=device, dtype=dtype)
@@ -1390,16 +1646,23 @@ class DeepONetFNO(nn.Module):
         stoch: torch.Tensor | None,
         trunk_y: torch.Tensor,
         geom_flags: torch.Tensor | None = None,
+        query_x: torch.Tensor | None = None,
+        support_x: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        kwargs: dict[str, torch.Tensor] = {}
-        if geom_flags is not None and getattr(self.base, "accepts_geom_flags", False):
-            kwargs["geom_flags"] = geom_flags
+        kwargs = _spatial_kwargs(
+            self.base, geom_flags=geom_flags, query_x=query_x, support_x=support_x
+        )
         r = self.base(fields, stoch, trunk_y, **kwargs)
         b, n_q = r.shape
-        n_freq = n_q // self.n_rec
-        x = self.lift(r.view(b, 1, self.n_rec, n_freq))
+        n_rec = int(query_x.shape[-1]) if query_x is not None else self.n_rec
+        n_freq = n_q // n_rec
+        x = self.lift(r.view(b, 1, n_rec, n_freq))
         self.last_lift = x
-        if self.fno_low is not None and self.fno_high is not None and self.proj_high is not None:
+        if (
+            self.fno_low is not None
+            and self.fno_high is not None
+            and self.proj_high is not None
+        ):
             x_l = self._run_vanilla_fno(self.fno_low, x)
             x_h = self._run_vanilla_fno(self.fno_high, x)
             r_l = self.proj(x_l)
@@ -1431,6 +1694,97 @@ class DeepONetFNO(nn.Module):
                     x = x + self.local[i](x)
         self.last_fno = x
         return r + self.proj(x).reshape(b, n_q)
+
+
+def interp_along_x(
+    values: torch.Tensor,
+    x_src: torch.Tensor,
+    x_dst: torch.Tensor,
+) -> torch.Tensor:
+    """Linear interpolate ``values`` (B, Nsrc, F) from ``x_src`` (Nsrc,) to ``x_dst`` (Ndst,)."""
+    xs = x_src.reshape(-1).to(dtype=values.dtype, device=values.device)
+    xd = x_dst.reshape(-1).to(dtype=values.dtype, device=values.device)
+    order = torch.argsort(xs)
+    xs = xs[order]
+    vs = values[:, order]
+    xd_c = xd.clamp(xs[0], xs[-1])
+    idx = torch.searchsorted(xs, xd_c).clamp(1, xs.numel() - 1)
+    x0, x1 = xs[idx - 1], xs[idx]
+    w = ((xd_c - x0) / (x1 - x0).clamp_min(1e-8)).view(1, -1, 1)
+    return vs[:, idx - 1] * (1.0 - w) + vs[:, idx] * w
+
+
+class LatentGridFNO(nn.Module):
+    """FNO on a fixed x-grid, then decode back to query locations.
+
+    The leftover is interpolated from the labeled queries onto ``n_lat``
+    uniform stations, mixed with vanilla FNOBlocks, and interpolated back.
+    Domain length is still the query span (the 500 m strip), not a new box.
+    """
+
+    def __init__(
+        self,
+        base: nn.Module,
+        *,
+        n_lat: int = N_LATENT_X,
+        width: int = 32,
+        n_modes: tuple[int, int] = (8, 16),
+        n_layers: int = 4,
+    ):
+        super().__init__()
+        from neuralop.layers.fno_block import FNOBlocks
+
+        self.base = base
+        self.n_lat = max(4, int(n_lat))
+        self.accepts_geom_flags = bool(getattr(base, "accepts_geom_flags", False))
+        self.accepts_query_x = True
+        modes_x = min(int(n_modes[0]), max(1, self.n_lat // 2 - 1))
+        self.lift = nn.Conv2d(1, width, kernel_size=1)
+        self.proj = nn.Conv2d(width, 1, kernel_size=1)
+        self.fno = FNOBlocks(
+            n_modes=(modes_x, int(n_modes[1])),
+            in_channels=width,
+            out_channels=width,
+            n_layers=n_layers,
+            non_linearity=F.gelu,
+        )
+
+    def forward(
+        self,
+        fields: torch.Tensor | None,
+        stoch: torch.Tensor | None,
+        trunk_y: torch.Tensor,
+        geom_flags: torch.Tensor | None = None,
+        query_x: torch.Tensor | None = None,
+        support_x: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        kwargs = _spatial_kwargs(
+            self.base, geom_flags=geom_flags, query_x=query_x, support_x=support_x
+        )
+        r = self.base(fields, stoch, trunk_y, **kwargs)
+        if query_x is None:
+            return r
+        b, n_q = r.shape
+        n_query = int(query_x.shape[-1])
+        n_freq = n_q // n_query
+        r2 = r.view(b, n_query, n_freq)
+        qx = query_x[0] if query_x.ndim == 2 else query_x
+        x_lat = torch.linspace(
+            float(qx.min().item()),
+            float(qx.max().item()),
+            self.n_lat,
+            device=r.device,
+            dtype=r.dtype,
+        )
+        r_lat = interp_along_x(r2, qx, x_lat)
+        x = self.lift(r_lat.unsqueeze(1))
+        n_layers = int(getattr(self.fno, "n_layers", 1))
+        for i in range(n_layers):
+            x = self.fno(x, index=i)
+        self.last_fno = x
+        delta_lat = self.proj(x).squeeze(1)
+        delta = interp_along_x(delta_lat, x_lat, qx)
+        return r + delta.reshape(b, n_q)
 
 
 def apply_query_freq(module: nn.Module, freq: np.ndarray | torch.Tensor | None) -> None:
@@ -1483,6 +1837,10 @@ def build_model(
     col_enc: ColEncKind = "conv",
     stoch_inject: StochInjectKind = "mlp",
     fuse_kind: FuseKind = "mlp",
+    gno_rh_dilate: bool = False,
+    kernel_k: int = KERNEL_K,
+    latent_fno: bool = False,
+    n_latent: int = N_LATENT_X,
 ) -> nn.Module:
     def _core(
         *,
@@ -1491,10 +1849,10 @@ def build_model(
         gated_local: bool,
         pod_local: bool,
     ) -> nn.Module:
-        if field_encoder in ("gno", "attn", "gat", "identity"):
+        if field_encoder in ("gno", "attn", "gat", "identity", "kernel"):
             if mode != "single":
                 raise ValueError(
-                    "GNO/attn/gat encoder is only implemented for single-branch DeepONet"
+                    "GNO/attn/gat/kernel encoder is only implemented for single-branch DeepONet"
                 )
             mixer = (
                 "attn"
@@ -1502,7 +1860,11 @@ def build_model(
                 else (
                     "gat"
                     if field_encoder == "gat"
-                    else ("identity" if field_encoder == "identity" else "gno")
+                    else (
+                        "identity"
+                        if field_encoder == "identity"
+                        else ("kernel" if field_encoder == "kernel" else "gno")
+                    )
                 )
             )
             inner: nn.Module = RecorderGNODeepONet(
@@ -1526,6 +1888,8 @@ def build_model(
                 col_enc=col_enc,
                 stoch_inject=stoch_inject,
                 fuse_kind=fuse_kind,
+                gno_rh_dilate=gno_rh_dilate,
+                kernel_k=kernel_k,
             )
         elif mode == "multi":
             inner = MultiBranchDeepONet(
@@ -1571,7 +1935,12 @@ def build_model(
                 pod_modes=modes,
                 pod_mean=mean,
             )
-        if residual_fno:
+        # FNO-on-R needs a fixed (n_rec × n_f) lattice. Kernel queries are not
+        # that grid unless Phase 1b lifts them onto a latent x-mesh.
+        use_r_fno = bool(residual_fno) and not (
+            field_encoder == "kernel" and not latent_fno
+        )
+        if use_r_fno:
             inner = DeepONetFNO(
                 inner,
                 n_rec=n_rec,
@@ -1580,6 +1949,14 @@ def build_model(
                 n_layers=fno_n_layers,
                 kind=fno_kind_local,
                 loglo_patch=loglo_patch,
+            )
+        if latent_fno:
+            inner = LatentGridFNO(
+                inner,
+                n_lat=n_latent,
+                width=width_local,
+                n_modes=fno_n_modes,
+                n_layers=fno_n_layers,
             )
         if gated_local:
             inner = GatedResidual(inner, n_rec=n_rec, latent_dim=latent_dim)
@@ -1594,7 +1971,9 @@ def build_model(
         )
         booster = _core(
             fno_kind_local=boost_fno_kind,
-            width_local=int(boost_width) if boost_width is not None else max(8, fno_width // 2),
+            width_local=int(boost_width)
+            if boost_width is not None
+            else max(8, fno_width // 2),
             gated_local=gated,
             pod_local=pod_readout,
         )
@@ -1617,27 +1996,38 @@ def _arch_from_src(
     defaults: dict[str, Any],
 ) -> dict[str, Any]:
     """Architecture kwargs for ``build_model`` from a checkpoint (or nested) dict."""
-    fno_width = int(src.get("fno_width", blob.get("fno_width", defaults.get("fno_width", 32))))
+    fno_width = int(
+        src.get("fno_width", blob.get("fno_width", defaults.get("fno_width", 32)))
+    )
     patch = src.get("loglo_patch", blob.get("loglo_patch", (3, 8)))
     modes = src.get("pod_modes", blob.get("pod_modes"))
     mean = src.get("pod_mean", blob.get("pod_mean"))
     n_modes = src.get("fno_n_modes", blob.get("fno_n_modes", (8, 16)))
     return {
         "field_encoder": src.get(
-            "field_encoder", blob.get("field_encoder", defaults.get("field_encoder", "conv"))
+            "field_encoder",
+            blob.get("field_encoder", defaults.get("field_encoder", "conv")),
         ),
         "residual_fno": bool(src.get("residual_fno", blob.get("residual_fno", False))),
         "n_rec": int(src.get("n_rec", blob.get("n_rec", defaults.get("n_rec", 21)))),
         "fno_width": fno_width,
         "fno_n_modes": tuple(n_modes),
         "fno_n_layers": int(
-            src.get("fno_n_layers", blob.get("fno_n_layers", defaults.get("fno_n_layers", 4)))
+            src.get(
+                "fno_n_layers",
+                blob.get("fno_n_layers", defaults.get("fno_n_layers", 4)),
+            )
         ),
         "n_gno_layers": int(
-            src.get("n_gno_layers", blob.get("n_gno_layers", defaults.get("n_gno_layers", 3)))
+            src.get(
+                "n_gno_layers",
+                blob.get("n_gno_layers", defaults.get("n_gno_layers", 3)),
+            )
         ),
         "fno_kind": src.get("fno_kind", blob.get("fno_kind", "vanilla")),
-        "physics_tokens": bool(src.get("physics_tokens", blob.get("physics_tokens", False))),
+        "physics_tokens": bool(
+            src.get("physics_tokens", blob.get("physics_tokens", False))
+        ),
         "geom_flag_dim": int(src.get("geom_flag_dim", blob.get("geom_flag_dim", 0))),
         "learned_1d": bool(src.get("learned_1d", blob.get("learned_1d", False))),
         "gated": bool(src.get("gated", blob.get("gated", False))),
@@ -1650,11 +2040,15 @@ def _arch_from_src(
         "col_enc_depth_tokens": int(
             src.get(
                 "col_enc_depth_tokens",
-                blob.get("col_enc_depth_tokens", defaults.get("col_enc_depth_tokens", 1)),
+                blob.get(
+                    "col_enc_depth_tokens", defaults.get("col_enc_depth_tokens", 1)
+                ),
             )
         ),
         "boost": False,
-        "boost_fno_kind": src.get("boost_fno_kind", blob.get("boost_fno_kind", "loglo")),
+        "boost_fno_kind": src.get(
+            "boost_fno_kind", blob.get("boost_fno_kind", "loglo")
+        ),
         "boost_width": int(
             src.get(
                 "boost_width",
@@ -1672,12 +2066,36 @@ def _arch_from_src(
                 blob.get("mscale_coord_dims", FULL_TRUNK_COORD_DIMS),
             )
         ),
-        "col_enc": src.get("col_enc", blob.get("col_enc", defaults.get("col_enc", "conv"))),
+        "col_enc": src.get(
+            "col_enc", blob.get("col_enc", defaults.get("col_enc", "conv"))
+        ),
         "stoch_inject": src.get(
-            "stoch_inject", blob.get("stoch_inject", defaults.get("stoch_inject", "mlp"))
+            "stoch_inject",
+            blob.get("stoch_inject", defaults.get("stoch_inject", "mlp")),
         ),
         "fuse_kind": src.get(
             "fuse_kind", blob.get("fuse_kind", defaults.get("fuse_kind", "mlp"))
+        ),
+        "gno_rh_dilate": bool(
+            src.get(
+                "gno_rh_dilate",
+                blob.get("gno_rh_dilate", defaults.get("gno_rh_dilate", False)),
+            )
+        ),
+        "kernel_k": int(
+            src.get(
+                "kernel_k", blob.get("kernel_k", defaults.get("kernel_k", KERNEL_K))
+            )
+        ),
+        "latent_fno": bool(
+            src.get(
+                "latent_fno", blob.get("latent_fno", defaults.get("latent_fno", False))
+            )
+        ),
+        "n_latent": int(
+            src.get(
+                "n_latent", blob.get("n_latent", defaults.get("n_latent", N_LATENT_X))
+            )
         ),
     }
 
@@ -1725,8 +2143,12 @@ def build_from_checkpoint_blob(
             "gated": bool(blob.get("gated", False)),
             "pod_readout": bool(blob.get("pod_readout", False)),
         }
-        frozen = build_model(mode, **common, **_arch_from_src(frozen_src, blob, defaults={}))
-        booster = build_model(mode, **common, **_arch_from_src(booster_src, blob, defaults={}))
+        frozen = build_model(
+            mode, **common, **_arch_from_src(frozen_src, blob, defaults={})
+        )
+        booster = build_model(
+            mode, **common, **_arch_from_src(booster_src, blob, defaults={})
+        )
         net: nn.Module = FrozenBoost(
             frozen,
             booster,
