@@ -24,7 +24,6 @@ import config  # noqa: E402
 from haskell_baseline import haskell_af_within  # noqa: E402
 from response_variability.dip_depth import (  # noqa: E402
     DIP_SPAN_M,
-    depth_range,
     sigma_y,
     uniform_dip_depths,
 )
@@ -53,6 +52,26 @@ def pick_steep_val(pack: dict[str, np.ndarray]) -> int:
     return int(np.argmax(angle))
 
 
+# Same constants as seiskit ``run_toro_comparison``.
+TORO_DZ = 1.0
+DIP_HALF_SPAN_M = 250.0
+RHO = 2000.0
+
+
+def _two_layer_af(freq: np.ndarray, vs1: float, H: float, vs2: float) -> np.ndarray:
+    """Two-layer |TF| used by the dipping Toro and Passeri comparison."""
+    from seiskit.damping import compute_damping_from_Q, compute_quality_factor
+    from seiskit.theory.layered_1d_tf import Layer, RockHalfspace, layered_transfer_function
+
+    def _xi(vs: float) -> float:
+        return float(compute_damping_from_Q(compute_quality_factor(float(vs))))
+
+    layers = [Layer(float(H), float(vs1), RHO, _xi(vs1))]
+    rock = RockHalfspace(float(vs2), RHO, _xi(vs2))
+    _, aw, _ = layered_transfer_function(freq, layers, rock)
+    return np.asarray(aw, dtype=np.float64)
+
+
 def _draw_kind(
     freq: np.ndarray,
     *,
@@ -62,38 +81,91 @@ def _draw_kind(
     cov: float,
     vs2: float,
     xi: float,
+    H: float = 0.0,
+    theta: float = 0.0,
 ) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray], np.ndarray]:
-    """One seed per uniform depth. Returns z, Vs, cumulative tt, and |TF| rows."""
+    """One realization per curve. Returns z, Vs, cumulative tt, and |TF| rows.
+
+    Toro follows ``run_toro_comparison.ensemble_toro``: NHPP off, interface
+    ``H + x tan θ`` with ``x`` uniform on ±250 m, and a two-layer |TF| that
+    uses only the surface soil Vs. Passeri stays on the uniform depth grid.
+    """
     ensure_seiskit()
     from seiskit.profile_randomization import (
+        ProfileRandomizationConfig,
         generate_tts_randomized_profile,
-        generate_vs_randomized_profile,
     )
+    from seiskit.profile_randomization.models import _GeoLayer
+    from seiskit.profile_randomization.nhpp import _sample_interface_depth
+    from seiskit.profile_randomization.toro import _toro_draw_layer_vs
 
-    gen = (
-        generate_vs_randomized_profile
-        if kind == "toro"
-        else generate_tts_randomized_profile
-    )
     z_rows: list[np.ndarray] = []
     vs_rows: list[np.ndarray] = []
     tt_rows: list[np.ndarray] = []
-    tf_rows = np.empty((depths.size, freq.shape[0]), dtype=np.float64)
-    for k, depth in enumerate(depths):
-        cfg = hallal_config(vs1=vs1, H=float(depth), cov=cov, vs2=vs2, dz=DZ)
+    n_draw = N_SHOW if kind == "toro" else int(depths.size)
+    tf_rows = np.empty((n_draw, freq.shape[0]), dtype=np.float64)
+    toro_cfg = None
+    if kind == "toro":
+        toro_cfg = ProfileRandomizationConfig(
+            vs_mean=float(vs1),
+            thickness=float(H),
+            dz=TORO_DZ,
+            cov=float(cov),
+            vs_bedrock=float(vs2),
+            bedrock_thickness=20.0,
+            sigma_ln_vs=float(cov),
+            sigma_ln_tts=float(cov),
+            use_full_model=True,
+            randomize_layer_thickness=False,
+            randomize_bedrock_depth=True,
+            bedrock_depth_model="dip",
+            dip_angle_min_deg=float(theta),
+            dip_angle_max_deg=float(theta),
+            dip_half_span_m=DIP_HALF_SPAN_M,
+            vary_bedrock_vs=False,
+        )
+    for k in range(n_draw):
         rng = np.random.default_rng(k + 1)
-        vs = np.asarray(gen(cfg, rng), dtype=float)
-        soil_nz = max(1, int(round(float(depth) / DZ)))
-        soil_nz = min(soil_nz, vs.size)
-        z = (np.arange(soil_nz) + 0.5) * DZ
-        soil = vs[:soil_nz]
+        if toro_cfg is not None:
+            interface = float(_sample_interface_depth(toro_cfg, rng))
+            soil = _GeoLayer(interface, interface / 2.0, interface, float(vs1))
+            bed_h = float(toro_cfg.bedrock_thickness)
+            bed = _GeoLayer(
+                bed_h,
+                interface + bed_h / 2.0,
+                interface + bed_h,
+                float(vs2),
+                is_bedrock=True,
+            )
+            drawn = _toro_draw_layer_vs(
+                [soil, bed],
+                toro_cfg,
+                rng,
+                randomize_bedrock=False,
+                reject_profile=False,
+            )
+            vs_s = float(drawn[0])
+            H_use = interface
+            soil_nz = max(1, int(round(H_use / TORO_DZ)))
+            z = (np.arange(soil_nz) + 0.5) * TORO_DZ
+            soil = np.full(soil_nz, vs_s)
+            tf_rows[k] = _two_layer_af(freq, vs_s, H_use, vs2)
+            dz_row = TORO_DZ
+        else:
+            depth = float(depths[k])
+            cfg = hallal_config(vs1=vs1, H=depth, cov=cov, vs2=vs2, dz=DZ)
+            vs = np.asarray(generate_tts_randomized_profile(cfg, rng), dtype=float)
+            soil_nz = max(1, min(int(round(depth / DZ)), vs.size))
+            z = (np.arange(soil_nz) + 0.5) * DZ
+            soil = vs[:soil_nz]
+            zeta = np.full(vs.size, xi)
+            tf_rows[k] = haskell_af_within(
+                freq, vs, zeta, dz=DZ, vs_rock=vs2, soil_nz=soil_nz
+            )
+            dz_row = DZ
         z_rows.append(z)
         vs_rows.append(soil)
-        tt_rows.append(np.cumsum(DZ / np.maximum(soil, 1e-6)))
-        zeta = np.full(vs.size, xi)
-        tf_rows[k] = haskell_af_within(
-            freq, vs, zeta, dz=DZ, vs_rock=vs2, soil_nz=soil_nz
-        )
+        tt_rows.append(np.cumsum(dz_row / np.maximum(soil, 1e-6)))
     return z_rows, vs_rows, tt_rows, tf_rows
 
 
@@ -120,7 +192,8 @@ def _plot_profiles(
 ) -> None:
     for z, vs in zip(z_rows, vs_rows):
         ax.step(vs, z, color=color, alpha=0.28, lw=0.7, where="mid")
-        z_iface = float(z[-1] + 0.5 * DZ)
+        step = float(z[1] - z[0]) if len(z) > 1 else DZ
+        z_iface = float(z[-1] + 0.5 * step)
         ax.plot(
             [vs[-1], vs2, vs2],
             [z_iface, z_iface, z_iface + BEDROCK_VIEW_M],
@@ -147,7 +220,16 @@ def _plot_profiles(
 
 
 def _plot_tf(
-    ax, freq, tf_rows, pack, i, *, color: str, geomean_key: str, label: str
+    ax,
+    freq,
+    tf_rows,
+    pack,
+    i,
+    *,
+    color: str,
+    geomean_key: str,
+    label: str,
+    geomean: np.ndarray | None = None,
 ) -> None:
     ops = np.asarray(pack["tf_opensees"][i], dtype=np.float64)
     for r in range(ops.shape[0]):
@@ -163,7 +245,11 @@ def _plot_tf(
         ax.loglog(
             freq, np.maximum(row, 1e-6), color=color, alpha=0.22, lw=0.55, zorder=2
         )
-    geo = np.maximum(np.asarray(pack[geomean_key][i], dtype=np.float64), 1e-6)
+    if geomean is None:
+        geo = np.asarray(pack[geomean_key][i], dtype=np.float64)
+    else:
+        geo = np.asarray(geomean, dtype=np.float64)
+    geo = np.maximum(geo, 1e-6)
     nom = np.maximum(central_recorder(pack["tf_haskell_nominal"][i]), 1e-6)
     ax.loglog(freq, geo, color=color, lw=1.6, zorder=4, label=label)
     ax.loglog(
@@ -197,12 +283,13 @@ def plot_toro(pack, i: int, freq, fields, z_rows, vs_rows, tf_rows, dest: Path) 
         vs1=fields["vs1"],
         vs2=fields["vs2"],
     )
-    half = 0.5 * depth_range(DIP_SPAN_M, fields["theta"])
+    half = DIP_HALF_SPAN_M * abs(np.tan(np.radians(fields["theta"])))
     ax_vs.axhspan(
         fields["H"] - half, fields["H"] + half, color=color, alpha=0.08, lw=0, zorder=0
     )
-    ax_vs.set_title(f"seiskit frozen-H Toro, NHPP off (n={len(z_rows)})")
+    ax_vs.set_title(f"one soil layer, dip depth (n={len(z_rows)})")
     panel_letter(ax_vs, "a")
+    shown = np.exp(np.mean(np.log(np.clip(tf_rows, 1e-12, None)), axis=0))
     _plot_tf(
         ax_tf,
         freq,
@@ -212,12 +299,13 @@ def plot_toro(pack, i: int, freq, fields, z_rows, vs_rows, tf_rows, dest: Path) 
         color=color,
         geomean_key="tf_toro",
         label=f"{TORO} geomean",
+        geomean=shown,
     )
     ax_tf.set_title("Transfer function")
     panel_letter(ax_tf, "b")
     sig = sigma_y(DIP_SPAN_M, fields["theta"], n=500)
     fig.suptitle(
-        "Toro, uniform dip depth — "
+        r"Toro, dip depth $H+x\tan\theta$ — "
         + atlas_panel_title(pack, i).replace("\n", ", ")
         + rf", $\sigma_y$={sig:.2f} m",
         fontsize=7.5,
@@ -304,6 +392,8 @@ def main() -> None:
         cov=fields["cov"],
         vs2=fields["vs2"],
         xi=fields["xi"],
+        H=fields["H"],
+        theta=fields["theta"],
     )
     toro_path = FIG_DIR / "toro_uniform_vs_tf.png"
     plot_toro(pack, i, freq, fields, z_t, vs_t, tf_t, toro_path)

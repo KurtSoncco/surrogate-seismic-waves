@@ -3,18 +3,18 @@
     "n_val": 150,
     "n_test": 150,
     "n_heldout": 300,
-    "n_methods": 7
+    "n_methods": 6
   },
   "dipping": {
     "n_val": 144,
     "n_test": 144,
     "n_heldout": 288,
-    "n_methods": 7
+    "n_methods": 6
   },
   "ood_dipping": {
     "n_val": 144,
     "n_test": 144,
     "n_heldout": 288,
-    "n_methods": 8
+    "n_methods": 6
   }
 }

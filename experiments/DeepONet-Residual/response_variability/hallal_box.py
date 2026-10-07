@@ -90,3 +90,45 @@ def apply_hallal_ground_truth(
     out["freq"] = np.asarray(out.get("freq", freq), dtype=np.float64)
     out["hallal_sample_id"] = sample_ids
     return out
+
+
+def apply_pretell_ensemble(
+    pack: dict[str, np.ndarray], ens_path: Path
+) -> dict[str, np.ndarray]:
+    """Replace Pretell geomean, percentile, and σ_ln from a Savio ensemble file.
+
+    Rows are the corpus run index in ``sample_idx``. Runs marked invalid in
+    the file are left as NaN. The frequency grid must match the pack.
+    """
+    import h5py
+
+    if "sample_idx" not in pack:
+        raise KeyError("pack needs sample_idx (run index into the ensemble)")
+    ens_path = Path(ens_path)
+    runs = np.asarray(pack["sample_idx"], dtype=int)
+    with h5py.File(ens_path) as handle:
+        n_runs = int(handle["geomean"].shape[0])
+        if np.any(runs < 0) or np.any(runs >= n_runs):
+            raise KeyError(
+                f"{ens_path.name} has {n_runs} runs; sample_idx is outside that range"
+            )
+        freq = np.asarray(handle["freq"], dtype=np.float64)
+        geomean = np.asarray(handle["geomean"], dtype=np.float64)[runs]
+        percentile = np.asarray(handle["p84"], dtype=np.float64)[runs]
+        sigma = np.asarray(handle["sigma_ln"], dtype=np.float64)[runs]
+        valid = np.asarray(handle["valid"], dtype=bool)[runs]
+    if "freq" in pack:
+        pack_freq = np.asarray(pack["freq"], dtype=np.float64).reshape(-1)
+        if pack_freq.shape != freq.shape or not np.allclose(pack_freq, freq):
+            raise ValueError(f"{ens_path.name} frequency grid does not match the pack")
+    geomean = geomean.copy()
+    percentile = percentile.copy()
+    sigma = sigma.copy()
+    geomean[~valid] = np.nan
+    percentile[~valid] = np.nan
+    sigma[~valid] = np.nan
+    out = dict(pack)
+    out["tf_pretell"] = geomean
+    out["tf_pretell_p84"] = percentile
+    out["sigma_ln_pretell"] = sigma
+    return out

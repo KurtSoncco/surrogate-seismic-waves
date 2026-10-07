@@ -126,9 +126,9 @@ def test_atlas_methods_include_1d_and_not_p84():
     assert DMULT not in ATLAS_METHODS
     assert DMULT not in methods
     assert methods == [OPENSEES, GINO, HASKELL_NOMINAL, PRETELL, TORO, PASSERI]
-    assert TORO_FIXED in ATLAS_METHODS
+    assert TORO_FIXED not in ATLAS_METHODS
+    assert PASSERI_FIXED not in ATLAS_METHODS
     assert TORO_DIP in ATLAS_METHODS
-    assert PASSERI_FIXED in ATLAS_METHODS
     assert PASSERI_DIP in ATLAS_METHODS
     assert HASKELL_NOMINAL in methods
     assert OPENSEES in methods
@@ -222,6 +222,30 @@ def test_ood_dipping_overlay_maps_sobol_and_drops_dmult(tmp_path):
     np.testing.assert_allclose(out["tf_toro_fixed"][2], [1, 1, 1, 1])
     np.testing.assert_allclose(out["tf_passeri_dip"][0], [8, 8, 8, 8])
     np.testing.assert_allclose(out["tf_opensees"][:, 2, :], center[[2, 0, 1]])
+
+
+def test_pretell_ensemble_indexes_runs_and_masks_invalid(tmp_path):
+    import h5py
+
+    from response_variability.hallal_box import apply_pretell_ensemble
+
+    path = tmp_path / "pretell_ensembles.h5"
+    freq = np.linspace(0.1, 10.0, 4)
+    with h5py.File(path, "w") as handle:
+        handle.create_dataset("freq", data=freq)
+        handle.create_dataset(
+            "geomean", data=np.arange(12, dtype=np.float32).reshape(3, 4)
+        )
+        handle.create_dataset(
+            "p84", data=np.arange(12, dtype=np.float32).reshape(3, 4) + 10
+        )
+        handle.create_dataset("sigma_ln", data=np.ones((3, 4), dtype=np.float32))
+        handle.create_dataset("valid", data=np.array([True, False, True]))
+    pack = {"sample_idx": np.array([2, 1]), "freq": freq}
+    out = apply_pretell_ensemble(pack, path)
+    np.testing.assert_allclose(out["tf_pretell"][0], [8, 9, 10, 11])
+    assert np.isnan(out["tf_pretell"][1]).all()
+    np.testing.assert_allclose(out["tf_pretell_p84"][0], [18, 19, 20, 21])
 
 
 def test_atlas_ylim_is_fixed():

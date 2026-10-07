@@ -3,7 +3,8 @@
 
 Scores GINO, 1-D Haskell nom, Pretell, Toro, and Passeri on nested IID
 and dipping val, concatenates with the frozen test packs, and writes
-log–log overlays. Dmult is not an atlas arm.
+log–log overlays. Dmult and the fixed-H Toro/Passeri arms are not drawn.
+Dipping plots use the dip-depth geomeans.
 
     uv run python experiments/DeepONet-Residual/response_variability/plots/tf_atlas.py
     uv run python .../tf_atlas.py --skip-predict
@@ -67,10 +68,8 @@ ATLAS_METHODS = (
     HASKELL_NOMINAL,
     PRETELL,
     TORO,
-    TORO_FIXED,
     TORO_DIP,
     PASSERI,
-    PASSERI_FIXED,
     PASSERI_DIP,
 )
 _DMULT_PACK_KEYS = (TF_KEYS[DMULT], TF_KEYS[DMULT_P84], "sigma_ln_dmult")
@@ -93,13 +92,6 @@ ATLAS_CURVE_STYLE = {
         "alpha": 1.0,
         "zorder": 4,
     },
-    TORO_FIXED: {
-        "color": "#CC3311",
-        "ls": (0, (7, 2.4)),
-        "lw": 1.7,
-        "alpha": 1.0,
-        "zorder": 4,
-    },
     TORO_DIP: {
         "color": "#EE6677",
         "ls": (0, (2.2, 1.4)),
@@ -111,13 +103,6 @@ ATLAS_CURVE_STYLE = {
         "color": "#AA4499",
         "ls": (0, (9, 2.2, 2.2, 2.2)),
         "lw": 2.0,
-        "alpha": 1.0,
-        "zorder": 4,
-    },
-    PASSERI_FIXED: {
-        "color": "#AA4499",
-        "ls": (0, (9, 2.2, 2.2, 2.2)),
-        "lw": 1.7,
         "alpha": 1.0,
         "zorder": 4,
     },
@@ -138,10 +123,8 @@ ATLAS_CURVE_STYLE = {
 }
 ATLAS_LABELS = {
     TORO: "Toro geomean",
-    TORO_FIXED: "Toro fixed H",
     TORO_DIP: "Toro dip",
     PASSERI: "Passeri geomean",
-    PASSERI_FIXED: "Passeri fixed H",
     PASSERI_DIP: "Passeri dip",
 }
 PAGE_SIZE = 16
@@ -640,6 +623,8 @@ def run(
             n_hallal_seeds=n_hallal_seeds,
             skip_predict=skip_predict,
         )
+        pack = overlay_saved_pretell(pack, domain)
+        save_pack(pack, heldout_pack_path(out_dir, domain))
         csv_path = out_dir / f"{domain}_heldout_summary.csv"
         score_heldout_csv(pack, csv_path)
         split = np.asarray(pack["split"])
@@ -684,14 +669,14 @@ def run(
 
 
 def plot_ood_dipping_pearson(out_dir: Path) -> Path:
-    """IID val+test beside the Box dipping val+test, with Dmult removed."""
+    """IID val+test beside dipping val+test. Dmult and fixed-H arms are omitted."""
     import pandas as pd
 
     from response_variability.plots.plot_eval_bias import plot_pearson_boxes_heldout
 
     iid = pd.read_csv(out_dir / "iid_heldout_summary.csv")
     dip = pd.read_csv(out_dir / "ood_dipping_heldout_summary.csv")
-    drop = {DMULT, DMULT_P84}
+    drop = {DMULT, DMULT_P84, TORO_FIXED, PASSERI_FIXED}
     iid = iid.loc[~iid["method"].isin(drop)]
     dip = dip.loc[~dip["method"].isin(drop)]
     return plot_pearson_boxes_heldout(
@@ -728,10 +713,27 @@ def _pearson_by_split(pack: dict[str, np.ndarray], summary_path: Path) -> Path:
     return dest
 
 
+def overlay_saved_pretell(
+    pack: dict[str, np.ndarray], domain: str
+) -> dict[str, np.ndarray]:
+    """Use the Savio Pretell ensembles on Box instead of the cached spectra."""
+    from response_variability.hallal_box import BOX_DIR, apply_pretell_ensemble
+
+    if domain == "iid":
+        path = BOX_DIR / "pretell_ensembles.h5"
+    elif domain == "dipping":
+        path = config.ood_dipping_root() / "pretell_comparison" / "pretell_ensembles.h5"
+    else:
+        return pack
+    if not path.is_file():
+        raise FileNotFoundError(f"missing Pretell ensemble {path}")
+    return apply_pretell_ensemble(pack, path)
+
+
 def run_ood_dipping_box(
     *, out_dir: Path = OUT_DIR, skip_plot: bool = False
 ) -> list[Path]:
-    """Val+test atlas using Box ``ood_dipping`` Toro and Passeri geomeans."""
+    """Val+test atlas using Box Toro, Passeri, and Pretell geomeans."""
     from response_variability.ood_dipping_box import apply_ood_dipping_toro_passeri
 
     out_dir = Path(out_dir)
@@ -739,6 +741,7 @@ def run_ood_dipping_box(
     if not src.is_file():
         raise FileNotFoundError(f"missing dipping val+test pack {src}")
     pack = apply_ood_dipping_toro_passeri(load_pack(src))
+    pack = overlay_saved_pretell(pack, "dipping")
     dest = out_dir / "ood_dipping_heldout_pack.npz"
     save_pack(pack, dest)
     print(f"Wrote {dest}", flush=True)
@@ -795,7 +798,7 @@ def main() -> None:
     p.add_argument(
         "--ood-dipping-box",
         action="store_true",
-        help="Atlas and val+test scores from Box ood_dipping Toro and Passeri H5 (no Dmult).",
+        help="Atlas and val+test scores from Box ood_dipping Toro, Passeri, and Pretell H5 (no Dmult).",
     )
     args = p.parse_args()
     if args.ood_dipping_box:
