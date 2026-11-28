@@ -98,6 +98,9 @@ def test_selection_metric_parse_and_validate():
         "band_balanced"
     )
     assert config._parse_env_value("SELECTION_METRIC", "VAL_LOSS") == "val_loss"
+    assert config._parse_env_value("SELECTION_METRIC", "pearson_trusted") == (
+        "pearson_trusted"
+    )
     try:
         config._parse_env_value("SELECTION_METRIC", "bogus")
     except ValueError:

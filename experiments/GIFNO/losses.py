@@ -17,6 +17,21 @@ from radial_spectral_loss import RadialBinnedSpectralLoss
 _EPS = 1e-8
 
 
+def _collocation_curves(
+    pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """(B, Nx, F) -> (B, C, F) at columns that any sample in the batch labels.
+
+    A sample that does not label a column is zeroed there so 21-station IID
+    rows can mix with denser section collocation in one batch.
+    """
+    cols = torch.nonzero(mask.sum(dim=0) > 0, as_tuple=False).squeeze(-1)
+    if cols.numel() == 0:
+        return gather_recorder_tf_torch(pred), gather_recorder_tf_torch(target)
+    weight = mask.index_select(1, cols).unsqueeze(-1)
+    return pred.index_select(1, cols) * weight, target.index_select(1, cols) * weight
+
+
 def band_curriculum_weights(
     epoch: int,
     num_epochs: int,
@@ -349,7 +364,14 @@ class MaskedCompositeLoss(nn.Module):
         dp = (pred[..., 1:] - pred[..., :-1]) / d_log.clamp_min(_EPS)
         dt = (target[..., 1:] - target[..., :-1]) / d_log.clamp_min(_EPS)
         rel_val = self._relative_lp_on_recorder(pred, target)
-        rel_deriv = self._relative_lp_on_recorder(dp, dt)
+        # Relative L2 on d/d(log f), with a unit floor on target-slope energy.
+        # A near-flat residual (TF ≈ TF_1D) has ||dt|| ~ 0; the old relative
+        # L1 then divided by 1e-8 and aborted at 1e7–1e8.
+        ddiff = (dp - dt).reshape(pred.shape[0], -1)
+        dt_flat = dt.reshape(pred.shape[0], -1)
+        num = torch.linalg.norm(ddiff, dim=1)
+        den = torch.linalg.norm(dt_flat, dim=1).clamp_min(1.0)
+        rel_deriv = num / den
         return rel_val + rel_deriv
 
     def _freq_domain_loss(
@@ -372,8 +394,7 @@ class MaskedCompositeLoss(nn.Module):
         target: torch.Tensor,
         mask: torch.Tensor,
     ) -> torch.Tensor:
-        p_rec = gather_recorder_tf_torch(pred)
-        t_rec = gather_recorder_tf_torch(target)
+        p_rec, t_rec = _collocation_curves(pred, target, mask)
 
         if self.rel_weight > 0:
             if self.valley_loss_weight > 0:

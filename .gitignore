@@ -46,11 +46,19 @@ data/*
 # Secrets
 .env
 *.env
+*credentials*.txt
+stampede_credentials.txt
+/Keys
 
 # Any model checkpoints or outputs
 checkpoints/
 outputs/
 analysis/
+!experiments/GIFNO-VARDOMAIN/analysis/
+!experiments/GIFNO-VARDOMAIN/analysis/preregistration/
+!experiments/GIFNO-VARDOMAIN/analysis/preregistration/**
+!experiments/GIFNO-VARDOMAIN/analysis/preregistration/**/*.json
+!experiments/GIFNO-VARDOMAIN/analysis/preregistration/*.json
 logs/
 *.pth 
 *.pt

@@ -28,6 +28,8 @@ class RadialBinnedSpectralLoss(nn.Module):
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         err = (pred - target).unsqueeze(1)
         b, _, nx, ny = err.shape
+        if nx < 2 or ny < 2:
+            return err.new_zeros(())
         err_fft = torch.fft.fft2(err, dim=(-2, -1))
         err_sq = err_fft.abs().square()
         err_sq_h = err_sq[..., : nx // 2, : ny // 2]

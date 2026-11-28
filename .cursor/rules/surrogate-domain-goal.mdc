@@ -1,0 +1,32 @@
+---
+description: Goal, evidence, and constraints for a variable-size 2D site-response surrogate
+alwaysApply: true
+---
+
+# Variable-domain surrogate
+
+Goal: a new model, trained from scratch, for linear-SH surface outcrop |TF|. It must take any 2D Vs, any damping, with or without randomization, on interiors 500–2000 m long and up to 250 m deep. The shipped 500 m × 128 checkpoint cannot be fine-tuned onto that grid: Fourier mode k is a wavelength of 500/k m, and the depth collapse has one weight per row of that crop. Do not write into `GIFNO-FDO-XT-LOGLO-POD`, `DeepONet-Residual/checkpoints`, or `tier2_pod64_full7680`. New training lives in `experiments/GIFNO-VARDOMAIN/` and `checkpoints/vardomain/`.
+
+## What Hallal already settled
+
+At Treasure Island (this Case 7 section), shrinking the cross-section makes the response the 1D column. Hallal, Cox, and Vantassel (JGGE 2023) and Hallal’s dissertation: variability along at least 600 m is required for the fundamental-mode drop from scattering, about 1700 m for the other basin effects, and the ground that matters extends about 1 km from the sensor. A 1500 m window sees 750 m each side of a centered station and stops short of that 1 km. A centered 2000 m window reaches it. 500 m training labels are the 1D limit and will dominate a mixed loss unless wide windows are scored on their own below the site frequency.
+
+## Case 7 evidence (do not relearn)
+
+Own OpenSees, 500 m interior + 500 m repeated-edge pads, Q–Vs damping. Pearson of log |TF|, 0.1–2.5 Hz, LOGLO vs 1D: flat west 0.977/0.983, center 0.959/0.965, thinning 0.799/0.864, ramp 0.974/0.974, flat east 0.984/0.982. Relative L1 is worse for LOGLO on every crop (thinning 0.226 vs 0.203). SVLAB on the real 4000 m section: flat west 1D 0.374, LOGLO 0.367; below 0.4 Hz the 1D Pearson is −0.55. Encoding Case 7 with training zeta (soil 0.0075, rock one tenth) puts the residual head back on 1D for the east (0.974) and the ramp (0.952) and does not fill the west. Source chat: Case 7 crops and SVLAB (`75fca766-37bb-4562-b402-851327c6e6a0`).
+
+## What the present data is not
+
+- IID: 7680 random fields, one soil over bedrock, soil about 15–100 m, 500 m strip inside a 1500 m padded mesh. Records are 50 s. Soil zeta is Q(Vs), 2.9–4.8%, and the stored field matches what OpenSees applied. Rock is stored as 0.41%.
+- Sections: 64 runs, one feature (flat, ramp, step, trough), 2000 × 150 m, **no** 500 m free-field pad. A 2000 m window of these includes the absorbing boundary. Do not use them as clean 2000 m domains. OpenSees applied Q(Vs) damping. The H5 `Damping_zeta` is the CSV value (0.5–5%), which does not match. Read zeta through `applied_damping.applied_zeta`, or use `data/vardomain/section_labels/round0_applied`. The old `round0` labels carry the CSV zeta in the 1D prior.
+- Canvas: interior up to `W_MAX_M` = 2000 m, starting at column `CONTEXT_M` = 1000, on `NX_METRIC` = 4000. Columns outside the interior repeat the edge. `log(f1)` and `log(f2)` are channels. Depth labels still stop at 150 m (sections) and about 110 m (IID).
+- Labels are Rayleigh at (f1, f2). seiskit has no frequency-independent damping. `damping_family` is `explicit` (the CSV zeta) or `qvs`. A new H5 sets `damping_applied=xi_base` only when OpenSees was given those values. The Stampede seiskit from 5 Aug 2026 ignored `xi_soil_base`; the package copied from `~/seiskit` on 1 Nov 2026 does not. Do not solve on a seiskit that rejects that field.
+- 1D engine fixed 1 Nov 2026: `surface_over_outcrop` and `absolute_inputs.column_tf1d_*` had the half-space up/down split wrong (homogeneous column 0.72–0.84 instead of ~1). With the fix and a fixed 1310.72 s FFT window, input scale c is 1.983 (velocity Ricker) and 1.978 (acceleration), about the expected 2, in `data/vardomain/outcrop_fixed_window/<campaign>/`. Section labels: `data/vardomain/section_labels/round1_fixed`. Flat sections now match 1D at Pearson 0.933 in 0.1–0.4 Hz (was 0.785), ramp 0.835, step 0.802, trough 0.762 (`section_lowband_round1_fixed.json`). The Case 7 and SVLAB "vs 1D" numbers above were computed with the old engine and are stale until rescored. Shipped residual checkpoints were trained on the old prior.
+- CoV = 0 (one column repeated) is still not a training slice by default; with the corrected 1D it is close to exact, so the pilots decide whether synthetic CoV = 0 rows are worth adding.
+- The label is a surface transfer function, 0.1–10 Hz, one Ricker. At Vs 100 m/s and 250 m, f0 is 0.1 Hz, on the edge of the band.
+
+## How to add a solve
+
+Interior length is the geology the network sees. OpenSees gets 500 m of repeated edge column on each side (`pad_free_field` in `experiments/case7a/run_sections.py`, `SECTION_PAD_M`). Discard the pads before training. `section_generator.DEPTH_M` stays 150 m. Deeper or milder contacts are CSV columns (`depth_m`, `vs_smooth_m`, `max_vs_ratio`), not edits to the Case 7a defaults.
+
+A training set for the stated goal is new OpenSees: interiors 500, 1000, 1500, and 2000 m, depth up to 250 m, both Vs families plus a CoV = 0 slice, damping varied independently of Vs. Twelve Case 7 meshes do not train that model. They test whether our Q–Vs solver still shows Hallal’s width dependence.

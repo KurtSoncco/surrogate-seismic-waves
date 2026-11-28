@@ -68,12 +68,23 @@ def _pearson(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.corrcoef(a, b)[0, 1])
 
 
-def reconstruct(tf: np.ndarray, modes: np.ndarray, mean: np.ndarray) -> np.ndarray:
-    """tf (R,F), modes (R,K,F), mean (R,F) -> recon (R,F)."""
-    centered = tf - mean
-    # coeffs[r,k] = <centered[r], mode[r,k]>
+def reconstruct(
+    tf: np.ndarray,
+    modes: np.ndarray,
+    mean: np.ndarray,
+    space: str = "linear",
+) -> np.ndarray:
+    """tf (R,F), modes (R,K,F), mean (R,F) -> linear |TF| recon (R,F).
+
+    Log space projects ``log(|TF|)`` and exponentiates so the ceiling is in
+    the same amplitude units as the linear basis.
+    """
+    work = _pod_mod.curves_in_space(tf.astype(np.float64), space)
+    centered = work - mean
     coeffs = np.einsum("rf,rkf->rk", centered, modes)
     recon = mean + np.einsum("rk,rkf->rf", coeffs, modes)
+    if space == "log":
+        recon = np.exp(recon)
     return recon.astype(np.float32)
 
 
@@ -83,20 +94,22 @@ def eval_modes(
     test_idx: np.ndarray,
     recorder_x: np.ndarray,
     n_modes: int,
+    space: str = "linear",
 ) -> dict:
-    modes, mean = compute_pod_modes(tf_array, train_idx, recorder_x, n_modes)
-    # energy: fraction of train variance captured
+    modes, mean = compute_pod_modes(
+        tf_array, train_idx, recorder_x, n_modes, space=space
+    )
+    # energy: fraction of train variance captured in the SVD space
     train_tf = tf_array[train_idx]
     energy_fracs = []
     for r in range(len(recorder_x)):
-        curves = train_tf[:, r, :].astype(np.float64)
+        curves = _pod_mod.curves_in_space(train_tf[:, r, :].astype(np.float64), space)
         mu = curves.mean(axis=0)
         centered = curves - mu
         total = float(np.sum(centered**2))
         if total < 1e-18:
             energy_fracs.append(1.0)
             continue
-        # project
         coeffs = centered @ modes[r].T  # (N, K)
         recon = coeffs @ modes[r]
         captured = float(np.sum(recon**2))
@@ -104,7 +117,7 @@ def eval_modes(
 
     rels, pears = [], []
     for i in test_idx:
-        recon = reconstruct(tf_array[i], modes, mean)
+        recon = reconstruct(tf_array[i], modes, mean, space=space)
         true = tf_array[i]
         # per-recorder then mean (matches capability style)
         r_rel = [_rel_l2(recon[r], true[r]) for r in range(true.shape[0])]
@@ -113,6 +126,7 @@ def eval_modes(
         pears.append(float(np.nanmean(r_pear)))
 
     return {
+        "space": space,
         "n_modes": n_modes,
         "n_train": int(len(train_idx)),
         "n_test": int(len(test_idx)),
@@ -151,9 +165,16 @@ def main() -> int:
     )
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--seed", type=int, default=config.SEED)
+    parser.add_argument(
+        "--space",
+        choices=("linear", "log", "both"),
+        default="linear",
+        help="linear |TF|, log(|TF|) with exp back to amplitude, or both",
+    )
     args = parser.parse_args()
 
     mode_list = [int(x) for x in args.modes.split(",") if x.strip()]
+    spaces = ("linear", "log") if args.space == "both" else (args.space,)
     manifest_path = config.MANIFEST_PATH
     tf_path = config.TF_PER_SAMPLE_PATH
     if not tf_path.is_file():
@@ -177,15 +198,20 @@ def main() -> int:
     assert train_idx.max() < n and test_idx.max() < n
 
     results = []
-    for k in mode_list:
-        print(f"[pod] Evaluating K={k} ...")
-        res = eval_modes(tf_array, train_idx, test_idx, recorder_x, k)
-        results.append({kk: vv for kk, vv in res.items() if kk != "per_sample_rel_l2"})
-        print(
-            f"  K={k}: recon rel_l2={res['test_rel_l2_mean']:.4f}  "
-            f"pearson={res['test_pearson_mean']:.4f}  "
-            f"train_energy={res['train_energy_frac_mean']:.4f}"
-        )
+    for space in spaces:
+        for k in mode_list:
+            print(f"[pod] Evaluating space={space} K={k} ...")
+            res = eval_modes(
+                tf_array, train_idx, test_idx, recorder_x, k, space=space
+            )
+            results.append(
+                {kk: vv for kk, vv in res.items() if kk != "per_sample_rel_l2"}
+            )
+            print(
+                f"  {space} K={k}: recon rel_l2={res['test_rel_l2_mean']:.4f}  "
+                f"pearson={res['test_pearson_mean']:.4f}  "
+                f"train_energy={res['train_energy_frac_mean']:.4f}"
+            )
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     out = {
@@ -193,6 +219,7 @@ def main() -> int:
         "n_train": int(len(train_idx)),
         "n_test": int(len(test_idx)),
         "seed": args.seed,
+        "space": args.space,
         "reference_model_test_rel_l2": 0.30,
         "interpretation": (
             "If oracle rel_l2 << 0.30, encoder/2D coupling is the wall. "
@@ -202,11 +229,18 @@ def main() -> int:
     }
     (args.out_dir / "pod_recon_ceiling.json").write_text(json.dumps(out, indent=2))
 
-    ks = [r["n_modes"] for r in results]
-    rels = [r["test_rel_l2_mean"] for r in results]
-    pears = [r["test_pearson_mean"] for r in results]
+    ks = [r["n_modes"] for r in results if r["space"] == spaces[0]]
+    rels = [r["test_rel_l2_mean"] for r in results if r["space"] == spaces[0]]
+    pears = [r["test_pearson_mean"] for r in results if r["space"] == spaces[0]]
     fig, ax = plt.subplots(figsize=(6.5, 4))
-    ax.plot(ks, rels, "o-", label="oracle recon rel_l2")
+    ax.plot(ks, rels, "o-", label=f"{spaces[0]} recon rel_l2")
+    if len(spaces) > 1:
+        ax.plot(
+            [r["n_modes"] for r in results if r["space"] == "log"],
+            [r["test_rel_l2_mean"] for r in results if r["space"] == "log"],
+            "o-",
+            label="log recon rel_l2",
+        )
     ax.axhline(0.30, color="C1", ls="--", label="model test_rel_l2 ≈ 0.30")
     ax.set_xlabel("POD modes K")
     ax.set_ylabel("Test mean rel L2")

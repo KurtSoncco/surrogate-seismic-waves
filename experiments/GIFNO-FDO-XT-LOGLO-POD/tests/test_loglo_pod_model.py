@@ -17,16 +17,18 @@ def test_create_model_output_shape():
     assert y.shape == (2, config.NX, config.N_FREQ)
 
 
-def test_recorder_columns_nonzero():
+def test_shared_head_fills_every_column():
     from model import create_model
 
     rec = config.recorder_x_indices()
     model = create_model(num_fno_layers=2)
+    assert model.head.shared
     x = torch.randn(1, 4, config.NZ_MAX, config.NX)
     y = model(x)
-    off = np.setdiff1d(np.arange(config.NX), rec)
-    assert torch.all(y[0, off, :] == 0)
+    assert y.shape == (1, config.NX, config.N_FREQ)
     assert torch.any(y[0, rec[0], :] != 0)
+    off = int(np.setdiff1d(np.arange(config.NX), rec)[0])
+    assert torch.any(y[0, off, :] != 0)
 
 
 def test_dual_path_encoder_returns_two_streams():

@@ -1,0 +1,21 @@
+{
+  "output_pod_floor_by_band": {
+    "low": 0.0020726275377666095,
+    "mid": 0.001361250961772532,
+    "high": 0.0008203781434423141,
+    "overall": 0.0014125725928293537
+  },
+  "output_pod_fit_runs": 32,
+  "output_pod_eval_runs": 16,
+  "eval_split": "iid_train_held_out_of_the_basis_fit",
+  "test_split_opened": false,
+  "input_weighted_pod_reconstruction": 0.06463167378440454,
+  "input_weighted_pod_rank": 13,
+  "input_pca16_vs_reconstruction": 0.10732872887423342,
+  "envelope": {
+    "vs_min": 56.875,
+    "vs_max": 1426.0,
+    "impedance_ratio_max": 17.07331963834735,
+    "train_runs_sampled": 202
+  }
+}

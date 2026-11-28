@@ -1,6 +1,7 @@
 # train.py
 """Training loop for GIFNO-FDO-XT-LOGLO-POD."""
 
+import math
 import time
 
 import config
@@ -15,6 +16,10 @@ from curriculum import BandCurriculumController
 from losses import band_curriculum_weights, build_training_loss
 from metrics import compute_val_tail_metrics_torch
 from model import create_model
+
+
+class DivergenceError(RuntimeError):
+    """Non-finite or exploding loss; remaining epochs would waste the GPU."""
 
 
 def _band_curriculum_enabled(criterion: torch.nn.Module) -> bool:
@@ -77,6 +82,122 @@ def _use_amp() -> bool:
     return config.USE_AMP and config.DEVICE.type == "cuda"
 
 
+def diverge_bound() -> float:
+    return float(getattr(config, "DIVERGE_LOSS_MAX", 100.0))
+
+
+def check_loss_finite(value: float, *, epoch: int, where: str) -> None:
+    """Raise DivergenceError so the pipeline does not keep stepping NaNs."""
+    bound = diverge_bound()
+    exploded = bound > 0.0 and math.isfinite(value) and value > bound
+    if math.isfinite(value) and not exploded:
+        return
+    kind = "non-finite" if not math.isfinite(value) else f"{value:.4g} > {bound:g}"
+    raise DivergenceError(f"[diverge] {where} epoch {epoch}: loss {kind}")
+
+
+def _reinit_pod_branch_last_linear(model: torch.nn.Module) -> None:
+    """Reset the coefficient layer. It belongs to the basis, not the encoder."""
+    head = model.head
+    last = head.branch[-1]
+    n_modes = int(head.n_modes)
+    if not isinstance(last, torch.nn.Linear) or int(last.out_features) != n_modes:
+        raise RuntimeError(
+            "POD branch last layer must be Linear -> "
+            f"{n_modes} modes, got {type(last).__name__} "
+            f"out={getattr(last, 'out_features', None)}"
+        )
+    last.reset_parameters()
+    print(f"[init] Reinitialized head.branch[-1] for {n_modes} POD modes", flush=True)
+
+
+def _zero_init_pod_branch_last(model: torch.nn.Module) -> None:
+    """Start log-POD at exp(mean): random Kaiming coeffs overflow through exp."""
+    last = model.head.branch[-1]
+    torch.nn.init.zeros_(last.weight)
+    torch.nn.init.zeros_(last.bias)
+    print("[init] Zero-initialized head.branch[-1] (recon starts at exp(POD mean))", flush=True)
+
+
+def window_consistency_loss(
+    outputs: torch.Tensor,
+    recorder_x: torch.Tensor,
+    pair_offset: int,
+    *,
+    dense: bool = True,
+    masks: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Mean squared log difference on the physical overlap of a shifted pair.
+
+    ``outputs`` is (2B, nx, F) with pairs interleaved (a0, b0, a1, b1, ...).
+    Window b starts ``pair_offset`` stations (15 m) east of a. Shared layout
+    compares overlapping columns; the 21-station fallback is for legacy
+    per-recorder heads that zero the rest of the grid.
+
+    When ``masks`` is (2B, nx), only columns labeled in *both* windows
+    contribute. Unlabeled dense columns cannot explode the objective.
+    """
+    nx = outputs.shape[-2]
+    n_freq = outputs.shape[-1]
+    out = outputs.view(-1, 2, nx, n_freq)
+    if dense:
+        shift = int(round(pair_offset * config.LATERAL_SPACING_M / config.DX))
+        if shift <= 0 or shift >= nx:
+            return outputs.new_zeros(())
+        a = out[:, 0, shift:, :]
+        b = out[:, 1, : nx - shift, :]
+        weight = None
+        if masks is not None:
+            m = masks.view(-1, 2, nx)
+            weight = m[:, 0, shift:] * m[:, 1, : nx - shift]
+    else:
+        a = out[:, 0].index_select(1, recorder_x[pair_offset:])
+        b = out[:, 1].index_select(1, recorder_x[: recorder_x.numel() - pair_offset])
+        weight = None
+        if masks is not None:
+            m = masks.view(-1, 2, nx)
+            weight = m[:, 0].index_select(1, recorder_x[pair_offset:]) * m[
+                :, 1
+            ].index_select(1, recorder_x[: recorder_x.numel() - pair_offset])
+    log_a = torch.log(a.float().clamp(1e-6, 1e6))
+    log_b = torch.log(b.float().clamp(1e-6, 1e6))
+    err = (log_a - log_b).pow(2)
+    if weight is None:
+        return err.mean()
+    w = weight.float()
+    wsum = w.sum()
+    if float(wsum) == 0:
+        return outputs.new_zeros(())
+    return (err * w.unsqueeze(-1)).sum() / (wsum * err.shape[-1])
+
+
+def masked_log_pearson(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    mask: torch.Tensor,
+    freq: torch.Tensor,
+    band: tuple[float, float] = (0.1, 2.5),
+) -> torch.Tensor:
+    """Per-sample mean Pearson of log amplitude on labeled columns in ``band``.
+
+    ``pred`` / ``target`` are (B, nx, F); ``mask`` is (B, nx). Returns (B,).
+    Residual batches are Pearson of the ratio; outcrop batches of |TF|.
+    """
+    lo, hi = band
+    fmask = (freq >= lo) & (freq <= hi)
+    log_p = torch.log(pred[..., fmask].float().clamp_min(1e-6))
+    log_t = torch.log(target[..., fmask].float().clamp_min(1e-6))
+    pc = log_p - log_p.mean(dim=-1, keepdim=True)
+    tc = log_t - log_t.mean(dim=-1, keepdim=True)
+    num = (pc * tc).sum(dim=-1)
+    den = torch.sqrt((pc * pc).sum(dim=-1) * (tc * tc).sum(dim=-1) + 1e-12)
+    r = num / den
+    w = mask.float() * torch.isfinite(r).float()
+    nlab = w.sum(dim=1)
+    out = (r.nan_to_num(0.0) * w).sum(dim=1) / nlab.clamp_min(1.0)
+    return torch.where(nlab > 0, out, out.new_full(out.shape, float("nan")))
+
+
 def train_model(train_loader, val_loader):
     # Free A100 speedups: TF32 matmuls/convs + cuDNN autotune (fixed input sizes).
     if config.DEVICE.type == "cuda":
@@ -100,6 +221,10 @@ def train_model(train_loader, val_loader):
         )
         if missing:
             print(f"[init] missing keys (first 8): {missing[:8]}")
+        if getattr(config, "REINIT_POD_BRANCH", False):
+            _reinit_pod_branch_last_linear(model)
+    else:
+        _zero_init_pod_branch_last(model)
 
     if config.TORCH_COMPILE and hasattr(torch, "compile"):
         model = torch.compile(model)
@@ -163,6 +288,12 @@ def train_model(train_loader, val_loader):
     if band_curriculum:
         val_tail_every = 1
 
+    consistency_weight = float(getattr(config, "WINDOW_CONSISTENCY_WEIGHT", 0.0))
+    pair_offset = int(getattr(config, "WINDOW_PAIR_OFFSET", 2))
+    recorder_x = torch.as_tensor(config.recorder_x_indices(), device=config.DEVICE)
+    freq_t = torch.as_tensor(freq, device=config.DEVICE, dtype=torch.float32)
+    trusted_band = (0.1, 2.5)
+
     t = trange(config.NUM_EPOCHS, desc="Training")
     for epoch in t:
         band_w = (1.0, 1.0, 1.0)
@@ -188,11 +319,31 @@ def train_model(train_loader, val_loader):
             inputs = inputs.to(config.DEVICE, non_blocking=non_blocking)
             targets = targets.to(config.DEVICE, non_blocking=non_blocking)
             masks = masks.to(config.DEVICE, non_blocking=non_blocking)
+            paired = inputs.ndim == 5
+            if paired:
+                inputs, targets, masks = (t.flatten(0, 1) for t in (inputs, targets, masks))
 
             optimizer.zero_grad(set_to_none=True)
             with autocast:
                 outputs = model(inputs)
                 loss = criterion(outputs, targets, masks)
+                if paired and consistency_weight > 0:
+                    loss = loss + consistency_weight * window_consistency_loss(
+                        outputs,
+                        recorder_x,
+                        pair_offset,
+                        dense=bool(getattr(model.head, "shared", False)),
+                        masks=masks,
+                    )
+            if epoch == 0 and n_train == 0:
+                pred_f = outputs.detach().float()
+                print(
+                    f"[init] batch0 pred min={float(pred_f.min()):.4g} "
+                    f"mean={float(pred_f.mean()):.4g} max={float(pred_f.max()):.4g} "
+                    f"loss={float(loss.detach().float().item()):.4g}",
+                    flush=True,
+                )
+            check_loss_finite(float(loss.detach().float().item()), epoch=epoch, where="train batch")
             if use_scaler:
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
@@ -212,6 +363,7 @@ def train_model(train_loader, val_loader):
             n_train += inputs.size(0)
 
         train_loss /= max(n_train, 1)
+        check_loss_finite(train_loss, epoch=epoch, where="train")
         t_train = time.time() - t_train_start
 
         # Validation uses a fixed-composition objective so the LR scheduler
@@ -225,6 +377,7 @@ def train_model(train_loader, val_loader):
         model.eval()
         val_loss = 0.0
         n_val = 0
+        pearson_parts: list[torch.Tensor] = []
         with torch.no_grad():
             for inputs, targets, masks in val_loader:
                 inputs = inputs.to(config.DEVICE, non_blocking=non_blocking)
@@ -233,10 +386,21 @@ def train_model(train_loader, val_loader):
                 with autocast:
                     outputs = model(inputs)
                     loss = criterion(outputs, targets, masks)
+                check_loss_finite(float(loss.detach().float().item()), epoch=epoch, where="val batch")
                 val_loss += loss.item() * inputs.size(0)
                 n_val += inputs.size(0)
+                pearson_parts.append(
+                    masked_log_pearson(outputs, targets, masks, freq_t, trusted_band).detach()
+                )
 
         val_loss /= max(n_val, 1)
+        check_loss_finite(val_loss, epoch=epoch, where="val")
+        if pearson_parts:
+            pcat = torch.cat(pearson_parts)
+            pcat = pcat[torch.isfinite(pcat)]
+            val_pearson = float(pcat.median().item()) if pcat.numel() else float("nan")
+        else:
+            val_pearson = float("nan")
         t_val = time.time() - t_val_start
         # LR scheduler always tracks the neutral objective.
         scheduler.step(val_loss)
@@ -261,6 +425,8 @@ def train_model(train_loader, val_loader):
         band_bal_val = band_balanced_val_metric(val_tail)
         if selection_metric == "band_balanced" and np.isfinite(band_bal_val):
             monitored = band_bal_val
+        elif selection_metric == "pearson_trusted" and np.isfinite(val_pearson):
+            monitored = -val_pearson
         else:
             monitored = val_loss
 
@@ -268,6 +434,7 @@ def train_model(train_loader, val_loader):
             "epoch": epoch,
             "train_loss": train_loss,
             "val_loss": val_loss,
+            "val_pearson_trusted": val_pearson,
             "band_bal_val": band_bal_val,
             "learning_rate": optimizer.param_groups[0]["lr"],
             **val_tail,
@@ -279,7 +446,7 @@ def train_model(train_loader, val_loader):
         if controller is not None:
             log_payload["curriculum_phase"] = controller.phase
         wandb.log(log_payload)
-        t.set_postfix(train_loss=train_loss, val_loss=val_loss)
+        t.set_postfix(train_loss=train_loss, val_loss=val_loss, val_P=val_pearson)
 
         if monitored < best_metric:
             best_metric = monitored

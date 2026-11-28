@@ -69,6 +69,25 @@ NODES_EACH_SIDE: int = 10
 LATERAL_SPACING_M: float = 15.0
 N_FREQ: int = 1000
 
+# "relative": surface-normalized Vs, max-normalized zeta, x/z normalized by the
+# mesh (shipped runs). "absolute": GIFNO/absolute_inputs.py channels; use with
+# NZ_MAX >= 160 so a 150 m Case 7 column fits at 1 m.
+INPUT_ENCODING: str = "relative"
+# FiLM of the lifted features on site-level dimensionless groups (mean log f0,
+# log impedance contrast, log zeta at the surface). Needs INPUT_ENCODING=absolute.
+DIMNORM_FILM: bool = False
+DIMNORM_HIDDEN: int = 64
+# Multifidelity input: log |TF_1D| of each column at this many log-spaced
+# frequencies, as extra channels (absolute encoding only). Pair with a
+# GIFNO_TF_DIR built by build_outcrop_dataset.py --target residual.
+PRIOR_CHANNELS: int = 0
+# Section operator: train on windows moved by up to +-WINDOW_SHIFT_MAX stations
+# (15 m) along the 1500 m mesh, in pairs WINDOW_PAIR_OFFSET stations apart, and
+# penalize log disagreement at shared stations (0 = off). Absolute encoding only.
+WINDOW_SHIFT_MAX: int = 0
+WINDOW_PAIR_OFFSET: int = 2
+WINDOW_CONSISTENCY_WEIGHT: float = 0.0
+
 # --- LOGLO encoder ---
 IN_CHANNELS: int = 4
 LATENT_CHANNELS: int = 128
@@ -86,10 +105,16 @@ LOGLO_HF_NOISE_ALPHA: float = 0.025
 LOGLO_DEPTH_STRIDE: int = NZ_MAX
 # Optional warm-start path (encoder+head); set via GIFNO_INIT_CHECKPOINT.
 INIT_CHECKPOINT: str = ""
+# After a warm start onto a new POD basis, reset the coefficient layer.
+REINIT_POD_BRANCH: bool = False
 
 # --- POD-DeepONet readout ---
 BRANCH_MODE: str = "surface"
 POD_NUM_MODES: int = 32
+# linear |TF| SVD, or log(|TF|) with an exp readout. Default keeps shipped runs.
+POD_SPACE: str = "linear"
+# shared: one (K,F) basis, head queries every column. per_recorder: legacy (R,K,F).
+POD_LAYOUT: str = "shared"
 POD_BRANCH_HIDDEN: int = 256
 DEEPONET_LATENT_DIM: int = 128
 TRUNK_HIDDEN: int = 128
@@ -108,6 +133,11 @@ TEST_SPLIT: float = 0.15
 SEED: int = 42
 EARLY_STOP_PATIENCE: int = 80
 GRAD_CLIP_NORM: float = 1.0
+# Abort the run (do not burn remaining epochs / fine-tune) when a batch or
+# epoch loss is non-finite or exceeds this. 0 disables the magnitude check.
+DIVERGE_LOSS_MAX: float = 100.0
+# Clamp log-POD reconstruction before exp so a blown coefficient cannot Inf.
+LOG_RECON_CLAMP: float = 20.0
 NUM_WORKERS: int = 4
 # bf16 autocast: FFT/spectral/POD stay fp32 (verified rel-diff ~1e-5 vs fp32).
 USE_AMP: bool = True
@@ -189,9 +219,10 @@ LOSS_BAND_BALANCED_WEIGHT: float = 0.0
 
 # --- Model selection / LR schedule ---
 # SELECTION_METRIC drives best-checkpoint and early-stop:
-#   "val_loss"      -> neutral relative-L2 (baseline behavior)
-#   "band_balanced" -> mean of per-band rel-L2 (low/mid/high) so high-band gains
-#                      are rewarded even though the high band carries low energy.
+#   "val_loss"         -> neutral relative-L2 (baseline behavior)
+#   "band_balanced"    -> mean of per-band rel-L2 (low/mid/high) so high-band gains
+#                         are rewarded even though the high band carries low energy.
+#   "pearson_trusted"  -> median Pearson of log amplitude in 0.1-2.5 Hz (shape).
 # The LR scheduler always tracks neutral val_loss; its patience/factor are tunable
 # so curriculum runs can train long enough for mid/high bands to see gradient.
 SELECTION_METRIC: str = "val_loss"
@@ -214,9 +245,9 @@ def _parse_env_value(key: str, raw: str):
         return tuple(parts)
     if key == "SELECTION_METRIC":
         metric = raw.lower()
-        if metric not in ("val_loss", "band_balanced"):
+        if metric not in ("val_loss", "band_balanced", "pearson_trusted"):
             raise ValueError(
-                f"SELECTION_METRIC must be val_loss or band_balanced, got {raw!r}"
+                f"SELECTION_METRIC must be val_loss, band_balanced, or pearson_trusted, got {raw!r}"
             )
         return metric
     if key == "BAND_CURRICULUM_MODE":
@@ -231,6 +262,21 @@ def _parse_env_value(key: str, raw: str):
         if mode not in ("surface", "depth"):
             raise ValueError(f"BRANCH_MODE must be surface or depth, got {raw!r}")
         return mode
+    if key == "POD_SPACE":
+        space = raw.lower()
+        if space not in ("linear", "log"):
+            raise ValueError(f"POD_SPACE must be linear or log, got {raw!r}")
+        return space
+    if key == "POD_LAYOUT":
+        layout = raw.lower()
+        if layout not in ("shared", "per_recorder"):
+            raise ValueError(f"POD_LAYOUT must be shared or per_recorder, got {raw!r}")
+        return layout
+    if key == "INPUT_ENCODING":
+        enc = raw.lower()
+        if enc not in ("relative", "absolute"):
+            raise ValueError(f"INPUT_ENCODING must be relative or absolute, got {raw!r}")
+        return enc
     if key == "X_COORD_MODE":
         mode = raw.lower()
         if mode not in ("normalized", "meters"):
@@ -249,13 +295,21 @@ def _parse_env_value(key: str, raw: str):
         "LOG_TF_LOSS",
         "USE_AMP",
         "TORCH_COMPILE",
+        "CACHE_DATASET",
         "AMSGRAD",
         "BAND_CURRICULUM",
         "BAND_CURRICULUM_LR_RESTART",
         "BAND_CURRICULUM_RESET_OPT_STATE",
+        "REINIT_POD_BRANCH",
+        "DIMNORM_FILM",
     ):
         return raw.lower() in ("1", "true", "yes", "on")
     if key in (
+        "NZ_MAX",
+        "DIMNORM_HIDDEN",
+        "PRIOR_CHANNELS",
+        "WINDOW_SHIFT_MAX",
+        "WINDOW_PAIR_OFFSET",
         "NUM_FNO_LAYERS",
         "LATENT_CHANNELS",
         "DEEPONET_LATENT_DIM",
@@ -291,6 +345,8 @@ def _parse_env_value(key: str, raw: str):
         "VALLEY_PERCENTILE",
         "HARD_MINING_POWER",
         "GRAD_CLIP_NORM",
+        "DIVERGE_LOSS_MAX",
+        "LOG_RECON_CLAMP",
         "ADAM_BETA1",
         "ADAM_BETA2",
         "ADAM_EPS",
@@ -303,6 +359,7 @@ def _parse_env_value(key: str, raw: str):
         "BAND_CURRICULUM_LR_RESTART_SCALE",
         "LOSS_BAND_BALANCED_WEIGHT",
         "LR_SCHED_FACTOR",
+        "WINDOW_CONSISTENCY_WEIGHT",
     ):
         return float(raw)
     if key == "WANDB_RUN_NAME":
@@ -320,6 +377,8 @@ _OVERRIDABLE_KEYS = (
     "SEED",
     "EARLY_STOP_PATIENCE",
     "GRAD_CLIP_NORM",
+    "DIVERGE_LOSS_MAX",
+    "LOG_RECON_CLAMP",
     "NUM_WORKERS",
     "LATENT_CHANNELS",
     "FNO_MODES",
@@ -330,6 +389,8 @@ _OVERRIDABLE_KEYS = (
     "LOGLO_HF_NOISE_ALPHA",
     "LOGLO_DEPTH_STRIDE",
     "POD_NUM_MODES",
+    "POD_SPACE",
+    "POD_LAYOUT",
     "POD_BRANCH_HIDDEN",
     "BRANCH_MODE",
     "DEEPONET_LATENT_DIM",
@@ -370,6 +431,7 @@ _OVERRIDABLE_KEYS = (
     "LR_SCHED_FACTOR",
     "USE_AMP",
     "TORCH_COMPILE",
+    "CACHE_DATASET",
     "OPTIMIZER",
     "ADAM_BETA1",
     "ADAM_BETA2",
@@ -377,7 +439,31 @@ _OVERRIDABLE_KEYS = (
     "AMSGRAD",
     "WANDB_RUN_NAME",
     "INIT_CHECKPOINT",
+    "REINIT_POD_BRANCH",
+    "NZ_MAX",
+    "INPUT_ENCODING",
+    "DIMNORM_FILM",
+    "DIMNORM_HIDDEN",
+    "PRIOR_CHANNELS",
+    "WINDOW_SHIFT_MAX",
+    "WINDOW_PAIR_OFFSET",
+    "WINDOW_CONSISTENCY_WEIGHT",
 )
+
+
+def _derive_dependent() -> None:
+    """Values that follow from overridable keys unless set explicitly."""
+    g = globals()
+    if INPUT_ENCODING == "absolute":
+        if str(_GIFNO_DIR) not in sys.path:
+            sys.path.append(str(_GIFNO_DIR))
+        from absolute_inputs import N_ABS_CHANNELS  # noqa: PLC0415
+
+        g["IN_CHANNELS"] = N_ABS_CHANNELS + PRIOR_CHANNELS
+    if not os.environ.get("GIFNO_LOGLO_DEPTH_STRIDE"):
+        g["LOGLO_DEPTH_STRIDE"] = NZ_MAX
+    if (DIMNORM_FILM or PRIOR_CHANNELS or WINDOW_SHIFT_MAX) and INPUT_ENCODING != "absolute":
+        raise ValueError("DIMNORM_FILM, PRIOR_CHANNELS and WINDOW_SHIFT_MAX need INPUT_ENCODING=absolute")
 
 
 def apply_env_overrides() -> list[str]:
@@ -399,6 +485,7 @@ def apply_env_overrides() -> list[str]:
 
 
 apply_env_overrides()
+_derive_dependent()
 
 
 def recorder_x_indices(

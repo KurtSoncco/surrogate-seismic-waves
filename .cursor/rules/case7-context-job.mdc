@@ -1,0 +1,15 @@
+---
+description: Live Case 7 width-and-damping OpenSees study and how to read it
+globs: experiments/case7a/**,experiments/GIFNO-VARDOMAIN/**
+alwaysApply: false
+---
+
+# Case 7 context study
+
+Job **3664979** `case7ctx` finished 2026-10-31, state COMPLETED, 16 h 46 min. H5s are in `data/case7a/opensees_crops/context/h5` and match the Stampede checksums. `full_svlab` is a byte-for-byte copy of `full_qvs`: that seiskit ignored `xi_soil_base` and damped both runs with Q(Vs). The damping comparison in the gate is refused while those two files match.
+
+`experiments/case7a/context_convergence.py` scores every width on the stations of its 500 m crop and decides on 0.1–2.5 Hz (`|dlog| < 0.05` and Pearson `> 0.97`). The 0.1–0.4 Hz band is reported and does not flip the choice. Current `convergence.json`: no width passes on every crop. At 1500 m the 0.1–2.5 Hz Pearson is at least 0.970 (thinning 0.876 → 0.970, west 0.954 → 0.975) but `|dlog|` is still 0.058–0.067 except on the flat east. Wider is not always closer: east at 1500 m is worse than at 1000 m.
+
+Job **3669168** `case7crops` (submitted 2026-11-01, account `TG-CIV260015`, 1 SPR node, 24 h, `$SCRATCH/case7_context_v2`) reruns `full_svlab` at 15 s and the flat-west 500 m crop at SVLAB 15/30/60 s and Q–Vs 30/60 s. Meshes: `data/case7a/opensees_crops/record_pilot/meshes`. It uses the seiskit copied from `~/seiskit`, which honors `xi_soil_base`. When those H5s are local, rerun `context_convergence.py`. Until `full_svlab` differs from `full_qvs`, do not read the damping lines.
+
+Job **3669169** `vd_time` times one 250 m mesh at each interior width 500/1000/1500/2000 m for 0.5 s of motion (`$SCRATCH/vardomain/timing`). The manifest is `experiments/GIFNO-VARDOMAIN/hpc/timing_widths.csv` (20 rows per width, not submitted as production solves).

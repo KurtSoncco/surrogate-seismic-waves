@@ -37,10 +37,25 @@ def ensure_tf_cache():
     subprocess.run([sys.executable, str(config.PREPROCESS_SCRIPT)], check=True)
 
 
+def _pod_matches_config() -> bool:
+    """True if the cached basis matches layout, rank, and the current mix."""
+    if os.environ.get("GIFNO_REBUILD_POD", "").strip().lower() in {"1", "true", "yes"}:
+        return False
+    if not (config.POD_MODES_PATH.exists() and config.POD_MEAN_PATH.exists()):
+        return False
+    modes = np.load(config.POD_MODES_PATH)
+    mean = np.load(config.POD_MEAN_PATH)
+    layout = getattr(config, "POD_LAYOUT", "shared")
+    k = int(config.POD_NUM_MODES)
+    if layout == "shared":
+        return modes.ndim == 2 and modes.shape[0] == k and mean.ndim == 1
+    return modes.ndim == 3 and modes.shape[1] == k and mean.ndim == 2
+
+
 def ensure_pod_cache(limit: int | None = None):
-    if config.POD_MODES_PATH.exists() and config.POD_MEAN_PATH.exists():
+    if _pod_matches_config():
         return
-    print("[GIFNO-FDO-XT-LOGLO-POD] POD basis not found — computing...")
+    print("[GIFNO-FDO-XT-LOGLO-POD] POD basis missing or stale — computing from this mix...")
     cmd = [sys.executable, str(config.POD_PREPROCESS_SCRIPT)]
     if limit is not None:
         cmd.extend(["--limit", str(limit)])
@@ -60,6 +75,10 @@ def ensure_pod_cache(limit: int | None = None):
             str(config.POD_MODES_PATH),
             "--out-mean",
             str(config.POD_MEAN_PATH),
+            "--space",
+            str(config.POD_SPACE),
+            "--layout",
+            str(getattr(config, "POD_LAYOUT", "shared")),
         ]
     )
     subprocess.run(cmd, check=True)
@@ -84,26 +103,29 @@ def run_pipeline(limit: int | None = None):
 
     train_loader, val_loader, test_loader, freq = get_data_loaders(limit=limit)
 
-    run = train_model(train_loader, val_loader)
-
-    model = create_model().to(config.DEVICE)
-    model.load_state_dict(
-        torch.load(config.MODEL_SAVE_PATH, map_location=config.DEVICE)
-    )
-
-    metrics = evaluate_model(
-        model,
-        test_loader,
-        freq_data=freq,
-        save_dir=config.RESULTS_SAVE_DIR,
-        run=run,
-        seed=config.SEED,
-    )
-    print("Test metrics:", metrics)
-
     import wandb
 
-    wandb.finish()
+    run = None
+    try:
+        run = train_model(train_loader, val_loader)
+
+        model = create_model().to(config.DEVICE)
+        model.load_state_dict(
+            torch.load(config.MODEL_SAVE_PATH, map_location=config.DEVICE)
+        )
+
+        metrics = evaluate_model(
+            model,
+            test_loader,
+            freq_data=freq,
+            save_dir=config.RESULTS_SAVE_DIR,
+            run=run,
+            seed=config.SEED,
+        )
+        print("Test metrics:", metrics)
+    finally:
+        if wandb.run is not None:
+            wandb.finish()
 
 
 if __name__ == "__main__":

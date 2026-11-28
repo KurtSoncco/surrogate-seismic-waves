@@ -20,6 +20,7 @@ except ImportError:
 import h5py
 
 import config
+from absolute_inputs import encode_absolute, pad_lateral
 
 
 def _resolve_h5_path(stored_path: str) -> Path:
@@ -134,11 +135,14 @@ def _scatter_tf_to_grid(
     recorder_x_idx: np.ndarray,
     nx: int,
     n_freq: int,
+    valid: np.ndarray | None = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Scatter (n_lateral, n_freq) TF onto (nx, n_freq) grid; return mask."""
     target = np.zeros((nx, n_freq), dtype=np.float32)
     mask = np.zeros(nx, dtype=np.float32)
     for ch, x_idx in enumerate(recorder_x_idx):
+        if valid is not None and (ch >= len(valid) or not valid[ch]):
+            continue
         if 0 <= x_idx < nx:
             target[x_idx, :] = tf_lateral[ch]
             mask[x_idx] = 1.0
@@ -157,15 +161,18 @@ class GIFNODataset(Dataset):
         nx: int = config.NX,
         n_freq: int = config.N_FREQ,
         cache_in_memory: bool = False,
+        collocation_valid: np.ndarray | None = None,
     ):
         self.manifest_rows = manifest_rows
         self.tf_array = tf_array
         self.recorder_x_idx = recorder_x_idx
+        self.collocation_valid = collocation_valid
         self.nz_max = nz_max
         self.nx = nx
         self.n_freq = n_freq
         self.cache_in_memory = cache_in_memory
         self._cache: dict[int, tuple] = {}
+        self._raw_cache: dict[int, tuple] = {}
 
     def __len__(self) -> int:
         return len(self.manifest_rows)
@@ -179,6 +186,7 @@ class GIFNODataset(Dataset):
         from tqdm import tqdm
 
         for idx in tqdm(range(len(self)), desc="Preloading dataset", unit="sample"):
+            self._raw_cache[idx] = self._read_h5_fields(idx)
             self._cache[idx] = self._load_sample(idx)
 
     def __getitem__(self, idx: int):
@@ -190,33 +198,67 @@ class GIFNODataset(Dataset):
             return cached
         return self._load_sample(idx)
 
-    def _load_sample(self, idx: int):
+    def _read_h5_fields(self, idx: int) -> tuple:
         row = self.manifest_rows[idx]
         h5_path = _resolve_h5_path(row["h5_path"])
-
         with h5py.File(h5_path, "r") as f:
-            vs_raw = f["Vs_realization_2D"][:]
-            zeta_raw = f["Damping_zeta"][:]
+            vs_raw = np.asarray(f["Vs_realization_2D"][:], dtype=np.float32)
+            zeta_raw = np.asarray(f["Damping_zeta"][:], dtype=np.float32)
             nz = int(vs_raw.shape[0])
             lz = float(f["grid"].attrs["Lz"])
             dz = float(f["grid"].attrs.get("dz", config.DZ))
             dx = float(f["grid"].attrs.get("dx", config.DX))
+        return vs_raw, zeta_raw, nz, lz, dz, dx
 
-            sl = slice(config.X_SLICE_START, config.X_SLICE_END)
-            vs = _pad_depth(vs_raw, self.nz_max)[:, sl]
-            zeta = _pad_depth(zeta_raw, self.nz_max)[:, sl]
-            x_coord, z_coord = _build_sample_coord_grids(
-                nz,
-                self.nx,
-                self.nz_max,
-                lz,
-                float(config.LX_VARIABILITY),
-                dz=dz,
-                dx=dx,
-            )
+    def raw_sample(self, idx: int) -> tuple:
+        cached = self._raw_cache.get(idx)
+        if cached is not None:
+            return cached
+        raw = self._read_h5_fields(idx)
+        if self.cache_in_memory:
+            self._raw_cache[idx] = raw
+        return raw
+
+    def _encode_absolute_shift(self, idx: int, shift: int = 0):
+        """Crop + encode a window from the cached mesh; used by shifted pair training."""
+        vs_raw, zeta_raw, nz, _lz, dz, dx = self.raw_sample(idx)
+        row = self.manifest_rows[idx]
+        step = int(round(config.LATERAL_SPACING_M / config.DX))
+        start = _window_start(row) + int(shift) * step
+        if start < 0 or start >= vs_raw.shape[1]:
+            raise ValueError(f"shift {shift} leaves the {vs_raw.shape[1]}-column mesh")
+        stop = min(start + self.nx, vs_raw.shape[1])
+        x = _encode_window(
+            vs_raw[:, start:stop],
+            zeta_raw[:, start:stop],
+            nz,
+            dz=dz,
+            dx=dx,
+            nx_out=self.nx,
+            nz_max=self.nz_max,
+        )
+        return self._with_target(idx, row, x, shift=shift)
+
+    def _load_sample(self, idx: int):
+        row = self.manifest_rows[idx]
+        vs_raw, zeta_raw, nz, lz, dz, dx = self.raw_sample(idx)
+        sl = slice(config.X_SLICE_START, config.X_SLICE_END)
+        if getattr(config, "INPUT_ENCODING", "relative") == "absolute":
+            return self._encode_absolute_shift(idx, 0)
+        vs = _pad_depth(vs_raw, self.nz_max)[:, sl]
+        zeta = _pad_depth(zeta_raw, self.nz_max)[:, sl]
+        x_coord, z_coord = _build_sample_coord_grids(
+            nz,
+            self.nx,
+            self.nz_max,
+            lz,
+            float(config.LX_VARIABILITY),
+            dz=dz,
+            dx=dx,
+        )
 
         if vs[0].max() <= 0:
-            raise ValueError(f"Surface row has zero Vs in {h5_path}")
+            raise ValueError(f"Surface row has zero Vs in {_resolve_h5_path(row['h5_path'])}")
 
         if config.NORMALIZE_VS_SURFACE:
             vs = _normalize_vs_by_surface(vs, config.VS_NORM_EPS)
@@ -224,10 +266,25 @@ class GIFNODataset(Dataset):
             zeta = _normalize_zeta_by_max(zeta, nz, config.ZETA_NORM_EPS)
 
         x = stack_model_input_channels(vs, zeta, x_coord, z_coord)
-        tf_lateral = self.tf_array[idx]
-        target, mask = _scatter_tf_to_grid(
-            tf_lateral, self.recorder_x_idx, self.nx, self.n_freq
+        return self._with_target(idx, row, x)
+
+    def _with_target(self, idx: int, row: dict, x: np.ndarray, shift: int = 0):
+        tf_lateral = np.asarray(self.tf_array[idx])
+        valid = (
+            None
+            if self.collocation_valid is None
+            else np.asarray(self.collocation_valid[idx], dtype=bool)
         )
+        if shift:
+            tf_lateral, slot_ok = _shift_recorders(tf_lateral, shift)
+            if valid is not None:
+                valid = _shift_valid(valid, shift)
+        target, mask = _scatter_tf_to_grid(
+            tf_lateral, self.recorder_x_idx, self.nx, self.n_freq, valid=valid
+        )
+        if shift and valid is None:
+            mask[self.recorder_x_idx[~slot_ok]] = 0.0
+            target[self.recorder_x_idx[~slot_ok]] = 0.0
 
         sample = (
             torch.from_numpy(x),
@@ -240,11 +297,100 @@ class GIFNODataset(Dataset):
         return sample
 
 
+def _encode_window(vs: np.ndarray, zeta: np.ndarray, nz: int, *, dz: float, dx: float, nx_out: int, nz_max: int) -> np.ndarray:
+    """Absolute encoding of a possibly short crop, padded to ``nx_out``."""
+    lx = float(vs.shape[1] * dx)
+    x = encode_absolute(
+        vs,
+        zeta,
+        nz,
+        nz_max,
+        dz=dz,
+        dx=dx,
+        lx=lx,
+        n_prior=int(getattr(config, "PRIOR_CHANNELS", 0)),
+    )
+    return pad_lateral(x, nx_out)
+
+
+def _window_start(row: dict) -> int:
+    """First mesh column of the 500 m window: ``x_start`` for section windows, else the padded-run default."""
+    value = row.get("x_start")
+    return config.X_SLICE_START if value in (None, "") else int(float(value))
+
+
+def _shift_recorders(tf_lateral: np.ndarray, shift: int) -> Tuple[np.ndarray, np.ndarray]:
+    """Labels for a window moved by ``shift`` stations: slot r holds recorder r + shift."""
+    n = tf_lateral.shape[0]
+    src = np.arange(n) + int(shift)
+    ok = (src >= 0) & (src < n)
+    out = np.zeros_like(np.asarray(tf_lateral))
+    out[ok] = np.asarray(tf_lateral)[src[ok]]
+    return out, ok
+
+
+def _shift_valid(valid: np.ndarray, shift: int) -> np.ndarray:
+    """Destination slot is labeled only if the *source* slot was labeled.
+
+    AND-ing destination validity with in-range (the old mix-shift path) copies
+    unlabeled union-grid zeros onto a still-True IID slot, so the loss sees
+    mask=1 and target=0 and relative L1 hits 1e11.
+    """
+    n = valid.shape[0]
+    src = np.arange(n) + int(shift)
+    ok = (src >= 0) & (src < n)
+    out = np.zeros(n, dtype=bool)
+    out[ok] = np.asarray(valid, dtype=bool)[src[ok]]
+    return out
+
+
+class ShiftPairDataset(Dataset):
+    """Training windows moved along the 1500 m mesh, in consistency pairs.
+
+    Item = two windows of one run, shifted by j and j + pair_offset stations
+    (j uniform with both inside +-max_shift). Shapes gain a leading pair axis:
+    x (2, C, H, W), target (2, nx, F), mask (2, nx). Stations outside the 21
+    labeled recorders are masked; the pair still constrains them through the
+    consistency term in train.py. Absolute encoding only. Crops come from
+    ``GIFNODataset.raw_sample`` (RAM after preload), not a per-step H5 open.
+    """
+
+    def __init__(self, base: "GIFNODataset", max_shift: int, pair_offset: int, seed: int = 0):
+        if getattr(config, "INPUT_ENCODING", "relative") != "absolute":
+            raise ValueError("shifted windows need INPUT_ENCODING=absolute")
+        if pair_offset > 2 * max_shift:
+            raise ValueError("pair_offset must be <= 2 * max_shift")
+        self.base = base
+        self.max_shift = int(max_shift)
+        self.pair_offset = int(pair_offset)
+        self.step = int(round(config.LATERAL_SPACING_M / config.DX))
+        self.seed = int(seed)
+        self._calls = 0
+
+    def __len__(self) -> int:
+        return len(self.base)
+
+    def __getitem__(self, idx: int):
+        # torch.initial_seed differs per worker and epoch; _calls separates
+        # epochs when loading in the main process.
+        self._calls += 1
+        rng = np.random.default_rng([self.seed, torch.initial_seed() % (2**63), idx, self._calls])
+        lo, hi = -self.max_shift, self.max_shift - self.pair_offset
+        j = int(rng.integers(lo, hi + 1))
+        items = []
+        for shift in (j, j + self.pair_offset):
+            items.append(self.base._encode_absolute_shift(idx, shift)[:3])
+        return tuple(torch.stack([a[k] for a in items]) for k in range(3))
+
+
 def _sample_id_from_manifest_row(row: dict) -> int:
     """Sobol sample_id from GIFNO manifest row (run_index // seeds_per_sample)."""
     seeds = int(getattr(config, "SEEDS_PER_SAMPLE", 30))
     if "sample_id" in row and row["sample_id"] not in ("", None):
-        return int(row["sample_id"])
+        try:
+            return int(row["sample_id"])
+        except ValueError:
+            return -1
     if "run_index" in row and row["run_index"] not in ("", None):
         return int(row["run_index"]) // max(seeds, 1)
     if "sample_idx" in row and row["sample_idx"] not in ("", None):
@@ -343,6 +489,8 @@ def get_data_loaders(
     tf_array = np.load(tf_path, mmap_mode="r")
     recorder_x_idx = np.load(recorder_x_path)
     freq = np.load(config.TF_FREQ_PATH)
+    valid_path = Path(tf_path).parent / "collocation_valid.npy"
+    collocation_valid = np.load(valid_path, mmap_mode="r") if valid_path.is_file() else None
 
     cache_in_memory = bool(getattr(config, "CACHE_DATASET", False))
     # Seed-contrast needs sample_id on each item.
@@ -356,7 +504,11 @@ def get_data_loaders(
             config.RETURN_SAMPLE_ID = True
 
     dataset = GIFNODataset(
-        manifest, tf_array, recorder_x_idx, cache_in_memory=cache_in_memory
+        manifest,
+        tf_array,
+        recorder_x_idx,
+        cache_in_memory=cache_in_memory,
+        collocation_valid=collocation_valid,
     )
     if cache_in_memory:
         dataset.preload()
@@ -378,7 +530,7 @@ def get_data_loaders(
     }
     if num_workers > 0:
         loader_kwargs["persistent_workers"] = True
-        loader_kwargs["prefetch_factor"] = 2
+        loader_kwargs["prefetch_factor"] = 4
 
     use_seed_batch = bool(getattr(config, "SEED_GROUP_BATCH", False))
     if use_seed_batch:
@@ -394,8 +546,20 @@ def get_data_loaders(
         }
         if num_workers > 0:
             seed_loader_kwargs["persistent_workers"] = True
-            seed_loader_kwargs["prefetch_factor"] = 2
+            seed_loader_kwargs["prefetch_factor"] = 4
         train_loader = DataLoader(train_subset, **seed_loader_kwargs)
+    elif int(getattr(config, "WINDOW_SHIFT_MAX", 0)) > 0:
+        pairs = ShiftPairDataset(
+            dataset,
+            max_shift=int(config.WINDOW_SHIFT_MAX),
+            pair_offset=int(getattr(config, "WINDOW_PAIR_OFFSET", 2)),
+            seed=seed,
+        )
+        train_loader = DataLoader(
+            Subset(pairs, train_idx),
+            shuffle=True,
+            **{**loader_kwargs, "batch_size": max(1, batch_size // 2)},
+        )
     else:
         train_loader = DataLoader(
             Subset(dataset, train_idx),

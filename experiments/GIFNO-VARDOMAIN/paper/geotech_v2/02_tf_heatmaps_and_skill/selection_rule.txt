@@ -1,0 +1,3 @@
+Dipping test run 217: 500 m held-out window, the record with the largest center-station mid-band column residual. High-signal exemplar, not a representative record and not wide-domain evidence.
+Blind section man_0297: 500 m manifold section, the blind section with the largest stored mid-band |g| in the ensemble dump. High-signal exemplar, not a representative section and not wide-domain evidence.
+Pooled scores are in analysis/frozen/ladder.csv. They are not printed on these panels.

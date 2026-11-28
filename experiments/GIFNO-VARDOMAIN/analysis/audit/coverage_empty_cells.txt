@@ -1,0 +1,1 @@
+IID train lambda/W at 0.1 Hz, 5th–95th percentile, is 2.44–5.36 because every training window is 500 m. Treasure Island at the 2000 m window is 1.13 (outside that strip). Manifold sections at least 1500 m have median lambda/W at 0.1 Hz of 1.55. The low-frequency lateral question on a 500 m training window sits where the training density has no other width.

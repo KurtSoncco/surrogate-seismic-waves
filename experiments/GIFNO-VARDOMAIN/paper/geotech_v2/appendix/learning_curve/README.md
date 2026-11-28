@@ -1,0 +1,3 @@
+Epoch 46 is the stored checkpoint. `val_score` is 0.04987, the mean of IID and manifold validation log-L1. Blind was not in the score. Epoch 46 center stations are the fresh load_fp32 forward. The four-checkpoint mean is the stored ensemble_center_tf npz from ensemble_update._mean_g and was not recomputed. assert_comparable was called on the two master-pooled headlines. Epochs ±3 are not on disk. No best-of-four validation ranking is in this file. history.csv is absent.
+
+The old `history.csv` is in `superseded/` and is not the checkpoint history. It is not used for a minimum, and its losses are not quoted.

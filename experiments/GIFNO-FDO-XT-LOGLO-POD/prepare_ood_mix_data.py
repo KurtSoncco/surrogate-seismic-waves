@@ -96,6 +96,37 @@ def collect_campaign(
     return out_rows, arr
 
 
+def _load_basin(basin_dir: Path) -> tuple[list[dict], np.ndarray]:
+    """Train-split basin transfer functions. Drops the Case 7a holdout."""
+    tf_path = basin_dir / "tf_per_sample.npy"
+    man_path = basin_dir / "manifest.csv"
+    if not tf_path.is_file() or not man_path.is_file():
+        raise FileNotFoundError(
+            f"basin cache needs tf_per_sample.npy and manifest.csv in {basin_dir}"
+        )
+    tf = np.load(tf_path)
+    with man_path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    if tf.shape[0] != len(rows):
+        raise RuntimeError(
+            f"basin TF rows {tf.shape[0]} != manifest rows {len(rows)}"
+        )
+    kept_rows: list[dict] = []
+    kept_idx: list[int] = []
+    for i, row in enumerate(rows):
+        sample_id = str(row.get("sample_id", ""))
+        if sample_id == "holdout_case7a" or str(row.get("holdout_case7a", "0")) == "1":
+            continue
+        kept = dict(row)
+        kept["ood_campaign"] = "basin"
+        kept.setdefault("ood_index", str(row.get("run_index", i)))
+        kept_rows.append(kept)
+        kept_idx.append(i)
+    if not kept_idx:
+        raise RuntimeError(f"no train rows in {man_path}")
+    return kept_rows, np.asarray(tf[kept_idx], dtype=np.float32)
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--box-root", type=Path, default=DEFAULT_BOX)
@@ -108,6 +139,15 @@ def main() -> int:
         type=int,
         default=None,
         help="Optional cap on in-dist GIFNO rows used in the mix",
+    )
+    p.add_argument(
+        "--basin-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Optional basin TF cache (tf_per_sample.npy + manifest.csv). "
+            "Every row joins the train mix. The Case 7a holdout is dropped."
+        ),
     )
     args = p.parse_args()
 
@@ -194,17 +234,27 @@ def main() -> int:
         fixed_id.append(rr)
 
     ood_train_rows = [ood_rows[i] for i in train_idx]
+    basin_rows: list[dict] = []
+    basin_tf = np.zeros((0, ood_tf.shape[1], ood_tf.shape[2]), dtype=np.float32)
+    if args.basin_dir is not None:
+        basin_rows, basin_tf = _load_basin(args.basin_dir)
+        print(f"[basin] train rows {basin_tf.shape[0]}")
     # Align columns
     all_keys = list(
-        dict.fromkeys(list(fixed_id[0].keys()) + list(ood_train_rows[0].keys()))
+        dict.fromkeys(
+            list(fixed_id[0].keys())
+            + list(ood_train_rows[0].keys())
+            + (list(basin_rows[0].keys()) if basin_rows else [])
+        )
     )
     mix_rows = []
-    for r in fixed_id + ood_train_rows:
+    for r in fixed_id + ood_train_rows + basin_rows:
         mix_rows.append({k: r.get(k, "") for k in all_keys})
 
-    mix_tf = np.concatenate(
-        [np.asarray(id_tf[:n_id]), ood_tf[train_idx]], axis=0
-    ).astype(np.float32)
+    mix_parts = [np.asarray(id_tf[:n_id]), ood_tf[train_idx]]
+    if basin_tf.shape[0]:
+        mix_parts.append(basin_tf)
+    mix_tf = np.concatenate(mix_parts, axis=0).astype(np.float32)
     assert mix_tf.shape[0] == len(mix_rows)
 
     np.save(args.out_dir / "mix_tf_per_sample.npy", mix_tf)
@@ -226,6 +276,7 @@ def main() -> int:
         "n_id": n_id,
         "n_ood_train": int(len(train_idx)),
         "n_ood_holdout": int(len(hold_idx)),
+        "n_basin_train": int(basin_tf.shape[0]),
         "mix_n": int(mix_tf.shape[0]),
         "mix_tf_shape": list(mix_tf.shape),
     }

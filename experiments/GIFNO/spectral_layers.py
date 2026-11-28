@@ -145,20 +145,35 @@ class HFSModule(nn.Module):
         return out[..., :orig_h, :orig_w]
 
 
+def lateral_mode_mask(n_modes: int, patch_w: int, min_wavelength: float) -> torch.Tensor:
+    """1 for rfft modes whose wavelength is at least ``min_wavelength`` samples.
+
+    Mode 0 is the patch mean. Mode ``k`` has wavelength ``patch_w / k``. A
+    non-positive cutoff keeps every mode.
+    """
+    modes = torch.arange(n_modes, dtype=torch.float32)
+    if min_wavelength <= 0:
+        return torch.ones(n_modes)
+    wavelength = patch_w / modes.clamp(min=1)
+    return ((modes == 0) | (wavelength >= min_wavelength)).to(dtype=torch.float32)
+
+
 class LocalPatchSpectralConv2d(nn.Module):
     """LOGLO-style local spectral conv on non-overlapping patches (all rfft modes)."""
 
-    def __init__(self, channels: int, patch_size: Tuple[int, int]):
+    def __init__(self, channels: int, patch_size: Tuple[int, int], min_wavelength: float = 0.0):
         super().__init__()
         ph, pw = patch_size
         if ph < 1 or pw < 1:
             raise ValueError(f"patch_size must be positive, got {patch_size}")
         self.ph = ph
         self.pw = pw
+        self.min_wavelength = float(min_wavelength)
         mh, mw = ph, pw // 2 + 1
         scale = 1.0 / max(channels * channels, 1)
         weight = scale * torch.randn(channels, channels, mh, mw, dtype=torch.cfloat)
         self.weight = nn.Parameter(weight)
+        self.register_buffer("mode_mask", lateral_mode_mask(mw, pw, self.min_wavelength), persistent=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, c, h, w = x.shape
@@ -178,7 +193,8 @@ class LocalPatchSpectralConv2d(nn.Module):
         )
         # FFTs require float32 (cuFFT has no half support); guard for AMP.
         x_ft = torch.fft.rfft2(patches.float(), norm="ortho")
-        out_ft = torch.einsum("bixy,ijxy->bjxy", x_ft, self.weight)
+        weight = self.weight * self.mode_mask.view(1, 1, 1, -1)
+        out_ft = torch.einsum("bixy,ijxy->bjxy", x_ft, weight)
         out = torch.fft.irfft2(out_ft, s=(ph, pw), norm="ortho")
         out = (
             out.reshape(b, n_h, n_w, c, ph, pw)
@@ -195,8 +211,11 @@ class HighFrequencyPropagation(nn.Module):
         super().__init__()
         self.kernel_size = kernel_size
         self.stride = stride
+        self.ablate = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.ablate:
+            return torch.zeros_like(x)
         h, w = x.shape[-2:]
         # Clamp the pooling window per axis so a tiny (e.g. depth-1) grid works.
         kh, kw = min(self.kernel_size, h), min(self.kernel_size, w)
@@ -233,11 +252,13 @@ class DualPathLOGLOStack(nn.Module):
         hfp_kernel: int = 4,
         hfp_stride: int = 4,
         hf_noise_alpha: float = 0.025,
+        local_min_wavelength: float = 0.0,
     ):
         super().__init__()
         self.channels = channels
         self.n_layers = n_layers
         self.hf_noise_alpha = hf_noise_alpha
+        self.local_min_wavelength = float(local_min_wavelength)
         self.fno = FNOBlocks(
             n_modes=n_modes,
             in_channels=channels,
@@ -246,7 +267,7 @@ class DualPathLOGLOStack(nn.Module):
             non_linearity=nn.functional.gelu,
         )
         self.local_layers = nn.ModuleList(
-            [LocalPatchSpectralConv2d(channels, patch_size) for _ in range(n_layers)]
+            [LocalPatchSpectralConv2d(channels, patch_size, min_wavelength=self.local_min_wavelength) for _ in range(n_layers)]
         )
         self.hfp = HighFrequencyPropagation(hfp_kernel, hfp_stride)
         self.hf_mlps = nn.ModuleList(

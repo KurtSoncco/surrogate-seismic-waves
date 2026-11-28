@@ -41,11 +41,15 @@ def _load_config_module(config_path: Path):
 
 
 def _write_dummy_pod(config_mod) -> None:
-    rec = config_mod.recorder_x_indices()
     n_freq = config_mod.N_FREQ
     k = config_mod.POD_NUM_MODES
-    modes = np.random.randn(len(rec), k, n_freq).astype(np.float32)
-    mean = np.random.randn(len(rec), n_freq).astype(np.float32)
+    if getattr(config_mod, "POD_LAYOUT", "shared") == "per_recorder":
+        rec = config_mod.recorder_x_indices()
+        modes = np.random.randn(len(rec), k, n_freq).astype(np.float32)
+        mean = np.random.randn(len(rec), n_freq).astype(np.float32)
+    else:
+        modes = np.random.randn(k, n_freq).astype(np.float32)
+        mean = np.random.randn(n_freq).astype(np.float32)
     config_mod.POD_MODES_PATH.parent.mkdir(parents=True, exist_ok=True)
     np.save(config_mod.POD_MODES_PATH, modes)
     np.save(config_mod.POD_MEAN_PATH, mean)

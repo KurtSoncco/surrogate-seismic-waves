@@ -1,0 +1,41 @@
+{
+  "paper": "paper_3_descriptive",
+  "rebuild_paper_2": false,
+  "confirmatory_training_opened": false,
+  "external_labels_opened": false,
+  "committed_geologies": [],
+  "blocked_reasons": [
+    "committed_in_domain_geologies=0<6",
+    "solver_timing_unmeasured",
+    "custodian_unassigned"
+  ],
+  "reported_seed": 0,
+  "reported_model": "not_trained",
+  "primary_band_hz": [
+    0.1,
+    10.0
+  ],
+  "primary_comparator": "corrected_1d_column",
+  "secondary_comparator": "P128n128",
+  "recorded_motion": "descriptive_appendix_only",
+  "length_scaling": "rejected_until_three_rayleigh_fe_pairs_pass",
+  "mirror_augmentation": "prespecified",
+  "cuda_device": "NVIDIA GeForce RTX 5080 Laptop GPU",
+  "diagnosis": "not_run_learning_curve_inconclusive",
+  "length_scaling_gate": {
+    "passes": false,
+    "tolerance": 0.0136,
+    "n_pairs": 0
+  },
+  "learning_curve": {
+    "status": "not_run",
+    "label": "inconclusive",
+    "reason": "The RTX 5080 is available, but the feasibility gate has not opened confirmatory training.",
+    "families_not_classified": [
+      "iid",
+      "ood_dipping",
+      "ood_three_layer",
+      "manifold"
+    ]
+  }
+}

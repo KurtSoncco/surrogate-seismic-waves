@@ -680,16 +680,13 @@ def _plot_tf_panel(ax, pack: dict[str, np.ndarray], i: int) -> None:
             label=PRETELL_P84,
         )
     if "tf_dmult" in pack and np.isfinite(pack["tf_dmult"][i]).any():
-        from response_variability.plots.tf_atlas import ATLAS_CURVE_STYLE
-
-        dstyle = ATLAS_CURVE_STYLE[DMULT]
         ax.plot(
             freq,
             np.maximum(np.asarray(pack["tf_dmult"][i], dtype=np.float64), 1e-6),
-            color=dstyle["color"],
-            ls=dstyle["ls"],
-            lw=dstyle["lw"],
-            zorder=5,
+            color=METHOD_COLORS[DMULT],
+            ls=METHOD_LINESTYLES[DMULT],
+            lw=1.2,
+            zorder=METHOD_ZORDER[DMULT],
             label=DMULT,
         )
     if "tf_toro" in pack and np.isfinite(pack["tf_toro"][i]).any():
